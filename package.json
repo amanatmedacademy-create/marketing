@@ -1,13 +1,16 @@
 {
   "name": "amanat-marketing",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "wrangler dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false && tsc -p tsconfig.worker.json --pretty false",
+    "deploy": "npm run build && wrangler deploy",
+    "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
@@ -18,10 +21,12 @@
     "recharts": "^2.15.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260728.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.5.2",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "wrangler": "^4.26.0"
   }
 }
