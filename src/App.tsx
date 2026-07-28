@@ -27,6 +27,7 @@ import {
   marketingApi,
   type AdSummaryRow,
   type DashboardDailyRow,
+  type IntegrationStatus,
   type MarketingLead,
   type SourceSummaryRow,
 } from './services/api';
@@ -37,6 +38,7 @@ const money = (value: number) => new Intl.NumberFormat('ru-RU', {
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const percent = (value: number, total: number) => total ? `${((value / total) * 100).toFixed(1)}%` : '0%';
 const romi = (revenue: number, spend: number) => spend ? Math.round(((revenue - spend) / spend) * 100) : 0;
+const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 
 function useRemoteData<T>(loader: () => Promise<T>, initial: T) {
   const [data, setData] = useState<T>(initial);
@@ -90,9 +92,7 @@ function Dashboard() {
     ...row,
     dateLabel: new Date(`${row.date}T00:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
   }));
-  const visibleSources = source === 'Все источники'
-    ? sourcesState.data
-    : sourcesState.data.filter(row => row.source === source);
+  const visibleSources = source === 'Все источники' ? sourcesState.data : sourcesState.data.filter(row => row.source === source);
   const loading = dailyState.loading || sourcesState.loading;
   const error = dailyState.error || sourcesState.error;
 
@@ -156,16 +156,35 @@ function Creatives() {
   return <div className="stack"><Heading eyebrow="Creative intelligence" title="Анализ креативов" text="Креативы оцениваются по реальным кликам, лидам и продажам." /><Status loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.length===0}/>{!state.loading&&!state.error&&<div className="cards">{state.data.map(row => <article className="creative" key={row.row_key}><div className="creative__preview"><Sparkles size={28}/></div><small>{row.platform} · {row.creative_type || 'Формат не указан'}</small><h2>{row.creative_name || row.campaign_name}</h2><p>{row.campaign_name}</p><div><span>Расход <b>{money(row.spend)}</b></span><span>Лиды <b>{number(row.leads)}</b></span><span>Продажи <b>{number(row.sales)}</b></span><span>CTR <b>{percent(row.clicks,row.impressions)}</b></span></div></article>)}</div>}</div>;
 }
 
-const integrations = [
-  ['Bitrix24', 'Импорт лидов, стадий и истории', 'Подготовлено'],
-  ['Wazzup', 'WhatsApp и единая переписка', 'Ожидает API'],
-  ['Binotel', 'Звонки, записи и статусы', 'Ожидает API'],
-  ['Sipuni', 'Телефония и webhooks', 'Ожидает API'],
-  ['Meta Ads', 'Кампании, расходы и лиды', 'Следующий этап'],
-  ['TikTok Ads', 'Кампании и рекламные метрики', 'После Meta'],
-  ['n8n', 'Оркестрация webhook-сценариев', 'Подготовлено'],
-];
-function Integrations() { return <div className="stack"><Heading eyebrow="Data connections" title="Интеграции" text="Центральная точка подключения CRM, коммуникаций и рекламы." /><div className="cards">{integrations.map(([name,text,status])=><article className="integration" key={name}><div><Cable size={22}/></div><h2>{name}</h2><p>{text}</p><span className="badge">{status}</span></article>)}</div><Panel title="Архитектура"><p className="note">React получает данные только через `/api/*`. Cloudflare Worker хранит серверные секреты и обращается к Supabase.</p></Panel></div>; }
+function Integrations() {
+  const empty: IntegrationStatus = {
+    configured: { supabase:false, bitrix:false, bitrixWebhook:false, meta:false, metaWebhook:false, tiktok:false, tiktokWebhook:false, n8n:false, manualSync:false },
+    runs: [],
+  };
+  const state = useRemoteData<IntegrationStatus>(() => marketingApi.integrationStatus(), empty);
+  const cards = [
+    ['Supabase', 'База данных и агрегаты', state.data.configured.supabase],
+    ['Bitrix24 API', 'История лидов, сделок и стадий', state.data.configured.bitrix],
+    ['Bitrix24 webhook', 'Новые и изменённые CRM-события', state.data.configured.bitrixWebhook],
+    ['Meta Ads', 'Расходы, показы, клики и лиды', state.data.configured.meta],
+    ['Meta Lead Ads', 'Лиды из встроенных форм', state.data.configured.metaWebhook],
+    ['TikTok Ads', 'Рекламная статистика кабинетов', state.data.configured.tiktok],
+    ['TikTok webhook', 'Лиды и события TikTok', state.data.configured.tiktokWebhook],
+    ['n8n', 'Универсальный импорт и автоматизации', state.data.configured.n8n],
+  ] as const;
+
+  return <div className="stack">
+    <Heading eyebrow="Data connections" title="Интеграции" text="Фактическое состояние подключений и последние синхронизации." />
+    <Status loading={state.loading} error={state.error} empty={false} />
+    {!state.loading && !state.error && <>
+      <div className="cards">{cards.map(([name,text,configured])=><article className="integration" key={name}><div><Cable size={22}/></div><h2>{name}</h2><p>{text}</p><span className={`badge ${configured ? 'badge--green' : ''}`}>{configured ? 'Подключено' : 'Нужен секрет'}</span></article>)}</div>
+      <Panel title="Последние синхронизации">
+        {state.data.runs.length === 0 ? <p className="note">Синхронизации ещё не запускались.</p> : <div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период</th><th>Получено</th><th>Записано</th><th>Запуск</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map(run => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div>}
+      </Panel>
+      <Panel title="Webhook endpoints"><p className="note">Bitrix: `/api/webhooks/bitrix` · Meta: `/api/webhooks/meta` · TikTok: `/api/webhooks/tiktok` · n8n: `/api/webhooks/n8n`</p></Panel>
+    </>}
+  </div>;
+}
 
 const nav = [
   ['/', 'Дашборд', LayoutDashboard], ['/leads','Лиды',UsersRound], ['/ads','Объявления',CircleDollarSign], ['/conversions','Конверсии',BarChart3], ['/creatives','Креативы',Sparkles], ['/integrations','Интеграции',Cable],
