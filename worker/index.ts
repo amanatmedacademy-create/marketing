@@ -1,10 +1,18 @@
 import {
   handleIntegrationRequest,
+  runAllSyncs,
   runScheduledSync,
   type Env,
   type WorkerExecutionContext,
   type WorkerScheduledController,
 } from './integrations';
+import {
+  handleCredentialRequest,
+  hydrateIntegrationEnv,
+  isFrontendAdmin,
+  updateCredentialVerification,
+  type IntegrationProvider,
+} from './credentials';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -149,6 +157,42 @@ async function handleAds(request: Request, env: Env) {
   );
 }
 
+async function handleFrontendIntegrationAction(request: Request, env: Env, url: URL): Promise<Response | null> {
+  if (!isFrontendAdmin(request, env)) return null;
+
+  if (url.pathname === '/api/integrations/sync' && request.method === 'POST') {
+    const payload = (await request.json().catch(() => ({}))) as JsonRecord;
+    const source = typeof payload.source === 'string' ? payload.source : 'all';
+    const days = Math.min(Math.max(Number(payload.days || 90), 1), 365);
+    const results = await runAllSyncs(env, { source, days });
+    return json({ ok: true, results }, 200, corsHeaders(request, env));
+  }
+
+  if (url.pathname.startsWith('/api/integrations/test/') && request.method === 'POST') {
+    const provider = url.pathname.split('/').pop() as IntegrationProvider;
+    if (!['bitrix', 'meta', 'tiktok', 'n8n'].includes(provider)) {
+      return json({ error: 'Неизвестная интеграция' }, 404, corsHeaders(request, env));
+    }
+    if (provider === 'n8n') {
+      const ok = Boolean(env.N8N_WEBHOOK_SECRET);
+      await updateCredentialVerification(env, provider, ok, ok ? undefined : new Error('Webhook secret не настроен'));
+      return json(ok ? { ok: true, message: 'n8n endpoint готов' } : { error: 'Webhook secret не настроен' }, ok ? 200 : 400, corsHeaders(request, env));
+    }
+    try {
+      const results = await runAllSyncs(env, { source: provider, days: 1 });
+      const failed = results.some((result) => result.skipped || result.reason);
+      if (failed) throw new Error(results.map((result) => result.reason).filter(Boolean).join('; ') || 'Проверка не выполнена');
+      await updateCredentialVerification(env, provider, true);
+      return json({ ok: true, results }, 200, corsHeaders(request, env));
+    } catch (error) {
+      await updateCredentialVerification(env, provider, false, error);
+      return json({ error: error instanceof Error ? error.message : String(error) }, 400, corsHeaders(request, env));
+    }
+  }
+
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -158,42 +202,50 @@ export default {
         status: 204,
         headers: {
           ...corsHeaders(request, env),
-          'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-          'access-control-allow-headers': 'content-type,authorization,x-webhook-secret,x-hub-signature-256',
+          'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+          'access-control-allow-headers': 'content-type,authorization,x-admin-key,x-webhook-secret,x-hub-signature-256',
           'access-control-max-age': '86400',
         },
       });
     }
 
     try {
+      const credentialResponse = await handleCredentialRequest(request, env, url);
+      if (credentialResponse) return credentialResponse;
+
+      const runtimeEnv = await hydrateIntegrationEnv(env);
+
       if (url.pathname === '/api/health') {
         return json(
           {
             ok: true,
             service: 'amanat-marketing-api',
-            supabaseConfigured: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
+            supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY),
           },
           200,
-          corsHeaders(request, env),
+          corsHeaders(request, runtimeEnv),
         );
       }
 
-      const integrationResponse = await handleIntegrationRequest(request, env, url);
+      const frontendIntegrationResponse = await handleFrontendIntegrationAction(request, runtimeEnv, url);
+      if (frontendIntegrationResponse) return frontendIntegrationResponse;
+
+      const integrationResponse = await handleIntegrationRequest(request, runtimeEnv, url);
       if (integrationResponse) return integrationResponse;
 
-      if (url.pathname === '/api/leads') return handleLeads(request, env, url);
+      if (url.pathname === '/api/leads') return handleLeads(request, runtimeEnv, url);
       if (url.pathname.startsWith('/api/leads/')) {
-        return handleLeadById(request, env, url.pathname.split('/').pop() || '');
+        return handleLeadById(request, runtimeEnv, url.pathname.split('/').pop() || '');
       }
-      if (url.pathname === '/api/dashboard') return handleDashboard(request, env, url);
-      if (url.pathname === '/api/sources') return handleSources(request, env);
-      if (url.pathname === '/api/ads') return handleAds(request, env);
+      if (url.pathname === '/api/dashboard') return handleDashboard(request, runtimeEnv, url);
+      if (url.pathname === '/api/sources') return handleSources(request, runtimeEnv);
+      if (url.pathname === '/api/ads') return handleAds(request, runtimeEnv);
 
       if (url.pathname.startsWith('/api/')) {
-        return json({ error: 'API route not found' }, 404, corsHeaders(request, env));
+        return json({ error: 'API route not found' }, 404, corsHeaders(request, runtimeEnv));
       }
 
-      return env.ASSETS.fetch(request);
+      return runtimeEnv.ASSETS.fetch(request);
     } catch (error) {
       console.error(error);
       return json(
@@ -205,6 +257,7 @@ export default {
   },
 
   async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
-    await runScheduledSync(controller, env, ctx);
+    const runtimeEnv = await hydrateIntegrationEnv(env);
+    await runScheduledSync(controller, runtimeEnv, ctx);
   },
 };
