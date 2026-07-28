@@ -40,6 +40,31 @@ export interface SourceSummaryRow {
   revenue: number;
 }
 
+export interface AdSummaryRow {
+  row_key: string;
+  platform: string;
+  account_id?: string | null;
+  account_name?: string | null;
+  campaign_id?: string | null;
+  campaign_name: string;
+  adset_id?: string | null;
+  adset_name?: string | null;
+  ad_id?: string | null;
+  creative_name?: string | null;
+  creative_type?: string | null;
+  status?: string | null;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  target_leads: number;
+  arrived: number;
+  sales: number;
+  revenue: number;
+  date_from?: string | null;
+  date_to?: string | null;
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
@@ -95,4 +120,5 @@ export const marketingApi = {
   },
 
   sources: () => apiRequest<SourceSummaryRow[]>('/sources'),
+  ads: () => apiRequest<AdSummaryRow[]>('/ads'),
 };
