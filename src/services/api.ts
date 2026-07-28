@@ -104,6 +104,23 @@ export interface IntegrationStatus {
   runs: IntegrationRun[];
 }
 
+export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
+
+export interface IntegrationCredentialSummary {
+  provider: IntegrationProvider;
+  configured: boolean;
+  status: string;
+  values: Record<string, string>;
+  secretFields: Record<string, boolean>;
+  updatedAt: string;
+  lastVerifiedAt?: string | null;
+  lastError?: string | null;
+}
+
+export interface IntegrationConfigResponse {
+  providers: IntegrationCredentialSummary[];
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
@@ -120,6 +137,8 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   return response.json() as Promise<T>;
 }
+
+const adminHeaders = (adminKey: string): HeadersInit => ({ authorization: `Bearer ${adminKey}` });
 
 export const marketingApi = {
   health: () => apiRequest<{ ok: boolean; service: string; supabaseConfigured: boolean }>('/health'),
@@ -161,4 +180,28 @@ export const marketingApi = {
   sources: () => apiRequest<SourceSummaryRow[]>('/sources'),
   ads: () => apiRequest<AdSummaryRow[]>('/ads'),
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
+  integrationConfigs: (adminKey: string) => apiRequest<IntegrationConfigResponse>('/integrations/config', { headers: adminHeaders(adminKey) }),
+  saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>, adminKey: string) =>
+    apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, {
+      method: 'PUT',
+      headers: adminHeaders(adminKey),
+      body: JSON.stringify(values),
+    }),
+  deleteIntegrationConfig: (provider: IntegrationProvider, adminKey: string) =>
+    apiRequest<{ ok: boolean; provider: IntegrationProvider }>(`/integrations/config/${provider}`, {
+      method: 'DELETE',
+      headers: adminHeaders(adminKey),
+    }),
+  testIntegration: (provider: IntegrationProvider, adminKey: string) =>
+    apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, {
+      method: 'POST',
+      headers: adminHeaders(adminKey),
+      body: '{}',
+    }),
+  syncIntegrations: (source: IntegrationProvider | 'all', days: number, adminKey: string) =>
+    apiRequest<{ ok: boolean; results: unknown[] }>('/integrations/sync', {
+      method: 'POST',
+      headers: adminHeaders(adminKey),
+      body: JSON.stringify({ source, days }),
+    }),
 };
