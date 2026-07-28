@@ -20,7 +20,6 @@ const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
 const corsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get('origin');
   if (!origin) return {};
-
   const allowedOrigin = env.APP_ORIGIN || new URL(request.url).origin;
   return origin === allowedOrigin
     ? {
@@ -38,11 +37,7 @@ const supabaseHeaders = (env: Env, extra: HeadersInit = {}): HeadersInit => ({
   ...extra,
 });
 
-async function supabaseRequest(
-  env: Env,
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
+async function supabaseRequest(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: 'Supabase is not configured' }, 503);
   }
@@ -70,19 +65,10 @@ async function handleLeads(request: Request, env: Env, url: URL) {
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 100), 1), 500);
     const stage = url.searchParams.get('stage');
     const source = url.searchParams.get('source');
-    const params = new URLSearchParams({
-      select: '*',
-      order: 'created_at.desc',
-      limit: String(limit),
-    });
+    const params = new URLSearchParams({ select: '*', order: 'created_at.desc', limit: String(limit) });
     if (stage) params.set('stage', `eq.${stage}`);
     if (source) params.set('source', `eq.${source}`);
-
-    return proxySupabase(
-      await supabaseRequest(env, `marketing_leads?${params.toString()}`),
-      request,
-      env,
-    );
+    return proxySupabase(await supabaseRequest(env, `marketing_leads?${params.toString()}`), request, env);
   }
 
   if (request.method === 'POST') {
@@ -137,7 +123,6 @@ async function handleDashboard(request: Request, env: Env, url: URL) {
   const params = new URLSearchParams({ select: '*' });
   if (from) params.set('date', `gte.${from}`);
   if (to) params.append('date', `lte.${to}`);
-
   return proxySupabase(
     await supabaseRequest(env, `marketing_dashboard_daily?${params.toString()}&order=date.asc`),
     request,
@@ -148,6 +133,14 @@ async function handleDashboard(request: Request, env: Env, url: URL) {
 async function handleSources(request: Request, env: Env) {
   return proxySupabase(
     await supabaseRequest(env, 'marketing_source_summary?select=*&order=revenue.desc'),
+    request,
+    env,
+  );
+}
+
+async function handleAds(request: Request, env: Env) {
+  return proxySupabase(
+    await supabaseRequest(env, 'marketing_ads_summary?select=*&order=revenue.desc'),
     request,
     env,
   );
@@ -188,6 +181,7 @@ export default {
       }
       if (url.pathname === '/api/dashboard') return handleDashboard(request, env, url);
       if (url.pathname === '/api/sources') return handleSources(request, env);
+      if (url.pathname === '/api/ads') return handleAds(request, env);
 
       if (url.pathname.startsWith('/api/')) {
         return json({ error: 'API route not found' }, 404, corsHeaders(request, env));
@@ -196,11 +190,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(error);
-      return json(
-        { error: 'Internal server error' },
-        500,
-        corsHeaders(request, env),
-      );
+      return json({ error: 'Internal server error' }, 500, corsHeaders(request, env));
     }
   },
 };
