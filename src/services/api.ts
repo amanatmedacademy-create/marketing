@@ -5,6 +5,7 @@ export interface MarketingLead {
   phone: string;
   email?: string | null;
   source?: string | null;
+  platform?: string | null;
   campaign?: string | null;
   manager?: string | null;
   stage: string;
@@ -15,6 +16,15 @@ export interface MarketingLead {
   utm_campaign?: string | null;
   utm_content?: string | null;
   utm_term?: string | null;
+  campaign_id?: string | null;
+  adset_id?: string | null;
+  ad_id?: string | null;
+  lead_created_at?: string | null;
+  appointment_at?: string | null;
+  arrived_at?: string | null;
+  sold_at?: string | null;
+  is_target?: boolean;
+  sale_amount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -42,6 +52,7 @@ export interface SourceSummaryRow {
 
 export interface AdSummaryRow {
   row_key: string;
+  source?: string | null;
   platform: string;
   account_id?: string | null;
   account_name?: string | null;
@@ -63,6 +74,34 @@ export interface AdSummaryRow {
   revenue: number;
   date_from?: string | null;
   date_to?: string | null;
+}
+
+export interface IntegrationRun {
+  id: string;
+  source: string;
+  status: string;
+  date_from?: string | null;
+  date_to?: string | null;
+  fetched: number;
+  written: number;
+  error?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+}
+
+export interface IntegrationStatus {
+  configured: {
+    supabase: boolean;
+    bitrix: boolean;
+    bitrixWebhook: boolean;
+    meta: boolean;
+    metaWebhook: boolean;
+    tiktok: boolean;
+    tiktokWebhook: boolean;
+    n8n: boolean;
+    manualSync: boolean;
+  };
+  runs: IntegrationRun[];
 }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -121,4 +160,5 @@ export const marketingApi = {
 
   sources: () => apiRequest<SourceSummaryRow[]>('/sources'),
   ads: () => apiRequest<AdSummaryRow[]>('/ads'),
+  integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
 };
