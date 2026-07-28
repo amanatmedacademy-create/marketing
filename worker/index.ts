@@ -1,9 +1,10 @@
-interface Env {
-  ASSETS: Fetcher;
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  APP_ORIGIN?: string;
-}
+import {
+  handleIntegrationRequest,
+  runScheduledSync,
+  type Env,
+  type WorkerExecutionContext,
+  type WorkerScheduledController,
+} from './integrations';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -42,7 +43,7 @@ async function supabaseRequest(env: Env, path: string, init: RequestInit = {}): 
     return json({ error: 'Supabase is not configured' }, 503);
   }
 
-  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+  return fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
     ...init,
     headers: supabaseHeaders(env, init.headers),
   });
@@ -65,7 +66,7 @@ async function handleLeads(request: Request, env: Env, url: URL) {
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 100), 1), 500);
     const stage = url.searchParams.get('stage');
     const source = url.searchParams.get('source');
-    const params = new URLSearchParams({ select: '*', order: 'created_at.desc', limit: String(limit) });
+    const params = new URLSearchParams({ select: '*', order: 'lead_created_at.desc.nullslast,created_at.desc', limit: String(limit) });
     if (stage) params.set('stage', `eq.${stage}`);
     if (source) params.set('source', `eq.${source}`);
     return proxySupabase(await supabaseRequest(env, `marketing_leads?${params.toString()}`), request, env);
@@ -139,8 +140,10 @@ async function handleSources(request: Request, env: Env) {
 }
 
 async function handleAds(request: Request, env: Env) {
+  const summary = await supabaseRequest(env, 'marketing_ads_summary?select=*&order=revenue.desc');
+  if (summary.ok || summary.status !== 404) return proxySupabase(summary, request, env);
   return proxySupabase(
-    await supabaseRequest(env, 'marketing_ads_summary?select=*&order=revenue.desc'),
+    await supabaseRequest(env, 'marketing_ads?select=row_key:id,*&order=report_date.desc,revenue.desc'),
     request,
     env,
   );
@@ -156,7 +159,7 @@ export default {
         headers: {
           ...corsHeaders(request, env),
           'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-          'access-control-allow-headers': 'content-type,authorization',
+          'access-control-allow-headers': 'content-type,authorization,x-webhook-secret,x-hub-signature-256',
           'access-control-max-age': '86400',
         },
       });
@@ -175,6 +178,9 @@ export default {
         );
       }
 
+      const integrationResponse = await handleIntegrationRequest(request, env, url);
+      if (integrationResponse) return integrationResponse;
+
       if (url.pathname === '/api/leads') return handleLeads(request, env, url);
       if (url.pathname.startsWith('/api/leads/')) {
         return handleLeadById(request, env, url.pathname.split('/').pop() || '');
@@ -190,7 +196,15 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(error);
-      return json({ error: 'Internal server error' }, 500, corsHeaders(request, env));
+      return json(
+        { error: error instanceof Error ? error.message : 'Internal server error' },
+        500,
+        corsHeaders(request, env),
+      );
     }
+  },
+
+  async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
+    await runScheduledSync(controller, env, ctx);
   },
 };
