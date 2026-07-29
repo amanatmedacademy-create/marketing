@@ -1,4 +1,5 @@
 import app from './index';
+import { handleAdManager } from './adManager';
 import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
@@ -56,7 +57,6 @@ export default {
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
         const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
-
         if (legacyAdmin) {
           forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
         } else {
@@ -64,9 +64,7 @@ export default {
           if (!user) return authError();
           if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
           if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
-          if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') {
-            return authError(403, 'Настройки интеграций доступны только администратору');
-          }
+          if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
@@ -75,25 +73,20 @@ export default {
 
       const chatResponse = await handleChatProxy(forwardedRequest, env, url);
       if (chatResponse) return chatResponse;
-
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, env, url);
       if (wabaResponse) return wabaResponse;
-
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, env, url);
       if (metaSdkResponse) return metaSdkResponse;
-
       const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, env, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
-
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
       if (metaOAuthResponse) return metaOAuthResponse;
-
+      const adManager = await handleAdManager(forwardedRequest, env, url);
+      if (adManager) return adManager;
       const conversionMatrix = await handleConversionMatrix(forwardedRequest, env, url);
       if (conversionMatrix) return conversionMatrix;
-
       const analytics = await handleAnalytics(forwardedRequest, env, url);
       if (analytics) return analytics;
-
       const operations = await handleOperationsRequest(forwardedRequest, env, url);
       if (operations) return operations;
     } catch (error) {
