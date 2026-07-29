@@ -1,5 +1,6 @@
 import app from './index';
 import { handleAnalytics } from './analytics';
+import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { handleChatProxy } from './chatProxy';
 import { isFrontendAdmin } from './credentials';
@@ -86,6 +87,9 @@ export default {
 
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
       if (metaOAuthResponse) return metaOAuthResponse;
+
+      const conversionMatrix = await handleConversionMatrix(forwardedRequest, env, url);
+      if (conversionMatrix) return conversionMatrix;
 
       const analytics = await handleAnalytics(forwardedRequest, env, url);
       if (analytics) return analytics;
