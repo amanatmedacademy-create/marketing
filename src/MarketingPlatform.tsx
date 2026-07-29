@@ -16,6 +16,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import IntegrationManager from './components/IntegrationManager';
+import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import V36Dashboard from './components/V36Dashboard';
 import {
   AttributionPage,
@@ -123,7 +124,7 @@ function Shell() {
         <div className="marketing-top-actions"><button type="button"><Bell size={18}/></button><span>AM</span></div>
       </header>
       <div className="marketing-content"><Routes>
-        <Route path="/" element={<V36Dashboard/>}/>
+        <Route path="/" element={<MarketingDashboardSummary/>}/>
         <Route path="/leads" element={<LeadsPage/>}/>
         <Route path="/pipeline" element={<SalesPipelinePage/>}/>
         <Route path="/communications" element={<CommunicationsPage/>}/>
