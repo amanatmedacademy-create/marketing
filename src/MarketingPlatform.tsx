@@ -5,6 +5,7 @@ import {
   Bell,
   Cable,
   ChartNoAxesCombined,
+  History,
   LayoutDashboard,
   Menu,
   MessageCircleMore,
@@ -25,6 +26,7 @@ import {
 import {
   marketingApi,
   type AdSummaryRow,
+  type IntegrationStatus,
   type MarketingLead,
 } from './services/api';
 import './marketing-platform.css';
@@ -45,6 +47,7 @@ function useRemoteData<T>(loader: () => Promise<T>, initial: T): LoadState<T> {
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
+const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 
 function Heading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
   return <div className="heading"><span>{eyebrow}</span><h1>{title}</h1><p>{text}</p></div>;
@@ -75,6 +78,23 @@ function AdvertisingPage() {
   </div>;
 }
 
+function SyncJournalPage() {
+  const empty: IntegrationStatus = {
+    configured: { supabase: false, bitrix: false, bitrixWebhook: false, meta: false, metaWebhook: false, tiktok: false, tiktokWebhook: false, n8n: false, manualSync: false },
+    runs: [],
+  };
+  const state = useRemoteData<IntegrationStatus>(() => marketingApi.integrationStatus(), empty);
+
+  return <div className="stack">
+    <Heading eyebrow="System operations" title="Журнал синхронизаций" text="Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками." />
+    <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />
+    {!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel">
+      <h2>Последние синхронизации</h2>
+      <div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div>
+    </section>}
+  </div>;
+}
+
 const nav = [
   { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true },
   { to: '/leads', label: 'Лиды', icon: UsersRound },
@@ -84,6 +104,7 @@ const nav = [
   { to: '/attribution', label: 'UTM и атрибуция', icon: Tags },
   { to: '/analytics', label: 'Аналитика', icon: BarChart3 },
   { to: '/integrations', label: 'Интеграции', icon: Cable },
+  { to: '/sync-journal', label: 'Журнал синхронизаций', icon: History },
   { to: '/architecture', label: 'Архитектура', icon: Workflow },
 ];
 
@@ -110,6 +131,7 @@ function Shell() {
         <Route path="/attribution" element={<AttributionPage/>}/>
         <Route path="/analytics" element={<V36Dashboard/>}/>
         <Route path="/integrations" element={<IntegrationManager/>}/>
+        <Route path="/sync-journal" element={<SyncJournalPage/>}/>
         <Route path="/architecture" element={<MarketingArchitecturePage/>}/>
       </Routes></div>
     </main>
