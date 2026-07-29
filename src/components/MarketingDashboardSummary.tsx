@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import {
   marketingApi,
+  type AdSummaryRow,
+  type AdvertisingAccountCurrency,
   type DashboardDailyRow,
   type MarketingLead,
   type SourceSummaryRow,
@@ -26,6 +28,7 @@ import {
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
+const adMoney = (value: number, currency: string) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
 const percent = (value: number, total: number) => total ? `${(value * 100 / total).toFixed(1)}%` : '0%';
 const palette = ['#2563eb', '#06b6d4', '#8b5cf6', '#22c55e', '#f59e0b', '#ec4899', '#14b8a6', '#ef4444'];
 const normalize = (value?: string | null) => String(value || '').trim().toLowerCase();
@@ -35,6 +38,8 @@ export default function MarketingDashboardSummary() {
   const [daily, setDaily] = useState<DashboardDailyRow[]>([]);
   const [sources, setSources] = useState<SourceSummaryRow[]>([]);
   const [leads, setLeads] = useState<MarketingLead[]>([]);
+  const [ads, setAds] = useState<AdSummaryRow[]>([]);
+  const [currencies, setCurrencies] = useState<AdvertisingAccountCurrency[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,12 +49,16 @@ export default function MarketingDashboardSummary() {
       marketingApi.dashboard(),
       marketingApi.sources(),
       marketingApi.listLeads({ limit: 5000 }),
+      marketingApi.ads(),
+      marketingApi.adCurrencies().catch(() => ({ accounts: [] })),
     ])
-      .then(([dailyRows, sourceRows, leadRows]) => {
+      .then(([dailyRows, sourceRows, leadRows, adRows, currencyRows]) => {
         if (!active) return;
         setDaily(dailyRows);
         setSources(sourceRows);
         setLeads(leadRows);
+        setAds(adRows);
+        setCurrencies(currencyRows.accounts);
         setError(null);
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
@@ -66,17 +75,36 @@ export default function MarketingDashboardSummary() {
     revenue: acc.revenue + Number(row.revenue || 0),
   }), { leads: 0, target: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 }), [daily]);
 
-  const leadStats = useMemo(() => {
-    const result = {
-      appointments: 0,
-      nonTarget: 0,
-      noContact: 0,
-      refused: 0,
-      cancelled: 0,
-      noShow: 0,
-      open: 0,
-    };
+  const currencyByAccount = useMemo(() => new Map(currencies.map((item) => [`${item.platform}:${item.account_id}`, item.currency])), [currencies]);
 
+  const platformCurrencies = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    currencies.forEach((item) => {
+      const set = map.get(item.platform) || new Set<string>();
+      set.add(item.currency);
+      map.set(item.platform, set);
+    });
+    return new Map([...map.entries()].map(([platform, set]) => [platform, set.size === 1 ? [...set][0] : null]));
+  }, [currencies]);
+
+  const spendByCurrency = useMemo(() => {
+    const result = new Map<string, number>();
+    ads.forEach((row) => {
+      const platform = row.platform === 'TikTok' ? 'TikTok' : 'Meta';
+      const currency = row.account_id ? currencyByAccount.get(`${platform}:${row.account_id}`) : undefined;
+      const resolved = currency || platformCurrencies.get(platform) || 'USD';
+      result.set(resolved, (result.get(resolved) || 0) + Number(row.spend || 0));
+    });
+    if (!ads.length && totals.spend) result.set(currencies[0]?.currency || 'USD', totals.spend);
+    return [...result.entries()].map(([currency, spend]) => ({ currency, spend }));
+  }, [ads, currencyByAccount, platformCurrencies, totals.spend, currencies]);
+
+  const singleAdCurrency = spendByCurrency.length === 1 ? spendByCurrency[0].currency : null;
+  const totalAdSpendLabel = spendByCurrency.length ? spendByCurrency.map((item) => adMoney(item.spend, item.currency)).join(' + ') : adMoney(totals.spend, 'USD');
+  const costMoney = (value: number) => singleAdCurrency ? adMoney(value, singleAdCurrency) : 'Разные валюты';
+
+  const leadStats = useMemo(() => {
+    const result = { appointments: 0, nonTarget: 0, noContact: 0, refused: 0, cancelled: 0, noShow: 0, open: 0 };
     leads.forEach((lead) => {
       const stage = normalize(lead.stage);
       if (lead.appointment_at) result.appointments += 1;
@@ -87,7 +115,6 @@ export default function MarketingDashboardSummary() {
       if (hasAny(stage, ['не приш', 'неяв', 'no show'])) result.noShow += 1;
       if (!lead.sold_at && !lead.arrived_at && !hasAny(stage, ['отказ', 'отмен', 'не приш', 'нецел', 'не цел'])) result.open += 1;
     });
-
     return result;
   }, [leads]);
 
@@ -98,17 +125,10 @@ export default function MarketingDashboardSummary() {
   const arrivalCost = totals.arrived ? totals.spend / totals.arrived : 0;
   const cac = totals.sales ? totals.spend / totals.sales : 0;
   const averageCheck = totals.sales ? totals.revenue / totals.sales : 0;
-  const roas = totals.spend ? totals.revenue / totals.spend : 0;
-  const romi = totals.spend ? ((totals.revenue - totals.spend) / totals.spend) * 100 : 0;
+  const roas = singleAdCurrency && totals.spend ? totals.revenue / totals.spend : 0;
+  const romi = singleAdCurrency && totals.spend ? ((totals.revenue - totals.spend) / totals.spend) * 100 : 0;
 
-  const trend = useMemo(() => daily.map((row) => ({
-    date: String(row.date || '').slice(5) || '—',
-    leads: Number(row.leads || 0),
-    target: Number(row.target_leads || 0),
-    arrived: Number(row.arrived || 0),
-    sales: Number(row.sales || 0),
-  })), [daily]);
-
+  const trend = useMemo(() => daily.map((row) => ({ date: String(row.date || '').slice(5) || '—', leads: Number(row.leads || 0), target: Number(row.target_leads || 0), arrived: Number(row.arrived || 0), sales: Number(row.sales || 0) })), [daily]);
   const funnel = useMemo(() => [
     { name: 'Все лиды', value: totals.leads, fill: '#2563eb' },
     { name: 'Целевые', value: totals.target, fill: '#06b6d4' },
@@ -116,19 +136,7 @@ export default function MarketingDashboardSummary() {
     { name: 'Пришли', value: totals.arrived, fill: '#8b5cf6' },
     { name: 'Продажи', value: totals.sales, fill: '#22c55e' },
   ], [totals, appointments]);
-
-  const sourceChart = useMemo(() => sources
-    .filter((row) => Number(row.leads || 0) > 0)
-    .sort((a, b) => Number(b.leads || 0) - Number(a.leads || 0))
-    .slice(0, 8)
-    .map((row) => ({
-      name: row.source || row.platform || 'Без источника',
-      leads: Number(row.leads || 0),
-      target: Number(row.target_leads || 0),
-      arrived: Number(row.arrived || 0),
-      sales: Number(row.sales || 0),
-    })), [sources]);
-
+  const sourceChart = useMemo(() => sources.filter((row) => Number(row.leads || 0) > 0).sort((a, b) => Number(b.leads || 0) - Number(a.leads || 0)).slice(0, 8).map((row) => ({ name: row.source || row.platform || 'Без источника', leads: Number(row.leads || 0), target: Number(row.target_leads || 0), arrived: Number(row.arrived || 0), sales: Number(row.sales || 0) })), [sources]);
   const losses = [
     { name: 'Нецелевые', value: leadStats.nonTarget },
     { name: 'Не дозвонились', value: leadStats.noContact },
@@ -137,11 +145,7 @@ export default function MarketingDashboardSummary() {
     { name: 'Не пришли', value: leadStats.noShow },
     { name: 'В работе', value: leadStats.open },
   ].filter((item) => item.value > 0);
-
-  const financial = [
-    { name: 'Расход', value: totals.spend },
-    { name: 'Выручка', value: totals.revenue },
-  ];
+  const financial = [{ name: 'Расход', value: totals.spend }, { name: 'Выручка', value: totals.revenue }];
 
   if (loading) return <section className="panel"><h2>Загрузка</h2><p className="note">Формируем управленческий дашборд.</p></section>;
   if (error) return <section className="panel"><h2>Ошибка подключения</h2><p className="note">{error}</p></section>;
@@ -177,58 +181,38 @@ export default function MarketingDashboardSummary() {
     </section>
 
     <section className="marketing-kpis">
-      <article><span>Рекламный расход</span><strong>{money(totals.spend)}</strong><small>За выбранный период</small></article>
-      <article><span>CPL</span><strong>{money(cpl)}</strong><small>Стоимость одного лида</small></article>
-      <article><span>Стоимость целевого</span><strong>{money(targetCpl)}</strong><small>Расход / целевые лиды</small></article>
-      <article><span>Стоимость записи</span><strong>{money(appointmentCost)}</strong><small>Расход / записи</small></article>
-      <article><span>Стоимость прихода</span><strong>{money(arrivalCost)}</strong><small>Расход / пришедшие</small></article>
-      <article><span>CAC</span><strong>{money(cac)}</strong><small>Стоимость одной продажи</small></article>
+      <article><span>Рекламный расход</span><strong>{totalAdSpendLabel}</strong><small>{spendByCurrency.length > 1 ? 'Кабинеты в разных валютах не суммируются' : `Валюта кабинета определена автоматически: ${singleAdCurrency || 'USD'}`}</small></article>
+      <article><span>CPL</span><strong>{costMoney(cpl)}</strong><small>Стоимость одного лида</small></article>
+      <article><span>Стоимость целевого</span><strong>{costMoney(targetCpl)}</strong><small>Расход / целевые лиды</small></article>
+      <article><span>Стоимость записи</span><strong>{costMoney(appointmentCost)}</strong><small>Расход / записи</small></article>
+      <article><span>Стоимость прихода</span><strong>{costMoney(arrivalCost)}</strong><small>Расход / пришедшие</small></article>
+      <article><span>CAC</span><strong>{costMoney(cac)}</strong><small>Стоимость одной продажи</small></article>
     </section>
 
     <section className="marketing-kpis">
       <article><span>Выручка</span><strong>{money(totals.revenue)}</strong><small>По продажам CRM</small></article>
       <article><span>Средний чек</span><strong>{money(averageCheck)}</strong><small>Выручка / продажи</small></article>
-      <article><span>ROAS</span><strong>{roas.toFixed(2)}x</strong><small>Выручка / рекламный расход</small></article>
-      <article><span>ROMI</span><strong>{romi.toFixed(1)}%</strong><small>До учёта операционных расходов</small></article>
+      <article><span>ROAS</span><strong>{singleAdCurrency ? `${roas.toFixed(2)}x` : 'Нужна конвертация'}</strong><small>{singleAdCurrency ? 'Выручка / рекламный расход' : 'Расходы в разных валютах'}</small></article>
+      <article><span>ROMI</span><strong>{singleAdCurrency ? `${romi.toFixed(1)}%` : 'Нужна конвертация'}</strong><small>До учёта операционных расходов</small></article>
       <article><span>Доход на лид</span><strong>{money(totals.leads ? totals.revenue / totals.leads : 0)}</strong><small>Выручка / все лиды</small></article>
       <article><span>Доход на приход</span><strong>{money(totals.arrived ? totals.revenue / totals.arrived : 0)}</strong><small>Выручка / пришедшие</small></article>
     </section>
 
     <section className="dashboard-chart-grid dashboard-chart-grid--hero">
-      <article className="panel dashboard-chart-card dashboard-chart-card--wide">
-        <header><div><h2>Динамика воронки</h2><p>Лиды, целевые обращения, приходы и продажи по дням</p></div></header>
-        <div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trend} margin={{ top: 12, right: 16, left: -12, bottom: 0 }}><defs><linearGradient id="leadsGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563eb" stopOpacity={0.45}/><stop offset="95%" stopColor="#2563eb" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#1e2d4a" vertical={false}/><XAxis dataKey="date" stroke="#64748b" tickLine={false}/><YAxis stroke="#64748b" tickLine={false}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }}/><Legend/><Area type="monotone" dataKey="leads" name="Все лиды" stroke="#2563eb" fill="url(#leadsGradient)" strokeWidth={3}/><Area type="monotone" dataKey="target" name="Целевые" stroke="#06b6d4" fill="transparent" strokeWidth={2}/><Area type="monotone" dataKey="arrived" name="Пришли" stroke="#8b5cf6" fill="transparent" strokeWidth={2}/><Area type="monotone" dataKey="sales" name="Продажи" stroke="#22c55e" fill="transparent" strokeWidth={2}/></AreaChart></ResponsiveContainer></div>
-      </article>
-
-      <article className="panel dashboard-chart-card">
-        <header><div><h2>Полная воронка</h2><p>От общего лида до продажи</p></div></header>
-        <div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><FunnelChart><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Funnel dataKey="value" data={funnel} isAnimationActive><LabelList position="right" fill="#e5edf8" stroke="none" dataKey="name"/><LabelList position="center" fill="#fff" stroke="none" dataKey="value" formatter={(value: unknown) => number(Number(value))}/></Funnel></FunnelChart></ResponsiveContainer></div>
-      </article>
+      <article className="panel dashboard-chart-card dashboard-chart-card--wide"><header><div><h2>Динамика воронки</h2><p>Лиды, целевые обращения, приходы и продажи по дням</p></div></header><div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trend} margin={{ top: 12, right: 16, left: -12, bottom: 0 }}><defs><linearGradient id="leadsGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563eb" stopOpacity={0.45}/><stop offset="95%" stopColor="#2563eb" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#1e2d4a" vertical={false}/><XAxis dataKey="date" stroke="#64748b" tickLine={false}/><YAxis stroke="#64748b" tickLine={false}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }}/><Legend/><Area type="monotone" dataKey="leads" name="Все лиды" stroke="#2563eb" fill="url(#leadsGradient)" strokeWidth={3}/><Area type="monotone" dataKey="target" name="Целевые" stroke="#06b6d4" fill="transparent" strokeWidth={2}/><Area type="monotone" dataKey="arrived" name="Пришли" stroke="#8b5cf6" fill="transparent" strokeWidth={2}/><Area type="monotone" dataKey="sales" name="Продажи" stroke="#22c55e" fill="transparent" strokeWidth={2}/></AreaChart></ResponsiveContainer></div></article>
+      <article className="panel dashboard-chart-card"><header><div><h2>Полная воронка</h2><p>От общего лида до продажи</p></div></header><div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><FunnelChart><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Funnel dataKey="value" data={funnel} isAnimationActive><LabelList position="right" fill="#e5edf8" stroke="none" dataKey="name"/><LabelList position="center" fill="#fff" stroke="none" dataKey="value" formatter={(value: unknown) => number(Number(value))}/></Funnel></FunnelChart></ResponsiveContainer></div></article>
     </section>
 
     <section className="dashboard-chart-grid">
-      <article className="panel dashboard-chart-card">
-        <header><div><h2>Распределение лидов</h2><p>Доля ведущих источников</p></div></header>
-        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={sourceChart} dataKey="leads" nameKey="name" innerRadius={66} outerRadius={104} paddingAngle={3}>{sourceChart.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[index % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div>
-      </article>
-
-      <article className="panel dashboard-chart-card">
-        <header><div><h2>Потери и незакрытые лиды</h2><p>Причины выпадения из воронки</p></div></header>
-        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={losses} dataKey="value" nameKey="name" innerRadius={58} outerRadius={103} paddingAngle={3}>{losses.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[(index + 2) % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div>
-      </article>
-
-      <article className="panel dashboard-chart-card">
-        <header><div><h2>Финансовый результат</h2><p>Расход против выручки</p></div></header>
-        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={financial} layout="vertical" margin={{ top: 18, right: 40, left: 15, bottom: 18 }}><CartesianGrid stroke="#1e2d4a" horizontal={false}/><XAxis type="number" stroke="#64748b" tickFormatter={(value: unknown) => number(Number(value))}/><YAxis type="category" dataKey="name" stroke="#94a3b8" width={70}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => money(Number(value))}/><Bar dataKey="value" radius={[0, 7, 7, 0]}>{financial.map((entry, index) => <Cell key={entry.name} fill={index === 0 ? '#f59e0b' : '#22c55e'}/>)}</Bar></BarChart></ResponsiveContainer></div>
-        <div className="dashboard-finance-strip"><span>Средний чек <b>{money(averageCheck)}</b></span><span>ROAS <b>{roas.toFixed(2)}x</b></span></div>
-      </article>
+      <article className="panel dashboard-chart-card"><header><div><h2>Распределение лидов</h2><p>Доля ведущих источников</p></div></header><div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={sourceChart} dataKey="leads" nameKey="name" innerRadius={66} outerRadius={104} paddingAngle={3}>{sourceChart.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[index % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div></article>
+      <article className="panel dashboard-chart-card"><header><div><h2>Потери и незакрытые лиды</h2><p>Причины выпадения из воронки</p></div></header><div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={losses} dataKey="value" nameKey="name" innerRadius={58} outerRadius={103} paddingAngle={3}>{losses.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[(index + 2) % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div></article>
+      <article className="panel dashboard-chart-card"><header><div><h2>Финансовый результат</h2><p>Расход против выручки</p></div></header><div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={financial} layout="vertical" margin={{ top: 18, right: 40, left: 15, bottom: 18 }}><CartesianGrid stroke="#1e2d4a" horizontal={false}/><XAxis type="number" stroke="#64748b" tickFormatter={(value: unknown) => number(Number(value))}/><YAxis type="category" dataKey="name" stroke="#94a3b8" width={70}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown, name: unknown) => name === 'Расход' && singleAdCurrency ? adMoney(Number(value), singleAdCurrency) : money(Number(value))}/><Bar dataKey="value" radius={[0, 7, 7, 0]}>{financial.map((entry, index) => <Cell key={entry.name} fill={index === 0 ? '#f59e0b' : '#22c55e'}/>)}</Bar></BarChart></ResponsiveContainer></div><div className="dashboard-finance-strip"><span>Средний чек <b>{money(averageCheck)}</b></span><span>Валюта рекламы <b>{spendByCurrency.map((item) => item.currency).join(', ') || 'USD'}</b></span></div></article>
     </section>
 
-    <section className="panel dashboard-chart-card">
-      <header><div><h2>Источники: полный путь лида</h2><p>Лиды, целевые, приходы и продажи по каналам</p></div></header>
-      <div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><BarChart data={sourceChart} margin={{ top: 10, right: 10, left: -12, bottom: 45 }}><CartesianGrid stroke="#1e2d4a" vertical={false}/><XAxis dataKey="name" stroke="#64748b" tickLine={false} angle={-18} textAnchor="end" height={72}/><YAxis stroke="#64748b" tickLine={false}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }}/><Legend/><Bar dataKey="leads" name="Лиды" fill="#2563eb" radius={[4, 4, 0, 0]}/><Bar dataKey="target" name="Целевые" fill="#06b6d4" radius={[4, 4, 0, 0]}/><Bar dataKey="arrived" name="Пришли" fill="#8b5cf6" radius={[4, 4, 0, 0]}/><Bar dataKey="sales" name="Продажи" fill="#22c55e" radius={[4, 4, 0, 0]}/></BarChart></ResponsiveContainer></div>
-    </section>
+    <section className="panel dashboard-chart-card"><header><div><h2>Источники: полный путь лида</h2><p>Лиды, целевые, приходы и продажи по каналам</p></div></header><div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><BarChart data={sourceChart} margin={{ top: 10, right: 10, left: -12, bottom: 45 }}><CartesianGrid stroke="#1e2d4a" vertical={false}/><XAxis dataKey="name" stroke="#64748b" tickLine={false} angle={-18} textAnchor="end" height={72}/><YAxis stroke="#64748b" tickLine={false}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }}/><Legend/><Bar dataKey="leads" name="Лиды" fill="#2563eb" radius={[4, 4, 0, 0]}/><Bar dataKey="target" name="Целевые" fill="#06b6d4" radius={[4, 4, 0, 0]}/><Bar dataKey="arrived" name="Пришли" fill="#8b5cf6" radius={[4, 4, 0, 0]}/><Bar dataKey="sales" name="Продажи" fill="#22c55e" radius={[4, 4, 0, 0]}/></BarChart></ResponsiveContainer></div></section>
 
-    <section className="panel"><h2>Источники и конверсии</h2><div className="table-wrap"><table><thead><tr><th>Источник</th><th>Платформа</th><th>Лиды</th><th>Целевые</th><th>Конв. в целевой</th><th>Пришли</th><th>Конв. в приход</th><th>Продажи</th><th>Лид → продажа</th><th>Расход</th><th>CPL</th><th>CAC</th><th>Выручка</th><th>ROAS</th></tr></thead><tbody>{sources.map((row) => <tr key={`${row.source}-${row.platform}`}><td><b>{row.source}</b></td><td>{row.platform}</td><td>{number(row.leads)}</td><td>{number(row.target_leads)}</td><td>{percent(row.target_leads, row.leads)}</td><td>{number(row.arrived)}</td><td>{percent(row.arrived, row.target_leads)}</td><td>{number(row.sales)}</td><td>{percent(row.sales, row.leads)}</td><td>{money(row.spend)}</td><td>{money(row.leads ? row.spend / row.leads : 0)}</td><td>{money(row.sales ? row.spend / row.sales : 0)}</td><td>{money(row.revenue)}</td><td>{row.spend ? (row.revenue / row.spend).toFixed(2) : '0.00'}x</td></tr>)}</tbody></table></div></section>
+    <section className="panel"><h2>Рекламные кабинеты и валюты</h2><div className="table-wrap"><table><thead><tr><th>Платформа</th><th>Кабинет</th><th>ID</th><th>Валюта</th></tr></thead><tbody>{currencies.map((row) => <tr key={`${row.platform}-${row.account_id}`}><td><b>{row.platform}</b></td><td>{row.account_name || 'Без названия'}</td><td>{row.account_id}</td><td><b>{row.currency}</b></td></tr>)}</tbody></table></div></section>
+
+    <section className="panel"><h2>Источники и конверсии</h2><div className="table-wrap"><table><thead><tr><th>Источник</th><th>Платформа</th><th>Лиды</th><th>Целевые</th><th>Конв. в целевой</th><th>Пришли</th><th>Конв. в приход</th><th>Продажи</th><th>Лид → продажа</th><th>Расход</th><th>CPL</th><th>CAC</th><th>Выручка</th><th>ROAS</th></tr></thead><tbody>{sources.map((row) => { const currency = platformCurrencies.get(row.platform) || singleAdCurrency || 'USD'; return <tr key={`${row.source}-${row.platform}`}><td><b>{row.source}</b></td><td>{row.platform}</td><td>{number(row.leads)}</td><td>{number(row.target_leads)}</td><td>{percent(row.target_leads, row.leads)}</td><td>{number(row.arrived)}</td><td>{percent(row.arrived, row.target_leads)}</td><td>{number(row.sales)}</td><td>{percent(row.sales, row.leads)}</td><td>{adMoney(row.spend, currency)}</td><td>{adMoney(row.leads ? row.spend / row.leads : 0, currency)}</td><td>{adMoney(row.sales ? row.spend / row.sales : 0, currency)}</td><td>{money(row.revenue)}</td><td>{row.spend && singleAdCurrency ? (row.revenue / row.spend).toFixed(2) : '—'}x</td></tr>; })}</tbody></table></div></section>
   </div>;
 }
