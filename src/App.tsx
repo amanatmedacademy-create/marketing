@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Menu,
   MessageSquareText,
+  PhoneCall,
   Search,
   Sparkles,
   UsersRound,
@@ -24,6 +25,7 @@ import {
   YAxis,
 } from 'recharts';
 import IntegrationManager from './components/IntegrationManager';
+import Calls from './pages/Calls';
 import {
   marketingApi,
   type AdSummaryRow,
@@ -188,12 +190,12 @@ function Integrations() {
 }
 
 const nav = [
-  ['/', 'Дашборд', LayoutDashboard], ['/leads','Лиды',UsersRound], ['/ads','Объявления',CircleDollarSign], ['/conversions','Конверсии',BarChart3], ['/creatives','Креативы',Sparkles], ['/integrations','Интеграции',Cable],
+  ['/', 'Дашборд', LayoutDashboard], ['/leads','Лиды',UsersRound], ['/calls','Звонки',PhoneCall], ['/ads','Объявления',CircleDollarSign], ['/conversions','Конверсии',BarChart3], ['/creatives','Креативы',Sparkles], ['/integrations','Интеграции',Cable],
 ] as const;
 
 function Shell() {
   const [open,setOpen]=useState(false);
-  return <div className="shell"><aside className={open?'open':''}><div className="brand"><MessageSquareText/><div><b>AMANAT MED</b><span>Marketing</span></div></div><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={to} end={to==='/' as string} onClick={()=>setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav></aside><main><header className="topbar"><button onClick={()=>setOpen(!open)}><Menu/></button><div className="search"><Search size={17}/><input placeholder="Поиск лидов, кампаний и источников"/></div><div className="top-actions"><button><Bell size={18}/></button><span className="avatar">AM</span></div></header><div className="content"><Routes><Route path="/" element={<Dashboard/>}/><Route path="/leads" element={<Leads/>}/><Route path="/ads" element={<Ads/>}/><Route path="/conversions" element={<Conversions/>}/><Route path="/creatives" element={<Creatives/>}/><Route path="/integrations" element={<IntegrationManager/>}/></Routes></div></main></div>;
+  return <div className="shell"><aside className={open?'open':''}><div className="brand"><MessageSquareText/><div><b>AMANAT MED</b><span>Marketing</span></div></div><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={to} end={to==='/' as string} onClick={()=>setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav></aside><main><header className="topbar"><button onClick={()=>setOpen(!open)}><Menu/></button><div className="search"><Search size={17}/><input placeholder="Поиск лидов, кампаний и источников"/></div><div className="top-actions"><button><Bell size={18}/></button><span className="avatar">AM</span></div></header><div className="content"><Routes><Route path="/" element={<Dashboard/>}/><Route path="/leads" element={<Leads/>}/><Route path="/calls" element={<Calls/>}/><Route path="/ads" element={<Ads/>}/><Route path="/conversions" element={<Conversions/>}/><Route path="/creatives" element={<Creatives/>}/><Route path="/integrations" element={<IntegrationManager/>}/></Routes></div></main></div>;
 }
 
 export default function App(){return <BrowserRouter><Shell/></BrowserRouter>}
