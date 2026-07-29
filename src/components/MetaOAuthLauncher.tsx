@@ -119,8 +119,21 @@ export default function MetaOAuthLauncher() {
     const body = await response.text();
     if (!response.ok) throw new Error(parseError(body || `HTTP ${response.status}`));
     const result = JSON.parse(body) as { accounts?: number };
-    setMessage(`Meta подключена. Найдено рекламных кабинетов: ${result.accounts || 0}.`);
-    window.setTimeout(() => window.location.reload(), 1200);
+
+    setMessage(`Meta подключена. Загружаем данные из ${result.accounts || 0} рекламных кабинетов…`);
+    const syncResponse = await fetch('/api/integrations/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'meta', days: 90 }),
+    });
+    const syncBody = await syncResponse.text();
+    if (!syncResponse.ok) throw new Error(parseError(syncBody || `HTTP ${syncResponse.status}`));
+    const syncResult = JSON.parse(syncBody) as { results?: Array<{ fetched?: number; written?: number; skipped?: boolean; reason?: string }> };
+    const metaResult = syncResult.results?.[0];
+    if (metaResult?.skipped || metaResult?.reason) throw new Error(metaResult.reason || 'Meta синхронизация пропущена');
+
+    setMessage(`Meta подключена. Загружено строк: ${metaResult?.written ?? metaResult?.fetched ?? 0}.`);
+    window.setTimeout(() => window.location.assign('/'), 1500);
   };
 
   const connect = async () => {
