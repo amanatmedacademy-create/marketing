@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   Search,
   ServerCog,
+  Settings,
   ShieldCheck,
   Tags,
   TriangleAlert,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import IntegrationManager from './components/IntegrationManager';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
+import UserWorkspaceModal from './components/UserWorkspaceModal';
 import V36Dashboard from './components/V36Dashboard';
 import {
   AttributionPage,
@@ -32,11 +34,13 @@ import {
   type IntegrationStatus,
   type MarketingLead,
 } from './services/api';
+import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 import './journal.css';
 
 type LoadState<T> = { data: T; loading: boolean; error: string | null };
 type JournalTab = 'logs' | 'sync' | 'audit' | 'errors' | 'system';
+type WorkspaceMode = 'profile' | 'settings' | null;
 
 function useRemoteData<T>(loader: () => Promise<T>, initial: T): LoadState<T> {
   const [state, setState] = useState<LoadState<T>>({ data: initial, loading: true, error: null });
@@ -105,14 +109,7 @@ function JournalPage() {
   return <div className="stack journal-page">
     <Heading eyebrow="System journal" title="Журнал" text="Логи, синхронизации, аудит действий, ошибки и системные события IMDS Marketing." />
     <nav className="journal-tabs" aria-label="Разделы журнала">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span></button>)}</nav>
-
-    {tab === 'sync' && <>
-      <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />
-      {!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel">
-        <div className="journal-panel-head"><div><h2>Журнал синхронизаций</h2><p>Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками.</p></div><span>{state.data.runs.length} записей</span></div>
-        <div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div>
-      </section>}
-    </>}
+    {tab === 'sync' && <><StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />{!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel"><div className="journal-panel-head"><div><h2>Журнал синхронизаций</h2><p>Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками.</p></div><span>{state.data.runs.length} записей</span></div><div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div></section>}</>}
     {tab === 'logs' && <JournalPlaceholder title="Логи" text="Технические и прикладные события API, webhooks, импортов и фоновых задач." />}
     {tab === 'audit' && <JournalPlaceholder title="Аудит действий" text="История входов, изменений настроек, интеграций, лидов, стадий и ответственных." />}
     {tab === 'errors' && <JournalPlaceholder title="Ошибки" text="Централизованный список ошибок интеграций, API, синхронизаций и обработки данных." />}
@@ -133,7 +130,11 @@ const nav = [
 ];
 
 function Shell() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
+  const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
       <div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div>
@@ -144,7 +145,11 @@ function Shell() {
       <header className="marketing-topbar">
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div>
-        <div className="marketing-top-actions"><button type="button"><Bell size={18}/></button><span>IM</span></div>
+        <div className="marketing-top-actions">
+          <button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>
+          {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
+          <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Администратор'}</strong><small>{user.role === 'administrator' ? 'Полный доступ' : user.role}</small></div></button>
+        </div>
       </header>
       <div className="marketing-content"><Routes>
         <Route path="/" element={<MarketingDashboardSummary/>}/>
@@ -159,6 +164,7 @@ function Shell() {
         <Route path="/architecture" element={<MarketingArchitecturePage/>}/>
       </Routes></div>
     </main>
+    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
 
