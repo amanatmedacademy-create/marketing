@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Facebook, LoaderCircle, Settings2 } from 'lucide-react';
+import { Facebook, LoaderCircle, Settings2, X } from 'lucide-react';
 
 interface SdkConfig {
   configured?: boolean;
@@ -83,23 +83,19 @@ export default function MetaOAuthLauncher() {
   const [sdk, setSdk] = useState<FacebookSdk | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [target, setTarget] = useState<Element | null>(null);
-  const [manualButton, setManualButton] = useState<HTMLButtonElement | null>(null);
+  const [card, setCard] = useState<Element | null>(null);
+  const [manualMode, setManualMode] = useState(false);
 
   useEffect(() => {
     if (!isIntegrationsRoute()) return;
     let cancelled = false;
 
     const mountIntoCard = () => {
-      const card = document.querySelector('.connection-card--meta');
-      const actions = card?.querySelector('.connection-actions');
-      const saveButton = actions?.querySelector<HTMLButtonElement>('button.connections-button--primary:not(.connections-button--facebook)');
-      if (card && actions) {
-        card.classList.add('connection-card--oauth');
+      const nextCard = document.querySelector('.connection-card--meta');
+      const actions = nextCard?.querySelector('.connection-actions');
+      if (nextCard && actions) {
+        setCard(nextCard);
         setTarget(actions);
-        if (saveButton) {
-          saveButton.hidden = true;
-          setManualButton(saveButton);
-        }
       }
     };
 
@@ -127,9 +123,14 @@ export default function MetaOAuthLauncher() {
     return () => {
       cancelled = true;
       observer.disconnect();
-      if (manualButton) manualButton.hidden = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!card) return;
+    card.classList.toggle('connection-card--oauth', !manualMode);
+    return () => card.classList.remove('connection-card--oauth');
+  }, [card, manualMode]);
 
   if (!isIntegrationsRoute() || !target) return null;
 
@@ -167,14 +168,6 @@ export default function MetaOAuthLauncher() {
     }, { scope: 'ads_read,business_management', return_scopes: true });
   };
 
-  const connectManually = () => {
-    if (!manualButton) {
-      setMessage('Форма ручного подключения ещё загружается');
-      return;
-    }
-    manualButton.click();
-  };
-
   return createPortal(<>
     <button
       type="button"
@@ -187,10 +180,10 @@ export default function MetaOAuthLauncher() {
     <button
       type="button"
       className="connections-button"
-      onClick={connectManually}
-      disabled={busy || !manualButton}
+      onClick={() => setManualMode((value) => !value)}
+      disabled={busy}
     >
-      <Settings2 size={16}/> Подключить вручную
+      {manualMode ? <X size={16}/> : <Settings2 size={16}/>} {manualMode ? 'Скрыть ручные настройки' : 'Подключить вручную'}
     </button>
     {message && <span className="meta-oauth-message">{message}</span>}
   </>, target);
