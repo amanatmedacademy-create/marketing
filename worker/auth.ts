@@ -2,6 +2,12 @@ import type { Env } from './integrations';
 
 type JsonRecord = Record<string, unknown>;
 
+export type AuthEnv = Env & {
+  SUPABASE_ANON_KEY?: string;
+  AUTH_ALLOWED_EMAIL_DOMAINS?: string;
+  AUTH_AUTO_APPROVE?: string;
+};
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -16,14 +22,14 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
 });
 
-const supabaseHeaders = (env: Env, extra: HeadersInit = {}): HeadersInit => ({
+const supabaseHeaders = (env: AuthEnv, extra: HeadersInit = {}): HeadersInit => ({
   apikey: env.SUPABASE_SERVICE_ROLE_KEY,
   authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
   'content-type': 'application/json',
   ...extra,
 });
 
-async function supabaseRequest(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+async function supabaseRequest(env: AuthEnv, path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
     ...init,
     headers: supabaseHeaders(env, init.headers),
@@ -35,21 +41,21 @@ function bearerToken(request: Request): string | null {
   return authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : null;
 }
 
-function allowedDomains(env: Env): string[] {
+function allowedDomains(env: AuthEnv): string[] {
   return (env.AUTH_ALLOWED_EMAIL_DOMAINS || '')
     .split(',')
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 }
 
-function domainAllowed(email: string, env: Env): boolean {
+function domainAllowed(email: string, env: AuthEnv): boolean {
   const domains = allowedDomains(env);
   if (!domains.length) return true;
   const domain = email.split('@').pop()?.toLowerCase() || '';
   return domains.includes(domain);
 }
 
-async function fetchSupabaseUser(request: Request, env: Env): Promise<JsonRecord | null> {
+async function fetchSupabaseUser(request: Request, env: AuthEnv): Promise<JsonRecord | null> {
   const token = bearerToken(request);
   if (!token || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
@@ -62,7 +68,7 @@ async function fetchSupabaseUser(request: Request, env: Env): Promise<JsonRecord
   return await response.json() as JsonRecord;
 }
 
-async function upsertMarketingUser(user: JsonRecord, env: Env): Promise<AuthenticatedUser> {
+async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<AuthenticatedUser> {
   const id = String(user.id || '');
   const email = String(user.email || '').toLowerCase();
   const metadata = (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) as JsonRecord;
@@ -132,13 +138,13 @@ export function isPublicApiPath(pathname: string): boolean {
     || pathname.startsWith('/api/webhooks/');
 }
 
-export async function authenticateRequest(request: Request, env: Env): Promise<AuthenticatedUser | null> {
+export async function authenticateRequest(request: Request, env: AuthEnv): Promise<AuthenticatedUser | null> {
   const authUser = await fetchSupabaseUser(request, env);
   if (!authUser) return null;
   return upsertMarketingUser(authUser, env);
 }
 
-export async function handleAuthRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
+export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL): Promise<Response | null> {
   if (url.pathname === '/api/auth/config' && request.method === 'GET') {
     return json({
       supabaseUrl: env.SUPABASE_URL,
