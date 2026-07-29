@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# секреты и локальные переменные окружения
+.env
+.env.*
+!.env.example
+
+# wrangler
+.wrangler/
+.dev.vars
+
+# прочее
+.DS_Store
+*.log

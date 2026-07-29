@@ -5,7 +5,38 @@ type RecordValue = Record<string, unknown>;
 const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 
-async function query<T>(env: Env, path: string): Promise<T> {
+/**
+ * Значения по умолчанию дублируют defaults из
+ * supabase/migrations/202607290009_repair_analytics_schema.sql.
+ * Нужны, чтобы отсутствующая строка настроек не обнуляла пороги:
+ * при пустом объекте num() вернул бы 0 и любая кампания получила бы
+ * рекомендацию «Масштабировать».
+ */
+const DEFAULT_SCORING_SETTINGS: RecordValue = {
+  id: 'default',
+  min_days: 4,
+  min_leads: 10,
+  scale_roas: 3.5,
+  grow_roas: 2,
+  observe_roas: 1.5,
+  scale_target_rate: 55,
+  grow_target_rate: 45,
+  pause_target_rate: 35,
+  frequency_alert: 4,
+  unattributed_alert: 5,
+  client_cookie_days: 365,
+  click_id_days: 28,
+  attribution_model: 'last_click',
+};
+
+class AnalyticsQueryError extends Error {
+  constructor(readonly resource: string, readonly status: number, readonly detail: string) {
+    super(`Analytics query failed for ${resource} (${status})`);
+    this.name = 'AnalyticsQueryError';
+  }
+}
+
+async function query<T>(env: Env, resource: string, path: string): Promise<T> {
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
     headers: {
       apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -14,7 +45,9 @@ async function query<T>(env: Env, path: string): Promise<T> {
     },
   });
   const body = await response.text();
-  if (!response.ok) throw new Error(`Analytics query failed: ${response.status} ${body}`);
+  // Тело ответа Supabase содержит имена таблиц и структуру схемы —
+  // оно уходит только в лог воркера, наружу не отдаётся.
+  if (!response.ok) throw new AnalyticsQueryError(resource, response.status, body);
   return (body ? JSON.parse(body) : []) as T;
 }
 
@@ -46,15 +79,44 @@ export async function handleAnalytics(request: Request, env: Env, url: URL): Pro
   const leadFilter = `and=(lead_created_at.gte.${from}T00:00:00Z,lead_created_at.lte.${to}T23:59:59Z)`;
   const adFilter = `and=(report_date.gte.${from},report_date.lte.${to})`;
 
-  const [leads, ads, daily, settingsRows, healthRows] = await Promise.all([
-    query<RecordValue[]>(env, `marketing_leads?select=external_id,source,platform,campaign,stage,is_target,appointment_at,arrived_at,sold_at,sale_amount,lead_created_at,qualified_at,rejected_at,deal_created_at,deal_rejected_at,utm_source,utm_medium,utm_campaign,utm_content,campaign_id,adset_id,ad_id,internal_client_id,fbclid,gclid,ttclid,yclid,vk_click_id&${leadFilter}&limit=50000`),
-    query<RecordValue[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${adFilter}&limit=50000`),
-    query<RecordValue[]>(env, `marketing_dashboard_daily?select=*&date=gte.${from}&date=lte.${to}&order=date.asc`),
-    query<RecordValue[]>(env, 'marketing_scoring_settings?select=*&id=eq.default&limit=1'),
-    query<RecordValue[]>(env, 'analytics_attribution_health?select=*'),
+  // allSettled вместо all: раньше отсутствие любой из пяти таблиц роняло
+  // весь эндпоинт в 500 и дашборд оставался полностью пустым.
+  const settled = await Promise.allSettled([
+    query<RecordValue[]>(env, 'marketing_leads', `marketing_leads?select=external_id,source,platform,campaign,stage,is_target,appointment_at,arrived_at,sold_at,sale_amount,lead_created_at,qualified_at,rejected_at,deal_created_at,deal_rejected_at,utm_source,utm_medium,utm_campaign,utm_content,campaign_id,adset_id,ad_id,internal_client_id,fbclid,gclid,ttclid,yclid,vk_click_id&${leadFilter}&limit=50000`),
+    query<RecordValue[]>(env, 'marketing_ads', `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${adFilter}&limit=50000`),
+    query<RecordValue[]>(env, 'marketing_dashboard_daily', `marketing_dashboard_daily?select=*&date=gte.${from}&date=lte.${to}&order=date.asc`),
+    query<RecordValue[]>(env, 'marketing_scoring_settings', 'marketing_scoring_settings?select=*&id=eq.default&limit=1'),
+    query<RecordValue[]>(env, 'analytics_attribution_health', 'analytics_attribution_health?select=*'),
   ]);
 
-  const settings = settingsRows[0] || {};
+  const unavailable: string[] = [];
+  const unwrap = (result: PromiseSettledResult<RecordValue[]>, resource: string): RecordValue[] => {
+    if (result.status === 'fulfilled') return result.value;
+    unavailable.push(resource);
+    console.error(`[analytics] источник ${resource} недоступен:`, result.reason);
+    return [];
+  };
+
+  const leads = unwrap(settled[0], 'marketing_leads');
+  const ads = unwrap(settled[1], 'marketing_ads');
+  const daily = unwrap(settled[2], 'marketing_dashboard_daily');
+  const settingsRows = unwrap(settled[3], 'marketing_scoring_settings');
+  const healthRows = unwrap(settled[4], 'analytics_attribution_health');
+
+  // Лиды и реклама — базовые источники. Если недоступны оба, считать нечего:
+  // отдаём 503 с перечнем источников, но без деталей ответа Supabase.
+  if (unavailable.includes('marketing_leads') && unavailable.includes('marketing_ads')) {
+    return new Response(
+      JSON.stringify({
+        error: 'Аналитика недоступна: не удалось прочитать данные из базы',
+        unavailable,
+        hint: 'Проверьте, что миграции supabase/migrations применены к проекту',
+      }),
+      { status: 503, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } },
+    );
+  }
+
+  const settings = { ...DEFAULT_SCORING_SETTINGS, ...(settingsRows[0] || {}) };
   const campaignMap = new Map<string, RecordValue>();
   for (const ad of ads) {
     const key = text(ad.campaign_id) || `${text(ad.platform, 'Не определено')}:${text(ad.campaign_name, 'Без кампании')}`;
@@ -105,7 +167,7 @@ export async function handleAnalytics(request: Request, env: Env, url: URL): Pro
     campaignMap.set(key, row);
   }
 
-  const campaigns = [...campaignMap.values()].map((row) => {
+  const campaigns = [...campaignMap.values()].map((row): RecordValue => {
     delete row._dates;
     const spend = num(row.spend), revenue = num(row.revenue), impressions = num(row.impressions), clicks = num(row.clicks), linkClicks = num(row.link_clicks), crmLeads = num(row.crm_leads);
     return {
@@ -152,12 +214,12 @@ export async function handleAnalytics(request: Request, env: Env, url: URL): Pro
   weekdays.forEach((row) => { row.rate = row.leads ? row.appointments * 100 / row.leads : 0; });
   delays.forEach((row) => { row.rate = leads.length ? row.appointments * 100 / leads.length : 0; });
 
-  const totals = campaigns.reduce((acc, row) => ({
+  const totals = campaigns.reduce<{ leads: number; target_leads: number; arrived: number; sales: number; spend: number; revenue: number }>((acc, row) => ({
     leads: acc.leads + num(row.crm_leads), target_leads: acc.target_leads + num(row.target_leads), arrived: acc.arrived + num(row.arrived),
     sales: acc.sales + num(row.sales), spend: acc.spend + num(row.spend), revenue: acc.revenue + num(row.revenue),
   }), { leads: 0, target_leads: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 });
 
-  return new Response(JSON.stringify({ period: { from, to, days }, totals, daily, platforms, campaigns, hourly, weekdays, delays, attribution: healthRows[0] || { total_leads: 0, unattributed_leads: 0, unattributed_rate: 0 }, settings }), {
+  return new Response(JSON.stringify({ period: { from, to, days }, totals, daily, platforms, campaigns, hourly, weekdays, delays, attribution: healthRows[0] || { total_leads: 0, unattributed_leads: 0, unattributed_rate: 0 }, settings, unavailable }), {
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
