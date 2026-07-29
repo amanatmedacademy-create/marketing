@@ -1,4 +1,5 @@
 import { MessageCircle, Phone } from 'lucide-react';
+import WabaEmbeddedSignup from './WabaEmbeddedSignup';
 
 const providers = [
   {
@@ -32,10 +33,21 @@ export default function CommunicationIntegrations() {
     <div className="connections-section__head">
       <div>
         <h2>Коммуникации и телефония</h2>
-        <p>Мессенджеры, звонки и записи разговоров внутри единой карточки лида</p>
+        <p>Прямой WhatsApp Business API, агрегаторы мессенджеров и телефония</p>
       </div>
     </div>
     <div className="integration-catalog-grid">
+      <article className="integration-catalog-card integration-tone-waba integration-state-disconnected">
+        <div className="integration-card-top">
+          <span className="integration-card-logo"><MessageCircle size={20}/><b>WA</b></span>
+          <em>Отдельное подключение</em>
+        </div>
+        <strong>WhatsApp Business API</strong>
+        <p>Прямая интеграция WABA через Meta Embedded Signup без Wazzup и других посредников.</p>
+        <div className="integration-card-tags"><span>WABA</span><span>Cloud API</span><span>Facebook Embedded Signup</span></div>
+        <WabaEmbeddedSignup />
+      </article>
+
       {providers.map(({ id, title, mark, description, capabilities, icon: Icon }) => <article className={`integration-catalog-card integration-tone-${id} integration-state-disconnected`} key={id}>
         <div className="integration-card-top">
           <span className="integration-card-logo"><Icon size={20}/><b>{mark}</b></span>
