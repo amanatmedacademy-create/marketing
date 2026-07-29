@@ -67,6 +67,15 @@ async function handleLeadById(request: Request, env: Env, id: string) {
   return json({ error: 'Method not allowed' }, 405, corsHeaders(request, env));
 }
 
+async function handleCalls(request: Request, env: Env, url: URL) {
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, corsHeaders(request, env));
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 100), 1), 500);
+  const operator = url.searchParams.get('operator');
+  const params = new URLSearchParams({ select: '*', order: 'started_at.desc', limit: String(limit) });
+  if (operator) params.set('operator_name', `eq.${operator}`);
+  return proxySupabase(await supabaseRequest(env, `marketing_calls?${params.toString()}`), request, env);
+}
+
 async function handleDashboard(request: Request, env: Env, url: URL) {
   const params = new URLSearchParams({ select: '*' });
   const from = url.searchParams.get('from');
@@ -132,6 +141,8 @@ export default {
       if (integrationResponse) return integrationResponse;
       if (url.pathname === '/api/leads') return handleLeads(request, runtimeEnv, url);
       if (url.pathname.startsWith('/api/leads/')) return handleLeadById(request, runtimeEnv, url.pathname.split('/').pop() || '');
+      if (url.pathname === '/api/calls') return handleCalls(request, runtimeEnv, url);
+      if (url.pathname === '/api/calls/operators' && request.method === 'GET') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_call_operator_summary?select=*&order=appointments.desc,calls.desc'), request, runtimeEnv);
       if (url.pathname === '/api/dashboard') return handleDashboard(request, runtimeEnv, url);
       if (url.pathname === '/api/sources') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_source_summary?select=*&order=revenue.desc'), request, runtimeEnv);
       if (url.pathname === '/api/ads') {
