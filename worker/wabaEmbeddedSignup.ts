@@ -23,6 +23,13 @@ const graphVersion = (env: WabaEmbeddedSignupEnv): string => {
 const encryptionSecret = (env: WabaEmbeddedSignupEnv): string => text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
 const authenticatedUserId = (request: Request): string => text(request.headers.get('x-amanat-auth-user'));
 
+const supabaseHeaders = (env: WabaEmbeddedSignupEnv, extra: HeadersInit = {}): HeadersInit => ({
+  apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+  authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  'content-type': 'application/json',
+  ...extra,
+});
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -61,42 +68,48 @@ async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<s
 
 async function saveCredential(env: WabaEmbeddedSignupEnv, userId: string, accessToken: string, wabaId: string, phoneNumberId: string): Promise<void> {
   const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env) }, encryptionSecret(env));
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials?on_conflict=user_id,provider`, {
-    method: 'POST',
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      'content-type': 'application/json',
-      prefer: 'resolution=merge-duplicates,return=minimal',
+  const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
+  const filter = `user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
+  const payload = {
+    user_id: userId,
+    provider: 'waba',
+    encrypted_payload: encrypted.encryptedPayload,
+    iv: encrypted.iv,
+    config_summary: {
+      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env) },
+      secretFields: { accessToken: true },
     },
-    body: JSON.stringify({
-      user_id: userId,
-      provider: 'waba',
-      encrypted_payload: encrypted.encryptedPayload,
-      iv: encrypted.iv,
-      config_summary: {
-        values: { wabaId, phoneNumberId, graphVersion: graphVersion(env) },
-        secretFields: { accessToken: true },
-      },
-      status: 'connected',
-      last_error: null,
-      last_verified_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }),
+    status: 'connected',
+    last_error: null,
+    last_verified_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const existingResponse = await fetch(`${baseUrl}?${filter}&select=id&limit=1`, {
+    headers: supabaseHeaders(env, { accept: 'application/json' }),
   });
-  if (!response.ok) throw new Error(`Supabase WABA: ${response.status} ${await response.text()}`);
+  if (!existingResponse.ok) throw new Error(`Supabase WABA lookup: ${existingResponse.status} ${await existingResponse.text()}`);
+  const existingRows = await existingResponse.json() as Array<{ id?: string }>;
+
+  const response = existingRows[0]?.id
+    ? await fetch(`${baseUrl}?id=eq.${encodeURIComponent(existingRows[0].id as string)}`, {
+        method: 'PATCH',
+        headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
+        body: JSON.stringify(payload),
+      })
+    : await fetch(baseUrl, {
+        method: 'POST',
+        headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
+        body: JSON.stringify(payload),
+      });
+
+  if (!response.ok) throw new Error(`Supabase WABA save: ${response.status} ${await response.text()}`);
 }
 
 async function readConnection(env: WabaEmbeddedSignupEnv, userId: string): Promise<JsonRecord | null> {
   const response = await fetch(
     `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials?user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba&select=status,config_summary,last_verified_at,last_error&limit=1`,
-    {
-      headers: {
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-        authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-        accept: 'application/json',
-      },
-    },
+    { headers: supabaseHeaders(env, { accept: 'application/json' }) },
   );
   if (!response.ok) throw new Error(`Supabase WABA status: ${response.status} ${await response.text()}`);
   const rows = await response.json() as JsonRecord[];
