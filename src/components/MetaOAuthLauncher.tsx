@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Facebook, LoaderCircle } from 'lucide-react';
+import { Facebook, LoaderCircle, Settings2 } from 'lucide-react';
 
 interface SdkConfig {
   configured?: boolean;
@@ -83,6 +83,7 @@ export default function MetaOAuthLauncher() {
   const [sdk, setSdk] = useState<FacebookSdk | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [target, setTarget] = useState<Element | null>(null);
+  const [manualButton, setManualButton] = useState<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!isIntegrationsRoute()) return;
@@ -91,9 +92,14 @@ export default function MetaOAuthLauncher() {
     const mountIntoCard = () => {
       const card = document.querySelector('.connection-card--meta');
       const actions = card?.querySelector('.connection-actions');
+      const saveButton = actions?.querySelector<HTMLButtonElement>('button.connections-button--primary:not(.connections-button--facebook)');
       if (card && actions) {
         card.classList.add('connection-card--oauth');
         setTarget(actions);
+        if (saveButton) {
+          saveButton.hidden = true;
+          setManualButton(saveButton);
+        }
       }
     };
 
@@ -121,6 +127,7 @@ export default function MetaOAuthLauncher() {
     return () => {
       cancelled = true;
       observer.disconnect();
+      if (manualButton) manualButton.hidden = false;
     };
   }, []);
 
@@ -134,21 +141,9 @@ export default function MetaOAuthLauncher() {
     });
     const body = await response.text();
     if (!response.ok) throw new Error(parseError(body || `HTTP ${response.status}`));
-    const result = JSON.parse(body) as { accounts?: number };
+    const result = JSON.parse(body) as { accounts?: number; written?: number };
 
-    setMessage(`Подключено кабинетов: ${result.accounts || 0}. Загружаем историю за 90 дней…`);
-    const syncResponse = await fetch('/api/integrations/sync', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ source: 'meta', days: 90 }),
-    });
-    const syncBody = await syncResponse.text();
-    if (!syncResponse.ok) throw new Error(parseError(syncBody || `HTTP ${syncResponse.status}`));
-    const syncResult = JSON.parse(syncBody) as { results?: Array<{ fetched?: number; written?: number; skipped?: boolean; reason?: string }> };
-    const metaResult = syncResult.results?.[0];
-    if (metaResult?.skipped || metaResult?.reason) throw new Error(metaResult.reason || 'Meta синхронизация пропущена');
-
-    setMessage(`Meta подключена. Записано строк: ${metaResult?.written ?? metaResult?.fetched ?? 0}.`);
+    setMessage(`Meta подключена. Кабинетов: ${result.accounts || 0}. Записано строк: ${result.written || 0}.`);
     window.setTimeout(() => window.location.reload(), 1200);
   };
 
@@ -172,6 +167,14 @@ export default function MetaOAuthLauncher() {
     }, { scope: 'ads_read,business_management', return_scopes: true });
   };
 
+  const connectManually = () => {
+    if (!manualButton) {
+      setMessage('Форма ручного подключения ещё загружается');
+      return;
+    }
+    manualButton.click();
+  };
+
   return createPortal(<>
     <button
       type="button"
@@ -180,6 +183,14 @@ export default function MetaOAuthLauncher() {
       disabled={busy || !ready}
     >
       {busy || !ready ? <LoaderCircle size={16} className="spin"/> : <Facebook size={16}/>} {busy ? 'Подключаем Meta…' : ready ? 'Подключить через Facebook' : 'Загружаем Facebook'}
+    </button>
+    <button
+      type="button"
+      className="connections-button"
+      onClick={connectManually}
+      disabled={busy || !manualButton}
+    >
+      <Settings2 size={16}/> Подключить вручную
     </button>
     {message && <span className="meta-oauth-message">{message}</span>}
   </>, target);
