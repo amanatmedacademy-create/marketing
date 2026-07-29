@@ -8,6 +8,7 @@ import {
   History,
   LayoutDashboard,
   Menu,
+  MessageCircle,
   MessageSquareText,
   Search,
   Tags,
@@ -15,6 +16,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import IntegrationManager from './components/IntegrationManager';
+import MarketingChatBox from './components/MarketingChatBox';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import V36Dashboard from './components/V36Dashboard';
 import {
@@ -96,6 +98,7 @@ function SyncJournalPage() {
 
 const nav = [
   { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true },
+  { to: '/chat', label: 'Чат', icon: MessageCircle },
   { to: '/leads', label: 'Лиды', icon: UsersRound },
   { to: '/pipeline', label: 'Воронка продаж', icon: Workflow },
   { to: '/advertising', label: 'Реклама', icon: ChartNoAxesCombined },
@@ -122,6 +125,7 @@ function Shell() {
       </header>
       <div className="marketing-content"><Routes>
         <Route path="/" element={<MarketingDashboardSummary/>}/>
+        <Route path="/chat" element={<MarketingChatBox/>}/>
         <Route path="/leads" element={<LeadsPage/>}/>
         <Route path="/pipeline" element={<SalesPipelinePage/>}/>
         <Route path="/advertising" element={<AdvertisingPage/>}/>
