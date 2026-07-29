@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAnalytics } from './analytics';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath } from './auth';
+import { isFrontendAdmin } from './credentials';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 type AuthEnv = Env & {
@@ -17,10 +18,13 @@ export default {
       if (authResponse) return authResponse;
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
-        const user = await authenticateRequest(request, env);
-        if (!user) return authError();
-        if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
-        if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
+        const frontendAdminRequest = url.pathname.startsWith('/api/integrations/') && isFrontendAdmin(request, env);
+        if (!frontendAdminRequest) {
+          const user = await authenticateRequest(request, env);
+          if (!user) return authError();
+          if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
+          if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
+        }
       }
 
       const analytics = await handleAnalytics(request, env, url);
