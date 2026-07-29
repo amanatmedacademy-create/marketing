@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAnalytics } from './analytics';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
+import { handleChatProxy } from './chatProxy';
 import { isFrontendAdmin } from './credentials';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
@@ -12,7 +13,9 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & {
+  IMDS_MIS_API_URL?: string;
+};
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -68,6 +71,9 @@ export default {
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
+
+      const chatResponse = await handleChatProxy(forwardedRequest, env, url);
+      if (chatResponse) return chatResponse;
 
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, env, url);
       if (wabaResponse) return wabaResponse;
