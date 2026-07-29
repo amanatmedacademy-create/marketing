@@ -107,6 +107,14 @@ export function isFrontendAdmin(request: Request, env: CredentialSecrets): boole
   return Boolean(env.FRONTEND_ADMIN_KEY && supplied && secureEqual(supplied, env.FRONTEND_ADMIN_KEY));
 }
 
+function encryptionSecret(env: BaseEnv): string {
+  const explicit = asString(env.INTEGRATION_ENCRYPTION_KEY);
+  if (explicit) return explicit;
+  const serviceRole = asString(env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!serviceRole) throw new Error('SUPABASE_SERVICE_ROLE_KEY не настроен в Cloudflare');
+  return `amanat-integrations:v1:${serviceRole}`;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -158,6 +166,11 @@ async function listRows(env: BaseEnv): Promise<CredentialRow[]> {
   catch (error) { console.error(error); return []; }
 }
 
+async function findRow(env: BaseEnv, provider: IntegrationProvider): Promise<CredentialRow | null> {
+  const rows = await supabase<CredentialRow[]>(env, `integration_credentials?provider=eq.${encodeURIComponent(provider)}&select=*&limit=1`);
+  return rows[0] || null;
+}
+
 function publicSummary(row: CredentialRow) {
   const summary = asRecord(row.config_summary);
   return {
@@ -188,12 +201,27 @@ function validate(provider: IntegrationProvider, payload: JsonRecord): string[] 
   return providerFields[provider].required.filter((field) => !asString(payload[field]));
 }
 
+async function mergeWithStoredPayload(env: BaseEnv, provider: IntegrationProvider, incoming: JsonRecord, secret: string): Promise<JsonRecord> {
+  const existing = await findRow(env, provider);
+  if (!existing) return incoming;
+  let stored: JsonRecord = {};
+  try { stored = await decryptPayload(existing, secret); }
+  catch (error) { console.error(`Unable to decrypt existing ${provider} credentials`, error); }
+  const merged: JsonRecord = { ...stored };
+  for (const [key, value] of Object.entries(incoming)) {
+    const text = asString(value);
+    if (text) merged[key] = text;
+    else if (!providerFields[provider].secrets.includes(key)) merged[key] = value;
+  }
+  return merged;
+}
+
 export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<T & CredentialSecrets> {
-  if (!env.INTEGRATION_ENCRYPTION_KEY) return env;
+  const secret = encryptionSecret(env);
   const result = { ...env } as T & CredentialSecrets;
   for (const row of await listRows(env)) {
     try {
-      const payload = await decryptPayload(row, env.INTEGRATION_ENCRYPTION_KEY);
+      const payload = await decryptPayload(row, secret);
       for (const [field, envName] of Object.entries(providerFields[row.provider].mapping)) {
         const value = asString(payload[field]);
         if (value) result[envName] = value;
@@ -208,28 +236,26 @@ export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<
 export async function handleCredentialRequest(request: Request, env: BaseEnv, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/integrations/config')) return null;
   if (!isFrontendAdmin(request, env)) return json({ error: 'Настройки интеграций доступны только администратору' }, 403);
-  if (!env.INTEGRATION_ENCRYPTION_KEY) return json({ error: 'INTEGRATION_ENCRYPTION_KEY не настроен в Cloudflare' }, 503);
-
+  const secret = encryptionSecret(env);
   const provider = url.pathname.split('/').pop() as IntegrationProvider;
   if (url.pathname === '/api/integrations/config' && request.method === 'GET') {
-    return json({ providers: (await listRows(env)).map(publicSummary) });
+    return json({ providers: (await listRows(env)).map(publicSummary), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
   }
   if (!providerFields[provider]) return json({ error: 'Неизвестная интеграция' }, 404);
-
   if (request.method === 'PUT') {
-    const payload = asRecord(await request.json());
+    const incoming = asRecord(await request.json());
+    const payload = await mergeWithStoredPayload(env, provider, incoming, secret);
     const missing = validate(provider, payload);
     if (missing.length) return json({ error: `Заполните обязательные поля: ${missing.join(', ')}` }, 400);
-    const encrypted = await encryptPayload(payload, env.INTEGRATION_ENCRYPTION_KEY);
+    const encrypted = await encryptPayload(payload, secret);
     const summary = buildSummary(provider, payload);
     const rows = await supabase<CredentialRow[]>(env, 'integration_credentials?on_conflict=provider', {
       method: 'POST',
       headers: { prefer: 'resolution=merge-duplicates,return=representation' },
       body: JSON.stringify({ provider, encrypted_payload: encrypted.encryptedPayload, iv: encrypted.iv, config_summary: summary, status: 'configured', last_error: null }),
     });
-    return json({ ok: true, provider: publicSummary(rows[0]) });
+    return json({ ok: true, provider: publicSummary(rows[0]), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
   }
-
   if (request.method === 'DELETE') {
     await supabase<unknown>(env, `integration_credentials?provider=eq.${encodeURIComponent(provider)}`, {
       method: 'DELETE',
@@ -237,7 +263,6 @@ export async function handleCredentialRequest(request: Request, env: BaseEnv, ur
     });
     return json({ ok: true, provider });
   }
-
   return json({ error: 'Method not allowed' }, 405);
 }
 
@@ -246,13 +271,7 @@ export async function updateCredentialVerification(env: BaseEnv, provider: Integ
     await supabase<unknown>(env, `integration_credentials?provider=eq.${encodeURIComponent(provider)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=minimal' },
-      body: JSON.stringify({
-        status: ok ? 'connected' : 'error',
-        last_verified_at: new Date().toISOString(),
-        last_error: ok ? null : error instanceof Error ? error.message : String(error || 'Ошибка проверки'),
-      }),
+      body: JSON.stringify({ status: ok ? 'connected' : 'error', last_verified_at: new Date().toISOString(), last_error: ok ? null : error instanceof Error ? error.message : String(error || 'Ошибка проверки') }),
     });
-  } catch (updateError) {
-    console.error(updateError);
-  }
+  } catch (updateError) { console.error(updateError); }
 }
