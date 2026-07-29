@@ -1,41 +1,14 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
-import {
-  BarChart3,
-  Bell,
-  Cable,
-  ChartNoAxesCombined,
-  FileText,
-  History,
-  LayoutDashboard,
-  Menu,
-  MessageCircle,
-  MessageSquareText,
-  Search,
-  ServerCog,
-  Settings,
-  ShieldCheck,
-  Tags,
-  TriangleAlert,
-  UsersRound,
-  Workflow,
-} from 'lucide-react';
+import { BarChart3, Bell, Cable, ChartNoAxesCombined, FileText, History, LayoutDashboard, Menu, MessageCircle, MessageSquareText, Search, ServerCog, Settings, ShieldCheck, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
+import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import IntegrationManager from './components/IntegrationManager';
 import MarketingChatBox from './components/MarketingChatBox';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
-import {
-  AttributionPage,
-  MarketingArchitecturePage,
-  SalesPipelinePage,
-} from './components/MarketingModules';
-import {
-  marketingApi,
-  type AdSummaryRow,
-  type IntegrationStatus,
-  type MarketingLead,
-} from './services/api';
+import { AttributionPage, MarketingArchitecturePage, SalesPipelinePage } from './components/MarketingModules';
+import { marketingApi, type IntegrationStatus, type MarketingLead } from './services/api';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 import './journal.css';
@@ -48,16 +21,13 @@ function useRemoteData<T>(loader: () => Promise<T>, initial: T): LoadState<T> {
   const [state, setState] = useState<LoadState<T>>({ data: initial, loading: true, error: null });
   useEffect(() => {
     let active = true;
-    loader()
-      .then((data) => active && setState({ data, loading: false, error: null }))
-      .catch((error) => active && setState({ data: initial, loading: false, error: error instanceof Error ? error.message : String(error) }));
+    loader().then((data) => active && setState({ data, loading: false, error: null })).catch((error) => active && setState({ data: initial, loading: false, error: error instanceof Error ? error.message : String(error) }));
     return () => { active = false; };
   }, []);
   return state;
 }
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
-const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 
 function Heading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
@@ -80,34 +50,17 @@ function LeadsPage() {
   </div>;
 }
 
-function AdvertisingPage() {
-  const state = useRemoteData<AdSummaryRow[]>(() => marketingApi.ads(), []);
-  return <div className="stack">
-    <Heading eyebrow="1.3 Рекламные кабинеты" title="Реклама" text="Meta SDK или n8n, затем TikTok: кампании, группы, объявления, расходы, лиды и продажи." />
-    <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.length === 0} />
-    {!state.loading && !state.error && state.data.length > 0 && <section className="panel"><h2>Кампании и объявления</h2><div className="table-wrap"><table><thead><tr><th>Платформа</th><th>Кампания</th><th>Группа</th><th>Креатив</th><th>Расход</th><th>Показы</th><th>Клики</th><th>Лиды</th><th>Продажи</th><th>Выручка</th></tr></thead><tbody>{state.data.map((row) => <tr key={row.row_key}><td><b>{row.platform}</b></td><td>{row.campaign_name}</td><td>{row.adset_name || '—'}</td><td>{row.creative_name || '—'}</td><td>{money(row.spend)}</td><td>{number(row.impressions)}</td><td>{number(row.clicks)}</td><td>{number(row.leads)}</td><td>{number(row.sales)}</td><td>{money(row.revenue)}</td></tr>)}</tbody></table></div></section>}
-  </div>;
-}
-
 function JournalPlaceholder({ title, text }: { title: string; text: string }) {
   return <section className="panel journal-placeholder"><h2>{title}</h2><p>{text}</p><span>Раздел подготовлен. Источник данных будет подключён на следующем этапе.</span></section>;
 }
 
 function JournalPage() {
   const [tab, setTab] = useState<JournalTab>('sync');
-  const empty: IntegrationStatus = {
-    configured: { supabase: false, bitrix: false, bitrixWebhook: false, meta: false, metaWebhook: false, tiktok: false, tiktokWebhook: false, n8n: false, manualSync: false },
-    runs: [],
-  };
+  const empty: IntegrationStatus = { configured: { supabase: false, bitrix: false, bitrixWebhook: false, meta: false, metaWebhook: false, tiktok: false, tiktokWebhook: false, n8n: false, manualSync: false }, runs: [] };
   const state = useRemoteData<IntegrationStatus>(() => marketingApi.integrationStatus(), empty);
   const tabs: Array<{ id: JournalTab; label: string; icon: typeof History }> = [
-    { id: 'logs', label: 'Логи', icon: FileText },
-    { id: 'sync', label: 'Синхронизации', icon: History },
-    { id: 'audit', label: 'Аудит', icon: ShieldCheck },
-    { id: 'errors', label: 'Ошибки', icon: TriangleAlert },
-    { id: 'system', label: 'Системные события', icon: ServerCog },
+    { id: 'logs', label: 'Логи', icon: FileText }, { id: 'sync', label: 'Синхронизации', icon: History }, { id: 'audit', label: 'Аудит', icon: ShieldCheck }, { id: 'errors', label: 'Ошибки', icon: TriangleAlert }, { id: 'system', label: 'Системные события', icon: ServerCog },
   ];
-
   return <div className="stack journal-page">
     <Heading eyebrow="System journal" title="Журнал" text="Логи, синхронизации, аудит действий, ошибки и системные события IMDS Marketing." />
     <nav className="journal-tabs" aria-label="Разделы журнала">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span></button>)}</nav>
@@ -120,16 +73,7 @@ function JournalPage() {
 }
 
 const nav = [
-  { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true },
-  { to: '/chat', label: 'Чат', icon: MessageCircle },
-  { to: '/leads', label: 'Лиды', icon: UsersRound },
-  { to: '/pipeline', label: 'Воронка продаж', icon: Workflow },
-  { to: '/advertising', label: 'Реклама', icon: ChartNoAxesCombined },
-  { to: '/attribution', label: 'UTM и атрибуция', icon: Tags },
-  { to: '/analytics', label: 'Аналитика', icon: BarChart3 },
-  { to: '/integrations', label: 'Интеграции', icon: Cable },
-  { to: '/journal', label: 'Журнал', icon: History },
-  { to: '/architecture', label: 'Архитектура', icon: Workflow },
+  { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true }, { to: '/chat', label: 'Чат', icon: MessageCircle }, { to: '/leads', label: 'Лиды', icon: UsersRound }, { to: '/pipeline', label: 'Воронка продаж', icon: Workflow }, { to: '/advertising', label: 'Реклама', icon: ChartNoAxesCombined }, { to: '/attribution', label: 'UTM и атрибуция', icon: Tags }, { to: '/analytics', label: 'Аналитика', icon: BarChart3 }, { to: '/integrations', label: 'Интеграции', icon: Cable }, { to: '/journal', label: 'Журнал', icon: History }, { to: '/architecture', label: 'Архитектура', icon: Workflow },
 ];
 
 function Shell() {
@@ -137,41 +81,12 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-
   return <div className="marketing-shell">
-    <aside className={open ? 'open' : ''}>
-      <div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div>
-      <div className="marketing-nav-label">МАРКЕТИНГ</div>
-      <nav>{nav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
-    </aside>
-    <main>
-      <header className="marketing-topbar">
-        <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
-        <div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div>
-        <div className="marketing-top-actions">
-          <button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>
-          {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
-          <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Администратор'}</strong><small>{user.role === 'administrator' ? 'Полный доступ' : user.role}</small></div></button>
-        </div>
-      </header>
-      <div className="marketing-content"><Routes>
-        <Route path="/" element={<MarketingDashboardSummary/>}/>
-        <Route path="/chat" element={<MarketingChatBox/>}/>
-        <Route path="/leads" element={<LeadsPage/>}/>
-        <Route path="/pipeline" element={<SalesPipelinePage/>}/>
-        <Route path="/advertising" element={<AdvertisingPage/>}/>
-        <Route path="/attribution" element={<AttributionPage/>}/>
-        <Route path="/analytics" element={<AnalyticsWorkspace/>}/>
-        <Route path="/integrations" element={<IntegrationManager/>}/>
-        <Route path="/journal" element={<JournalPage/>}/>
-        <Route path="/sync-journal" element={<JournalPage/>}/>
-        <Route path="/architecture" element={<MarketingArchitecturePage/>}/>
-      </Routes></div>
-    </main>
-    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
+    <aside className={open ? 'open' : ''}><div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div><div className="marketing-nav-label">МАРКЕТИНГ</div><nav>{nav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav></aside>
+    <main><header className="marketing-topbar"><button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button><div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div><div className="marketing-top-actions"><button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>{user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}<button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Администратор'}</strong><small>{user.role === 'administrator' ? 'Полный доступ' : user.role}</small></div></button></div></header>
+      <div className="marketing-content"><Routes><Route path="/" element={<MarketingDashboardSummary/>}/><Route path="/chat" element={<MarketingChatBox/>}/><Route path="/leads" element={<LeadsPage/>}/><Route path="/pipeline" element={<SalesPipelinePage/>}/><Route path="/advertising" element={<AdsManagerPage/>}/><Route path="/attribution" element={<AttributionPage/>}/><Route path="/analytics" element={<AnalyticsWorkspace/>}/><Route path="/integrations" element={<IntegrationManager/>}/><Route path="/journal" element={<JournalPage/>}/><Route path="/sync-journal" element={<JournalPage/>}/><Route path="/architecture" element={<MarketingArchitecturePage/>}/></Routes></div>
+    </main>{workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
 
-export default function MarketingPlatform() {
-  return <BrowserRouter><Shell/></BrowserRouter>;
-}
+export default function MarketingPlatform() { return <BrowserRouter><Shell/></BrowserRouter>; }
