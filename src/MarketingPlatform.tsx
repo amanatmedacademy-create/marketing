@@ -8,7 +8,6 @@ import {
   History,
   LayoutDashboard,
   Menu,
-  MessageCircleMore,
   MessageSquareText,
   Search,
   Tags,
@@ -20,7 +19,6 @@ import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import V36Dashboard from './components/V36Dashboard';
 import {
   AttributionPage,
-  CommunicationsPage,
   MarketingArchitecturePage,
   SalesPipelinePage,
 } from './components/MarketingModules';
@@ -100,7 +98,6 @@ const nav = [
   { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true },
   { to: '/leads', label: 'Лиды', icon: UsersRound },
   { to: '/pipeline', label: 'Воронка продаж', icon: Workflow },
-  { to: '/communications', label: 'Коммуникации', icon: MessageCircleMore },
   { to: '/advertising', label: 'Реклама', icon: ChartNoAxesCombined },
   { to: '/attribution', label: 'UTM и атрибуция', icon: Tags },
   { to: '/analytics', label: 'Аналитика', icon: BarChart3 },
@@ -127,7 +124,6 @@ function Shell() {
         <Route path="/" element={<MarketingDashboardSummary/>}/>
         <Route path="/leads" element={<LeadsPage/>}/>
         <Route path="/pipeline" element={<SalesPipelinePage/>}/>
-        <Route path="/communications" element={<CommunicationsPage/>}/>
         <Route path="/advertising" element={<AdvertisingPage/>}/>
         <Route path="/attribution" element={<AttributionPage/>}/>
         <Route path="/analytics" element={<V36Dashboard/>}/>
