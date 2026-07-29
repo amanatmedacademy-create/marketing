@@ -5,12 +5,16 @@ import {
   Bell,
   Cable,
   ChartNoAxesCombined,
+  FileText,
   History,
   LayoutDashboard,
   Menu,
   MessageSquareText,
   Search,
+  ServerCog,
+  ShieldCheck,
   Tags,
+  TriangleAlert,
   UsersRound,
   Workflow,
 } from 'lucide-react';
@@ -31,6 +35,7 @@ import {
 import './marketing-platform.css';
 
 type LoadState<T> = { data: T; loading: boolean; error: string | null };
+type JournalTab = 'logs' | 'sync' | 'audit' | 'errors' | 'system';
 
 function useRemoteData<T>(loader: () => Promise<T>, initial: T): LoadState<T> {
   const [state, setState] = useState<LoadState<T>>({ data: initial, loading: true, error: null });
@@ -77,20 +82,40 @@ function AdvertisingPage() {
   </div>;
 }
 
-function SyncJournalPage() {
+function JournalPlaceholder({ title, text }: { title: string; text: string }) {
+  return <section className="panel journal-placeholder"><h2>{title}</h2><p>{text}</p><span>Раздел подготовлен. Источник данных будет подключён на следующем этапе.</span></section>;
+}
+
+function JournalPage() {
+  const [tab, setTab] = useState<JournalTab>('sync');
   const empty: IntegrationStatus = {
     configured: { supabase: false, bitrix: false, bitrixWebhook: false, meta: false, metaWebhook: false, tiktok: false, tiktokWebhook: false, n8n: false, manualSync: false },
     runs: [],
   };
   const state = useRemoteData<IntegrationStatus>(() => marketingApi.integrationStatus(), empty);
+  const tabs: Array<{ id: JournalTab; label: string; icon: typeof History }> = [
+    { id: 'logs', label: 'Логи', icon: FileText },
+    { id: 'sync', label: 'Синхронизации', icon: History },
+    { id: 'audit', label: 'Аудит', icon: ShieldCheck },
+    { id: 'errors', label: 'Ошибки', icon: TriangleAlert },
+    { id: 'system', label: 'Системные события', icon: ServerCog },
+  ];
 
-  return <div className="stack">
-    <Heading eyebrow="System operations" title="Журнал синхронизаций" text="Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками." />
-    <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />
-    {!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel">
-      <h2>Последние синхронизации</h2>
-      <div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div>
-    </section>}
+  return <div className="stack journal-page">
+    <Heading eyebrow="System journal" title="Журнал" text="Логи, синхронизации, аудит действий, ошибки и системные события IMDS Marketing." />
+    <nav className="journal-tabs" aria-label="Разделы журнала">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span></button>)}</nav>
+
+    {tab === 'sync' && <>
+      <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />
+      {!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel">
+        <div className="journal-panel-head"><div><h2>Журнал синхронизаций</h2><p>Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками.</p></div><span>{state.data.runs.length} записей</span></div>
+        <div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div>
+      </section>}
+    </>}
+    {tab === 'logs' && <JournalPlaceholder title="Логи" text="Технические и прикладные события API, webhooks, импортов и фоновых задач." />}
+    {tab === 'audit' && <JournalPlaceholder title="Аудит действий" text="История входов, изменений настроек, интеграций, лидов, стадий и ответственных." />}
+    {tab === 'errors' && <JournalPlaceholder title="Ошибки" text="Централизованный список ошибок интеграций, API, синхронизаций и обработки данных." />}
+    {tab === 'system' && <JournalPlaceholder title="Системные события" text="Деплои, планировщик, состояние сервисов, фоновые процессы и изменения конфигурации." />}
   </div>;
 }
 
@@ -102,7 +127,7 @@ const nav = [
   { to: '/attribution', label: 'UTM и атрибуция', icon: Tags },
   { to: '/analytics', label: 'Аналитика', icon: BarChart3 },
   { to: '/integrations', label: 'Интеграции', icon: Cable },
-  { to: '/sync-journal', label: 'Журнал синхронизаций', icon: History },
+  { to: '/journal', label: 'Журнал', icon: History },
   { to: '/architecture', label: 'Архитектура', icon: Workflow },
 ];
 
@@ -128,7 +153,8 @@ function Shell() {
         <Route path="/attribution" element={<AttributionPage/>}/>
         <Route path="/analytics" element={<V36Dashboard/>}/>
         <Route path="/integrations" element={<IntegrationManager/>}/>
-        <Route path="/sync-journal" element={<SyncJournalPage/>}/>
+        <Route path="/journal" element={<JournalPage/>}/>
+        <Route path="/sync-journal" element={<JournalPage/>}/>
         <Route path="/architecture" element={<MarketingArchitecturePage/>}/>
       </Routes></div>
     </main>
