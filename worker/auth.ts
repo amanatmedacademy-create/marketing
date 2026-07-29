@@ -18,13 +18,17 @@ export interface AuthenticatedUser {
   status: string;
 }
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+const json = (data: unknown, status = 200, headers: HeadersInit = {}) => new Response(JSON.stringify(data), {
   status,
-  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
 });
 
 function publicSupabaseKey(env: AuthEnv): string {
   return (env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || '').trim();
+}
+
+function authApiKey(env: AuthEnv): string {
+  return publicSupabaseKey(env) || env.SUPABASE_SERVICE_ROLE_KEY || '';
 }
 
 const supabaseHeaders = (env: AuthEnv, extra: HeadersInit = {}): HeadersInit => ({
@@ -60,15 +64,31 @@ function domainAllowed(email: string, env: AuthEnv): boolean {
   return domains.includes(domain);
 }
 
+async function readAuthSettings(env: AuthEnv): Promise<{ googleEnabled: boolean; error: string | null }> {
+  const apiKey = authApiKey(env);
+  if (!env.SUPABASE_URL) return { googleEnabled: false, error: 'SUPABASE_URL не настроен' };
+  if (!apiKey) return { googleEnabled: false, error: 'SUPABASE_SERVICE_ROLE_KEY не настроен' };
+
+  try {
+    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/settings`, {
+      headers: { apikey: apiKey, authorization: `Bearer ${apiKey}` },
+    });
+    const body = await response.text();
+    if (!response.ok) return { googleEnabled: false, error: `Supabase Auth settings: ${response.status} ${body}` };
+    const settings = JSON.parse(body) as JsonRecord;
+    const external = settings.external && typeof settings.external === 'object' ? settings.external as JsonRecord : {};
+    return { googleEnabled: external.google === true, error: null };
+  } catch (error) {
+    return { googleEnabled: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function fetchSupabaseUser(request: Request, env: AuthEnv): Promise<JsonRecord | null> {
   const token = bearerToken(request);
-  const publicKey = publicSupabaseKey(env);
-  if (!token || !env.SUPABASE_URL || !publicKey) return null;
+  const apiKey = authApiKey(env);
+  if (!token || !env.SUPABASE_URL || !apiKey) return null;
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
-    headers: {
-      apikey: publicKey,
-      authorization: `Bearer ${token}`,
-    },
+    headers: { apikey: apiKey, authorization: `Bearer ${token}` },
   });
   if (!response.ok) return null;
   return await response.json() as JsonRecord;
@@ -93,14 +113,7 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
     const response = await supabaseRequest(env, `marketing_users?auth_user_id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify({
-        name,
-        email,
-        avatar_url: avatarUrl,
-        provider: 'google',
-        provider_metadata: metadata,
-        last_seen_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify({ name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, last_seen_at: new Date().toISOString() }),
     });
     if (!response.ok) throw new Error(`Unable to update marketing user: ${await response.text()}`);
     row = (await response.json() as JsonRecord[])[0];
@@ -112,17 +125,7 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
     const response = await supabaseRequest(env, 'marketing_users', {
       method: 'POST',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify({
-        auth_user_id: id,
-        name,
-        email,
-        avatar_url: avatarUrl,
-        provider: 'google',
-        provider_metadata: metadata,
-        role,
-        status,
-        last_seen_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify({ auth_user_id: id, name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, role, status, last_seen_at: new Date().toISOString() }),
     });
     if (!response.ok) throw new Error(`Unable to create marketing user: ${await response.text()}`);
     row = (await response.json() as JsonRecord[])[0];
@@ -138,9 +141,18 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
   };
 }
 
+function applicationOrigin(request: Request, env: AuthEnv): string {
+  const requestOrigin = new URL(request.url).origin;
+  if (!env.APP_ORIGIN) return requestOrigin;
+  try { return new URL(env.APP_ORIGIN).origin; } catch { return requestOrigin; }
+}
+
 export function isPublicApiPath(pathname: string): boolean {
   return pathname === '/api/health'
     || pathname === '/api/auth/config'
+    || pathname === '/api/auth/google/start'
+    || pathname === '/api/auth/refresh'
+    || pathname === '/api/auth/logout'
     || pathname.startsWith('/api/webhooks/');
 }
 
@@ -152,19 +164,50 @@ export async function authenticateRequest(request: Request, env: AuthEnv): Promi
 
 export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL): Promise<Response | null> {
   if (url.pathname === '/api/auth/config' && request.method === 'GET') {
-    const publicKey = publicSupabaseKey(env);
-    const missing: string[] = [];
-    if (!env.SUPABASE_URL) missing.push('SUPABASE_URL');
-    if (!publicKey) missing.push('SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY');
-
+    const settings = await readAuthSettings(env);
     return json({
-      supabaseUrl: env.SUPABASE_URL || '',
-      supabaseAnonKey: publicKey,
-      googleEnabled: missing.length === 0,
-      keySource: env.SUPABASE_PUBLISHABLE_KEY ? 'SUPABASE_PUBLISHABLE_KEY' : env.SUPABASE_ANON_KEY ? 'SUPABASE_ANON_KEY' : null,
-      missing,
+      googleEnabled: settings.googleEnabled,
+      oauthMode: 'worker',
+      publicKeyConfigured: Boolean(publicSupabaseKey(env)),
+      diagnostic: settings.error,
     });
   }
+
+  if (url.pathname === '/api/auth/google/start' && request.method === 'GET') {
+    const settings = await readAuthSettings(env);
+    const origin = applicationOrigin(request, env);
+    if (!settings.googleEnabled) {
+      const message = settings.error || 'Google Provider выключен в Supabase Authentication';
+      return Response.redirect(`${origin}/?error_description=${encodeURIComponent(message)}`, 302);
+    }
+
+    const authorize = new URL(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/authorize`);
+    authorize.searchParams.set('provider', 'google');
+    authorize.searchParams.set('redirect_to', `${origin}/`);
+    authorize.searchParams.set('scopes', 'openid email profile');
+    return Response.redirect(authorize.toString(), 302);
+  }
+
+  if (url.pathname === '/api/auth/refresh' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({})) as JsonRecord;
+    const refreshToken = typeof body.refresh_token === 'string' ? body.refresh_token : '';
+    if (!refreshToken) return json({ error: 'refresh_token is required' }, 400);
+
+    const apiKey = authApiKey(env);
+    if (!env.SUPABASE_URL || !apiKey) return json({ error: 'Supabase Auth backend is not configured' }, 503);
+    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: apiKey, authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const responseBody = await response.text();
+    return new Response(responseBody, {
+      status: response.status,
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    });
+  }
+
+  if (url.pathname === '/api/auth/logout' && request.method === 'POST') return json({ ok: true });
 
   if (url.pathname === '/api/auth/me' && request.method === 'GET') {
     try {
