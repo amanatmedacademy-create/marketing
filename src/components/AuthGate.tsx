@@ -41,8 +41,23 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let subscription: { unsubscribe: () => void } | undefined;
+    const nativeFetch = window.fetch.bind(window);
+
     getAuthClient()
       .then((client) => {
+        window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          const isOwnApi = url.startsWith('/api/') || url.startsWith(`${window.location.origin}/api/`);
+          if (!isOwnApi || url.includes('/api/auth/config')) return nativeFetch(input, init);
+
+          const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+          if (!headers.has('authorization')) {
+            const { data } = await client.auth.getSession();
+            if (data.session?.access_token) headers.set('authorization', `Bearer ${data.session.access_token}`);
+          }
+          return nativeFetch(input, { ...init, headers });
+        };
+
         subscription = client.auth.onAuthStateChange(() => { void refresh(); }).data.subscription;
         return refresh();
       })
@@ -50,7 +65,11 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         setError(reason instanceof Error ? reason.message : String(reason));
         setLoading(false);
       });
-    return () => subscription?.unsubscribe();
+
+    return () => {
+      subscription?.unsubscribe();
+      window.fetch = nativeFetch;
+    };
   }, []);
 
   const signIn = async () => {
@@ -60,7 +79,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/`,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     });
     if (signInError) setError(signInError.message);
@@ -88,14 +107,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     </div>
   </div>;
 
-  return <AuthContext.Provider value={context}>{children}</AuthContext.Provider>;
-}
-
-export function UserMenu() {
-  const { user, signOut } = useAuth();
-  return <div className="user-menu">
-    {user.avatarUrl ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer"/> : <span>{user.name.slice(0,1).toUpperCase()}</span>}
-    <div><b>{user.name}</b><small>{user.role}</small></div>
-    <button onClick={() => void signOut()} title="Выйти"><LogOut size={16}/></button>
-  </div>;
+  return <AuthContext.Provider value={context}>
+    <div className="auth-user-bar">
+      {user.avatarUrl ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer"/> : <span>{user.name.slice(0,1).toUpperCase()}</span>}
+      <div><b>{user.name}</b><small>{user.role}</small></div>
+      <button onClick={() => void signOut()} title="Выйти"><LogOut size={16}/></button>
+    </div>
+    {children}
+  </AuthContext.Provider>;
 }
