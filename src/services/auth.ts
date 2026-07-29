@@ -15,6 +15,7 @@ interface StoredSession {
 }
 
 const STORAGE_KEY = 'amanat_marketing_auth_session';
+const AUTH_REQUEST_TIMEOUT_MS = 10_000;
 
 function readStoredSession(): StoredSession | null {
   try {
@@ -28,6 +29,22 @@ function readStoredSession(): StoredSession | null {
 function writeStoredSession(session: StoredSession | null) {
   if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   else localStorage.removeItem(STORAGE_KEY);
+}
+
+async function authRequest(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+
+  if (init.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function parseCallbackSession(): StoredSession | null {
@@ -49,24 +66,29 @@ function parseCallbackSession(): StoredSession | null {
 
 async function refreshSession(session: StoredSession): Promise<StoredSession | null> {
   if (!session.refresh_token) return null;
-  const response = await fetch('/api/auth/refresh', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ refresh_token: session.refresh_token }),
-  });
-  if (!response.ok) return null;
-  const payload = await response.json() as Record<string, unknown>;
-  const accessToken = typeof payload.access_token === 'string' ? payload.access_token : '';
-  if (!accessToken) return null;
 
-  const next: StoredSession = {
-    access_token: accessToken,
-    refresh_token: typeof payload.refresh_token === 'string' ? payload.refresh_token : session.refresh_token,
-    token_type: typeof payload.token_type === 'string' ? payload.token_type : 'bearer',
-    expires_at: Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600),
-  };
-  writeStoredSession(next);
-  return next;
+  try {
+    const response = await authRequest('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as Record<string, unknown>;
+    const accessToken = typeof payload.access_token === 'string' ? payload.access_token : '';
+    if (!accessToken) return null;
+
+    const next: StoredSession = {
+      access_token: accessToken,
+      refresh_token: typeof payload.refresh_token === 'string' ? payload.refresh_token : session.refresh_token,
+      token_type: typeof payload.token_type === 'string' ? payload.token_type : 'bearer',
+      expires_at: Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600),
+    };
+    writeStoredSession(next);
+    return next;
+  } catch {
+    return null;
+  }
 }
 
 export async function currentSession(): Promise<StoredSession | null> {
@@ -89,7 +111,7 @@ export async function startGoogleSignIn(): Promise<void> {
 
 export async function signOutSession(): Promise<void> {
   writeStoredSession(null);
-  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+  await authRequest('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
 }
 
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
@@ -100,7 +122,12 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
 }
 
 export async function loadAppUser(): Promise<AppUser> {
-  const response = await authFetch('/api/auth/me');
+  const session = await currentSession();
+  if (!session?.access_token) throw new Error('Сессия истекла. Войдите через Google повторно.');
+
+  const response = await authRequest('/api/auth/me', {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
   const body = await response.text();
   if (!response.ok) {
     try {
