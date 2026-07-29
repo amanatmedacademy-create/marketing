@@ -29,7 +29,7 @@ export function handleMetaOAuthStart(request: Request, env: MetaOAuthStartEnv, u
     redirect_uri: redirectUri,
     state,
     response_type: 'code',
-    scope: 'ads_read,read_insights,business_management',
+    scope: 'ads_read,business_management',
   });
 
   return json({
