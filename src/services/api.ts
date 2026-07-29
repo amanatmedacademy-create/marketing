@@ -138,8 +138,6 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-const adminHeaders = (adminKey: string): HeadersInit => ({ authorization: `Bearer ${adminKey}` });
-
 export const marketingApi = {
   health: () => apiRequest<{ ok: boolean; service: string; supabaseConfigured: boolean }>('/health'),
 
@@ -152,22 +150,9 @@ export const marketingApi = {
     return apiRequest<MarketingLead[]>(`/leads${query}`);
   },
 
-  createLead: (lead: Partial<MarketingLead>) =>
-    apiRequest<MarketingLead[]>('/leads', {
-      method: 'POST',
-      body: JSON.stringify(lead),
-    }),
-
-  updateLead: (id: string, patch: Partial<MarketingLead>) =>
-    apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    }),
-
-  deleteLead: (id: string) =>
-    apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
+  createLead: (lead: Partial<MarketingLead>) => apiRequest<MarketingLead[]>('/leads', { method: 'POST', body: JSON.stringify(lead) }),
+  updateLead: (id: string, patch: Partial<MarketingLead>) => apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteLead: (id: string) => apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   dashboard: (filters?: { from?: string; to?: string }) => {
     const params = new URLSearchParams();
@@ -180,28 +165,19 @@ export const marketingApi = {
   sources: () => apiRequest<SourceSummaryRow[]>('/sources'),
   ads: () => apiRequest<AdSummaryRow[]>('/ads'),
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
-  integrationConfigs: (adminKey: string) => apiRequest<IntegrationConfigResponse>('/integrations/config', { headers: adminHeaders(adminKey) }),
-  saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>, adminKey: string) =>
+  integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
+  saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) =>
     apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, {
       method: 'PUT',
-      headers: adminHeaders(adminKey),
       body: JSON.stringify(values),
     }),
-  deleteIntegrationConfig: (provider: IntegrationProvider, adminKey: string) =>
-    apiRequest<{ ok: boolean; provider: IntegrationProvider }>(`/integrations/config/${provider}`, {
-      method: 'DELETE',
-      headers: adminHeaders(adminKey),
-    }),
-  testIntegration: (provider: IntegrationProvider, adminKey: string) =>
-    apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, {
-      method: 'POST',
-      headers: adminHeaders(adminKey),
-      body: '{}',
-    }),
-  syncIntegrations: (source: IntegrationProvider | 'all', days: number, adminKey: string) =>
+  deleteIntegrationConfig: (provider: IntegrationProvider) =>
+    apiRequest<{ ok: boolean; provider: IntegrationProvider }>(`/integrations/config/${provider}`, { method: 'DELETE' }),
+  testIntegration: (provider: IntegrationProvider) =>
+    apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
+  syncIntegrations: (source: IntegrationProvider | 'all', days: number) =>
     apiRequest<{ ok: boolean; results: unknown[] }>('/integrations/sync', {
       method: 'POST',
-      headers: adminHeaders(adminKey),
       body: JSON.stringify({ source, days }),
     }),
 };
