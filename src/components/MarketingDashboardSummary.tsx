@@ -102,14 +102,14 @@ export default function MarketingDashboardSummary() {
 
       <article className="panel dashboard-chart-card">
         <header><div><h2>Воронка продаж</h2><p>Потери между этапами</p></div></header>
-        <div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><FunnelChart><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value) => number(Number(value))}/><Funnel dataKey="value" data={funnel} isAnimationActive><LabelList position="right" fill="#e5edf8" stroke="none" dataKey="name"/><LabelList position="center" fill="#fff" stroke="none" dataKey="value" formatter={(value) => number(Number(value))}/></Funnel></FunnelChart></ResponsiveContainer></div>
+        <div className="dashboard-chart dashboard-chart--large"><ResponsiveContainer width="100%" height="100%"><FunnelChart><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Funnel dataKey="value" data={funnel} isAnimationActive><LabelList position="right" fill="#e5edf8" stroke="none" dataKey="name"/><LabelList position="center" fill="#fff" stroke="none" dataKey="value" formatter={(value: unknown) => number(Number(value))}/></Funnel></FunnelChart></ResponsiveContainer></div>
       </article>
     </section>
 
     <section className="dashboard-chart-grid">
       <article className="panel dashboard-chart-card">
         <header><div><h2>Распределение лидов</h2><p>Доля ведущих источников</p></div></header>
-        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={sourceChart} dataKey="leads" nameKey="name" innerRadius={66} outerRadius={104} paddingAngle={3}>{sourceChart.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[index % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div>
+        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={sourceChart} dataKey="leads" nameKey="name" innerRadius={66} outerRadius={104} paddingAngle={3}>{sourceChart.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={palette[index % palette.length]}/>)}</Pie><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => number(Number(value))}/><Legend verticalAlign="bottom" height={54}/></PieChart></ResponsiveContainer></div>
       </article>
 
       <article className="panel dashboard-chart-card">
@@ -119,7 +119,7 @@ export default function MarketingDashboardSummary() {
 
       <article className="panel dashboard-chart-card">
         <header><div><h2>Финансовый результат</h2><p>Расход против выручки</p></div></header>
-        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={financial} layout="vertical" margin={{ top: 18, right: 40, left: 15, bottom: 18 }}><CartesianGrid stroke="#1e2d4a" horizontal={false}/><XAxis type="number" stroke="#64748b" tickFormatter={(value) => number(Number(value))}/><YAxis type="category" dataKey="name" stroke="#94a3b8" width={70}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value) => money(Number(value))}/><Bar dataKey="value" radius={[0, 7, 7, 0]}>{financial.map((entry, index) => <Cell key={entry.name} fill={index === 0 ? '#f59e0b' : '#22c55e'}/>)}</Bar></BarChart></ResponsiveContainer></div>
+        <div className="dashboard-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={financial} layout="vertical" margin={{ top: 18, right: 40, left: 15, bottom: 18 }}><CartesianGrid stroke="#1e2d4a" horizontal={false}/><XAxis type="number" stroke="#64748b" tickFormatter={(value: unknown) => number(Number(value))}/><YAxis type="category" dataKey="name" stroke="#94a3b8" width={70}/><Tooltip contentStyle={{ background: '#07101d', border: '1px solid #253858', borderRadius: 10 }} formatter={(value: unknown) => money(Number(value))}/><Bar dataKey="value" radius={[0, 7, 7, 0]}>{financial.map((entry, index) => <Cell key={entry.name} fill={index === 0 ? '#f59e0b' : '#22c55e'}/>)}</Bar></BarChart></ResponsiveContainer></div>
         <div className="dashboard-finance-strip"><span>Средний чек <b>{money(totals.sales ? totals.revenue / totals.sales : 0)}</b></span><span>ROAS <b>{totals.spend ? (totals.revenue / totals.spend).toFixed(2) : '0.00'}x</b></span></div>
       </article>
     </section>
