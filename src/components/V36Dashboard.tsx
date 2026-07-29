@@ -47,9 +47,11 @@ export default function V36Dashboard() {
   const [mode,setMode] = useState<'ads'|'crm'>('ads');
   const [open,setOpen] = useState<Record<string,boolean>>({});
   const [platformMenu,setPlatformMenu] = useState(false);
+  const [accountMenu,setAccountMenu] = useState(false);
   const [sourceMenu,setSourceMenu] = useState(false);
   const [utmMenu,setUtmMenu] = useState(false);
   const [platforms,setPlatforms] = useState<string[]>([]);
+  const [accounts,setAccounts] = useState<string[]>([]);
   const [sources,setSources] = useState<string[]>([]);
   const [utmSource,setUtmSource] = useState('');
   const [utmMedium,setUtmMedium] = useState('');
@@ -73,21 +75,25 @@ export default function V36Dashboard() {
   const campaigns = data.campaigns || [];
   const hierarchy = data.hierarchy || [];
   const platformOptions = useMemo(() => Array.from(new Set(campaigns.map((item) => item.platform).filter(Boolean))), [campaigns]);
+  const accountOptions = useMemo(() => Array.from(new Map(
+    hierarchy.filter((item) => item.level === 'account').map((item) => [item.account_id || item.account_name, { id:item.account_id || item.account_name, name:item.account_name || item.account_id, platform:item.platform }]),
+  ).values()).sort((a,b) => a.platform.localeCompare(b.platform,'ru') || a.name.localeCompare(b.name,'ru')), [hierarchy]);
   const sourceOptions = useMemo(() => Array.from(new Set(campaigns.map((item) => item.source || item.platform).filter(Boolean))), [campaigns]);
   const matchingCampaigns = useMemo(() => campaigns.filter((item) => {
     if (platforms.length && !platforms.includes(item.platform)) return false;
+    if (accounts.length && !accounts.includes(item.account_id || item.account_name)) return false;
     if (sources.length && !sources.includes(item.source || item.platform)) return false;
     if (utmSource && !normalize(item.utm_source).includes(normalize(utmSource))) return false;
     if (utmMedium && !normalize(item.utm_medium).includes(normalize(utmMedium))) return false;
     if (utmCampaign && ![item.utm_campaign,item.campaign_name,item.campaign_id].some((value) => normalize(value).includes(normalize(utmCampaign)))) return false;
     return true;
-  }), [campaigns,platforms,sources,utmSource,utmMedium,utmCampaign]);
+  }), [campaigns,platforms,accounts,sources,utmSource,utmMedium,utmCampaign]);
 
   const allowedPrefixes = useMemo(() => matchingCampaigns.map((row) => row.key), [matchingCampaigns]);
   const filteredHierarchy = useMemo(() => {
-    if (!platforms.length && !sources.length && !utmSource && !utmMedium && !utmCampaign) return hierarchy;
+    if (!platforms.length && !accounts.length && !sources.length && !utmSource && !utmMedium && !utmCampaign) return hierarchy;
     return hierarchy.filter((row) => allowedPrefixes.some((campaignKey) => campaignKey.startsWith(row.key) || row.key.startsWith(campaignKey)));
-  }, [hierarchy,allowedPrefixes,platforms,sources,utmSource,utmMedium,utmCampaign]);
+  }, [hierarchy,allowedPrefixes,platforms,accounts,sources,utmSource,utmMedium,utmCampaign]);
 
   const children = useMemo(() => {
     const map = new Map<string|null,AnalyticsRow[]>();
@@ -101,10 +107,10 @@ export default function V36Dashboard() {
   }, [filteredHierarchy]);
 
   const visiblePlatforms = useMemo(() => data.platforms.filter((item) => filteredHierarchy.some((row) => row.level==='platform' && row.key===item.key)), [data.platforms,filteredHierarchy]);
-  const activeFilters = platforms.length + sources.length + Number(Boolean(utmSource)) + Number(Boolean(utmMedium)) + Number(Boolean(utmCampaign));
+  const activeFilters = platforms.length + accounts.length + sources.length + Number(Boolean(utmSource)) + Number(Boolean(utmMedium)) + Number(Boolean(utmCampaign));
   const chart = data.daily.map((item) => ({ ...item, label:new Date(`${item.date}T00:00:00`).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) }));
   const totals = data.totals;
-  const clearFilters = () => { setPlatforms([]); setSources([]); setUtmSource(''); setUtmMedium(''); setUtmCampaign(''); };
+  const clearFilters = () => { setPlatforms([]); setAccounts([]); setSources([]); setUtmSource(''); setUtmMedium(''); setUtmCampaign(''); };
   const setAllOpen = (value:boolean) => setOpen(Object.fromEntries(filteredHierarchy.filter((row) => row.level!=='ad').map((row) => [row.key,value])));
   const heatClass = (rate:number) => rate >= 35 ? 'heat-high' : rate >= 20 ? 'heat-mid' : rate >= 10 ? 'heat-low' : 'heat-bad';
   const hasChildren = (row:AnalyticsRow) => Boolean(children.get(row.key)?.length);
@@ -138,6 +144,7 @@ export default function V36Dashboard() {
     <section className="v36-toolbar">
       <div className="v36-periods">{[3,7,15,30].map((value) => <button key={value} className={days===value?'active':''} onClick={() => setDays(value)}>{value} {value===3?'дня':'дней'}</button>)}</div>
       <div className="v36-filter"><button className={platforms.length?'active':''} onClick={() => setPlatformMenu(!platformMenu)}><Filter size={14}/>Платформы{platforms.length?` (${platforms.length})`:''}<ChevronDown size={14}/></button>{platformMenu && <div className="v36-popover"><strong>Платформы</strong>{platformOptions.map((platform) => <label key={platform}><input type="checkbox" checked={platforms.includes(platform)} onChange={() => setPlatforms((previous) => previous.includes(platform) ? previous.filter((item) => item!==platform) : [...previous,platform])}/>{platform}</label>)}</div>}</div>
+      <div className="v36-filter"><button className={accounts.length?'active':''} onClick={() => setAccountMenu(!accountMenu)}><Filter size={14}/>Кабинеты{accounts.length?` (${accounts.length})`:''}<ChevronDown size={14}/></button>{accountMenu && <div className="v36-popover"><strong>Рекламные кабинеты</strong>{accountOptions.map((account) => <label key={account.id}><input type="checkbox" checked={accounts.includes(account.id)} onChange={() => setAccounts((previous) => previous.includes(account.id) ? previous.filter((item) => item!==account.id) : [...previous,account.id])}/><span>{account.name}<small>{account.platform}{account.id!==account.name?` · ${account.id}`:''}</small></span></label>)}</div>}</div>
       <div className="v36-filter"><button className={sources.length?'active':''} onClick={() => setSourceMenu(!sourceMenu)}><Filter size={14}/>Источники{sources.length?` (${sources.length})`:''}<ChevronDown size={14}/></button>{sourceMenu && <div className="v36-popover"><strong>Источники лидов</strong>{sourceOptions.map((source) => <label key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => setSources((previous) => previous.includes(source) ? previous.filter((item) => item!==source) : [...previous,source])}/>{source}</label>)}</div>}</div>
       <div className="v36-filter v36-filter--utm"><button className={utmSource||utmMedium||utmCampaign?'active':''} onClick={() => setUtmMenu(!utmMenu)}><SlidersHorizontal size={14}/>UTM фильтры{utmSource||utmMedium||utmCampaign?' •':''}<ChevronDown size={14}/></button>{utmMenu && <div className="v36-popover v36-popover--utm"><label><span>UTM Source</span><input value={utmSource} onChange={(event) => setUtmSource(event.target.value)} placeholder="Например: meta"/></label><label><span>UTM Medium</span><input value={utmMedium} onChange={(event) => setUtmMedium(event.target.value)} placeholder="Например: cpc"/></label><label><span>UTM Campaign / ID</span><input value={utmCampaign} onChange={(event) => setUtmCampaign(event.target.value)} placeholder="Название или ID кампании"/></label></div>}</div>
       {activeFilters > 0 && <button className="v36-reset" onClick={clearFilters}><X size={13}/>Сбросить ({activeFilters})</button>}
@@ -145,7 +152,7 @@ export default function V36Dashboard() {
       <button className="v36-sync" onClick={() => void load()} disabled={loading}><RefreshCw className={loading?'spin':''} size={14}/>Обновить</button>
     </section>
 
-    {activeFilters > 0 && <section className="v36-filter-summary"><strong>Фильтр применён</strong><span>Показано {matchingCampaigns.length} из {campaigns.length} кампаний</span>{platforms.map((item) => <em key={`p-${item}`}>{item}</em>)}{sources.map((item) => <em key={`s-${item}`}>{item}</em>)}</section>}
+    {activeFilters > 0 && <section className="v36-filter-summary"><strong>Фильтр применён</strong><span>Показано {matchingCampaigns.length} из {campaigns.length} кампаний</span>{platforms.map((item) => <em key={`p-${item}`}>{item}</em>)}{accounts.map((item) => <em key={`a-${item}`}>{accountOptions.find((account) => account.id===item)?.name || item}</em>)}{sources.map((item) => <em key={`s-${item}`}>{item}</em>)}</section>}
     {error && <div className="v36-error">{error}</div>}
 
     <section className="v36-kpis">{[
