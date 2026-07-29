@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   LineChart,
   LoaderCircle,
@@ -10,7 +9,13 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import { getAuthClient, loadAppUser, type AppUser } from '../services/auth';
+import {
+  currentSession,
+  loadAppUser,
+  signOutSession,
+  startGoogleSignIn,
+  type AppUser,
+} from '../services/auth';
 
 interface AuthContextValue {
   user: AppUser;
@@ -51,64 +56,50 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    try {
-      const client = await getAuthClient();
-      const { data, error: sessionError } = await client.auth.getSession();
-      if (sessionError) throw sessionError;
-      setHasSession(Boolean(data.session));
-      if (!data.session) {
-        setUser(null);
-        return;
-      }
-      setUser(await loadAppUser());
-      setError(null);
-    } catch (reason) {
-      setUser(null);
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    let subscription: { unsubscribe: () => void } | undefined;
+    let active = true;
     const nativeFetch = window.fetch.bind(window);
 
     const searchParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const oauthError = searchParams.get('error_description') || hashParams.get('error_description');
-    if (oauthError) setError(oauthError);
+    const oauthError = searchParams.get('error_description');
+    if (oauthError) {
+      setError(oauthError);
+      history.replaceState({}, document.title, window.location.pathname);
+    }
 
-    getAuthClient()
-      .then((client) => {
-        window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
-          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-          const isOwnApi = url.startsWith('/api/') || url.startsWith(`${window.location.origin}/api/`);
-          if (!isOwnApi || url.includes('/api/auth/config')) return nativeFetch(input, init);
+    window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const isOwnApi = url.startsWith('/api/') || url.startsWith(`${window.location.origin}/api/`);
+      if (!isOwnApi || url.includes('/api/auth/')) return nativeFetch(input, init);
 
-          const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
-          if (!headers.has('authorization')) {
-            const { data } = await client.auth.getSession();
-            if (data.session?.access_token) headers.set('authorization', `Bearer ${data.session.access_token}`);
-          }
-          return nativeFetch(input, { ...init, headers });
-        };
+      const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+      if (!headers.has('authorization')) {
+        const session = await currentSession();
+        if (session?.access_token) headers.set('authorization', `Bearer ${session.access_token}`);
+      }
+      return nativeFetch(input, { ...init, headers });
+    };
 
-        subscription = client.auth.onAuthStateChange((_event, session) => {
-          setHasSession(Boolean(session));
-          void refresh(false);
-        }).data.subscription;
-        return refresh();
+    currentSession()
+      .then(async (session) => {
+        if (!active) return;
+        setHasSession(Boolean(session));
+        if (!session) return;
+        const appUser = await loadAppUser();
+        if (active) {
+          setUser(appUser);
+          setError(null);
+        }
       })
       .catch((reason) => {
-        setError(reason instanceof Error ? reason.message : String(reason));
-        setLoading(false);
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
 
     return () => {
-      subscription?.unsubscribe();
+      active = false;
       window.fetch = nativeFetch;
     };
   }, []);
@@ -117,16 +108,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     setSigningIn(true);
     setError(null);
     try {
-      const client = await getAuthClient();
-      const { error: signInError } = await client.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-          scopes: 'openid email profile',
-          queryParams: { prompt: 'select_account' },
-        },
-      });
-      if (signInError) throw signInError;
+      await startGoogleSignIn();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       setSigningIn(false);
@@ -134,8 +116,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    const client = await getAuthClient();
-    await client.auth.signOut();
+    await signOutSession();
     setUser(null);
     setHasSession(false);
     setError(null);
@@ -198,7 +179,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
           <button className="google-login" onClick={() => void signIn()} disabled={signingIn}>
             {signingIn ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
-            <span>{signingIn ? 'Переходим в Google…' : 'Продолжить через Google'}</span>
+            <span>{signingIn ? 'Открываем Google…' : 'Продолжить через Google'}</span>
             {!signingIn && <ArrowRight size={17}/>} 
           </button>
 
