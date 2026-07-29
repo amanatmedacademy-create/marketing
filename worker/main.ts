@@ -3,18 +3,20 @@ import { handleAnalytics } from './analytics';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { isFrontendAdmin } from './credentials';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
+import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleOperationsRequest } from './operations';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
     || pathname.startsWith('/api/integrations/config')
     || pathname.startsWith('/api/integrations/test/')
+    || pathname === '/api/integrations/meta/start'
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config';
 }
@@ -58,6 +60,9 @@ export default {
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
+
+      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, env, url);
+      if (metaOAuthStartResponse) return metaOAuthStartResponse;
 
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
       if (metaOAuthResponse) return metaOAuthResponse;
