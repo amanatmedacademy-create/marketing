@@ -113,7 +113,7 @@ function Shell() {
   const [open, setOpen] = useState(false);
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
-      <div className="marketing-brand"><MessageSquareText/><div><b>AMANAT MED</b><span>Marketing Platform</span></div></div>
+      <div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div>
       <div className="marketing-nav-label">МАРКЕТИНГ</div>
       <nav>{nav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
     </aside>
@@ -121,7 +121,7 @@ function Shell() {
       <header className="marketing-topbar">
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div>
-        <div className="marketing-top-actions"><button type="button"><Bell size={18}/></button><span>AM</span></div>
+        <div className="marketing-top-actions"><button type="button"><Bell size={18}/></button><span>IM</span></div>
       </header>
       <div className="marketing-content"><Routes>
         <Route path="/" element={<MarketingDashboardSummary/>}/>
