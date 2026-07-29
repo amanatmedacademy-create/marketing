@@ -6,6 +6,7 @@ import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
 import './auth.css';
+import './operations.css';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
