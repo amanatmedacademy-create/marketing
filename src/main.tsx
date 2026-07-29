@@ -10,6 +10,7 @@ import './dashboard-theme.css';
 import './auth.css';
 import './operations.css';
 import './integration-catalog.css';
+import './v36-dashboard-advanced.css';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
@@ -17,7 +18,7 @@ function Root() {
   if (operatingSystem) {
     return <div className="operations-shell">
       <header className="operations-topbar">
-        <a href="/">AMANAT MED · Маркетинг</a>
+        <a href="/">IMDS Marketing</a>
         <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
       </header>
       <main className="operations-content"><MarketingOS /></main>
