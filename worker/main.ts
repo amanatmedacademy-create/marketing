@@ -1,11 +1,28 @@
 import app from './index';
 import { handleAnalytics } from './analytics';
+import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath } from './auth';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
+type AuthEnv = Env & {
+  SUPABASE_ANON_KEY?: string;
+  AUTH_ALLOWED_EMAIL_DOMAINS?: string;
+  AUTH_AUTO_APPROVE?: string;
+};
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: AuthEnv): Promise<Response> {
     const url = new URL(request.url);
     try {
+      const authResponse = await handleAuthRequest(request, env, url);
+      if (authResponse) return authResponse;
+
+      if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
+        const user = await authenticateRequest(request, env);
+        if (!user) return authError();
+        if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
+        if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
+      }
+
       const analytics = await handleAnalytics(request, env, url);
       if (analytics) return analytics;
     } catch (error) {
@@ -18,7 +35,7 @@ export default {
     return app.fetch(request, env);
   },
 
-  async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
+  async scheduled(controller: WorkerScheduledController, env: AuthEnv, ctx: WorkerExecutionContext): Promise<void> {
     await app.scheduled(controller, env, ctx);
   },
 };
