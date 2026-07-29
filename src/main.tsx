@@ -8,6 +8,7 @@ import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
 import './dashboard-v36.css';
+import './integrations-imds.css';
 import './auth.css';
 import './operations.css';
 
