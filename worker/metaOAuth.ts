@@ -232,7 +232,7 @@ export async function handleMetaOAuthRequest(request: Request, env: MetaOAuthEnv
       redirect_uri: redirectUri(env),
       state,
       response_type: 'code',
-      scope: 'ads_read,read_insights,business_management',
+      scope: 'ads_read,business_management',
     });
     return new Response(null, {
       status: 302,
