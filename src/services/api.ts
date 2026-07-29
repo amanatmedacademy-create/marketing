@@ -39,6 +39,7 @@ export interface IntegrationStatus { configured: { supabase: boolean; bitrix: bo
 export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
 export interface IntegrationCredentialSummary { provider: IntegrationProvider; configured: boolean; status: string; values: Record<string, string>; secretFields: Record<string, boolean>; updatedAt: string; lastVerifiedAt?: string | null; lastError?: string | null; }
 export interface IntegrationConfigResponse { providers: IntegrationCredentialSummary[]; }
+export interface IntegrationDisconnectResponse { ok: boolean; provider: IntegrationProvider; mode: 'archived' | 'purged'; data?: unknown; }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -71,7 +72,7 @@ export const marketingApi = {
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
   integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
   saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
-  deleteIntegrationConfig: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; provider: IntegrationProvider }>(`/integrations/config/${provider}`, { method: 'DELETE' }),
+  deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
   syncIntegrations: (source: IntegrationProvider | 'all', days: number) => apiRequest<{ ok: boolean; results: unknown[] }>('/integrations/sync', { method: 'POST', body: JSON.stringify({ source, days }) }),
 };
