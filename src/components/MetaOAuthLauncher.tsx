@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Facebook, LoaderCircle, Settings2, X } from 'lucide-react';
 
@@ -126,7 +126,7 @@ export default function MetaOAuthLauncher() {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!card) return;
     card.classList.toggle('connection-card--oauth', !manualMode);
     return () => card.classList.remove('connection-card--oauth');
