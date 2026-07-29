@@ -1,15 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import AnalyticsApp from './AnalyticsApp';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
+import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
 import './auth.css';
 import './operations.css';
-import './integration-catalog.css?catalog=2';
+import './integration-catalog.css';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
@@ -17,7 +17,7 @@ function Root() {
   if (operatingSystem) {
     return <div className="operations-shell">
       <header className="operations-topbar">
-        <a href="/">AMANAT MED · Аналитика</a>
+        <a href="/">AMANAT MED · Маркетинг</a>
         <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
       </header>
       <main className="operations-content"><MarketingOS /></main>
@@ -25,7 +25,7 @@ function Root() {
   }
 
   return <>
-    <AnalyticsApp />
+    <MarketingPlatform />
     <MetaOAuthLauncher />
   </>;
 }
