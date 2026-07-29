@@ -52,7 +52,7 @@ function recommendation(row: RecordValue, settings: RecordValue) {
   return 'Отключить';
 }
 
-const metricFields = ['spend','revenue','impressions','reach','clicks','link_clicks','ads_leads','crm_leads','target_leads','in_work','rejected','appointments','arrived','deals_in_work','deals_rejected','sales'] as const;
+const metricFields = ['spend','revenue','ad_revenue','crm_revenue','impressions','reach','clicks','link_clicks','ads_leads','crm_leads','target_leads','in_work','rejected','appointments','arrived','deals_in_work','deals_rejected','sales'] as const;
 
 function emptyMetrics(): RecordValue {
   return Object.fromEntries(metricFields.map((field) => [field, 0]));
@@ -165,52 +165,69 @@ export async function handleAnalytics(request: Request, env: Env, url: URL): Pro
   const leafMap = new Map<string, RecordValue>();
   const datesByLeaf = new Map<string, Set<string>>();
 
-  const ensureLeaf = (raw: RecordValue) => {
+  const ensureLeaf = (raw: RecordValue, attributionLevel = 'ad') => {
     const id = identity(raw);
     const key = hierarchyKey('ad', id);
     const existing = leafMap.get(key);
     if (existing) return existing;
-    const row: RecordValue = { key, level: 'ad', parent_key: parentKey('ad', id), ...id, ...emptyMetrics(), active_days: 0 };
+    const row: RecordValue = { key, level: 'ad', parent_key: parentKey('ad', id), attribution_level: attributionLevel, ...id, ...emptyMetrics(), active_days: 0 };
     leafMap.set(key, row);
     return row;
   };
 
+  const adIdentityById = new Map<string, ReturnType<typeof identity>>();
+  const adsetIdentityById = new Map<string, ReturnType<typeof identity>>();
+  const campaignIdentityById = new Map<string, ReturnType<typeof identity>>();
+
   for (const ad of ads) {
-    const row = ensureLeaf(ad);
+    const row = ensureLeaf(ad, 'ad');
     addMetrics(row, {
-      spend: ad.spend, revenue: ad.revenue, impressions: ad.impressions, reach: ad.reach,
+      spend: ad.spend, ad_revenue: ad.revenue, impressions: ad.impressions, reach: ad.reach,
       clicks: ad.clicks, link_clicks: ad.link_clicks, ads_leads: ad.leads,
     });
+    const id = identity(ad);
+    if (id.ad_id) adIdentityById.set(id.ad_id, id);
+    if (id.adset_id && !adsetIdentityById.has(id.adset_id)) adsetIdentityById.set(id.adset_id, id);
+    if (id.campaign_id && !campaignIdentityById.has(id.campaign_id)) campaignIdentityById.set(id.campaign_id, id);
     const dates = datesByLeaf.get(text(row.key)) || new Set<string>();
     dates.add(text(ad.report_date));
     datesByLeaf.set(text(row.key), dates);
     row.active_days = dates.size;
   }
 
-  const adById = new Map<string, RecordValue>();
-  const adsetById = new Map<string, RecordValue>();
-  const campaignById = new Map<string, RecordValue>();
-  for (const row of leafMap.values()) {
-    if (text(row.ad_id)) adById.set(text(row.ad_id), row);
-    if (text(row.adset_id) && !adsetById.has(text(row.adset_id))) adsetById.set(text(row.adset_id), row);
-    if (text(row.campaign_id) && !campaignById.has(text(row.campaign_id))) campaignById.set(text(row.campaign_id), row);
-  }
-
   for (const lead of leads) {
-    const matched = (text(lead.ad_id) && adById.get(text(lead.ad_id)))
-      || (text(lead.adset_id) && adsetById.get(text(lead.adset_id)))
-      || (text(lead.campaign_id) && campaignById.get(text(lead.campaign_id)));
-    const row = matched || ensureLeaf(lead);
+    let merged: RecordValue = { ...lead };
+    let attributionLevel = 'unattributed';
+    const adMatch = text(lead.ad_id) ? adIdentityById.get(text(lead.ad_id)) : undefined;
+    const adsetMatch = text(lead.adset_id) ? adsetIdentityById.get(text(lead.adset_id)) : undefined;
+    const campaignMatch = text(lead.campaign_id) ? campaignIdentityById.get(text(lead.campaign_id)) : undefined;
+
+    if (adMatch) {
+      merged = { ...adMatch, ...lead, account_id: adMatch.account_id, account_name: adMatch.account_name, campaign_name: adMatch.campaign_name, adset_name: adMatch.adset_name, ad_name: adMatch.ad_name };
+      attributionLevel = 'ad';
+    } else if (adsetMatch) {
+      merged = { ...adsetMatch, ...lead, account_id: adsetMatch.account_id, account_name: adsetMatch.account_name, campaign_name: adsetMatch.campaign_name, adset_name: adsetMatch.adset_name, ad_id: '', ad_name: 'Без объявления · атрибуция по группе' };
+      attributionLevel = 'adset';
+    } else if (campaignMatch) {
+      merged = { ...campaignMatch, ...lead, account_id: campaignMatch.account_id, account_name: campaignMatch.account_name, campaign_name: campaignMatch.campaign_name, adset_id: '', adset_name: 'Без группы · атрибуция по кампании', ad_id: '', ad_name: 'Без объявления · атрибуция по кампании' };
+      attributionLevel = 'campaign';
+    }
+
+    const row = ensureLeaf(merged, attributionLevel);
     row.crm_leads = num(row.crm_leads) + 1;
     row.target_leads = num(row.target_leads) + (lead.is_target ? 1 : 0);
     row.appointments = num(row.appointments) + (lead.appointment_at ? 1 : 0);
     row.arrived = num(row.arrived) + (lead.arrived_at ? 1 : 0);
     row.sales = num(row.sales) + (lead.sold_at ? 1 : 0);
-    row.revenue = num(row.revenue) + num(lead.sale_amount);
+    row.crm_revenue = num(row.crm_revenue) + num(lead.sale_amount);
     row.rejected = num(row.rejected) + (lead.rejected_at ? 1 : 0);
     row.deals_in_work = num(row.deals_in_work) + (lead.deal_created_at && !lead.sold_at && !lead.deal_rejected_at ? 1 : 0);
     row.deals_rejected = num(row.deals_rejected) + (lead.deal_rejected_at ? 1 : 0);
     row.in_work = num(row.in_work) + (!lead.rejected_at && !lead.appointment_at && !lead.sold_at ? 1 : 0);
+  }
+
+  for (const leaf of leafMap.values()) {
+    leaf.revenue = num(leaf.crm_revenue) > 0 ? num(leaf.crm_revenue) : num(leaf.ad_revenue);
   }
 
   const hierarchyMap = new Map<string, RecordValue>();
@@ -233,13 +250,15 @@ export async function handleAnalytics(request: Request, env: Env, url: URL): Pro
       const target = ensureHierarchy(level, id);
       addMetrics(target, leaf);
       target.active_days = Math.max(num(target.active_days), num(leaf.active_days));
+      if (level === 'ad') target.attribution_level = leaf.attribution_level;
     }
   }
 
   const hierarchy = [...hierarchyMap.values()].map((row) => finalize(row, settings));
   const campaigns = hierarchy.filter((row) => row.level === 'campaign').sort((a, b) => num(b.revenue) - num(a.revenue));
   const platforms = hierarchy.filter((row) => row.level === 'platform').map((row) => ({
-    ...row, platform: row.label, campaigns: campaigns.filter((campaign) => campaign.parent_key && String(campaign.key).startsWith(`${row.key}|`)).length,
+    ...row, platform: row.label,
+    campaigns: campaigns.filter((campaign) => String(campaign.key).startsWith(`${row.key}|`)).length,
     leads: num(row.crm_leads), sale_rate: num(row.crm_leads) ? num(row.sales) * 100 / num(row.crm_leads) : 0,
   }));
 
