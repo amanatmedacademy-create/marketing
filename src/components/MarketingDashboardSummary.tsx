@@ -68,7 +68,7 @@ export default function MarketingDashboardSummary() {
         setLeads(leadRows);
         setAds(adRows);
         setCurrencies(currencyRows.accounts);
-        setRates({ KZT: 1, ...rateRows.rates });
+        setRates({ ...rateRows.rates, KZT: 1 });
         setError(null);
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
