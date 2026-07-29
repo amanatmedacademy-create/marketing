@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AnalyticsApp from './AnalyticsApp';
 import AuthGate from './components/AuthGate';
+import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
@@ -21,7 +22,10 @@ function Root() {
     </div>;
   }
 
-  return <AnalyticsApp />;
+  return <>
+    <AnalyticsApp />
+    <MetaOAuthLauncher />
+  </>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
