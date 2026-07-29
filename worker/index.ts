@@ -14,6 +14,7 @@ import {
   type IntegrationProvider,
 } from './credentials';
 import { detectAdvertisingCurrencies } from './adCurrencies';
+import { handleIntegrationLifecycle } from './integrationLifecycle';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -118,6 +119,8 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return new Response(null, { status: 204, headers: { ...corsHeaders(request, env), 'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization,x-admin-key,x-webhook-secret,x-hub-signature-256', 'access-control-max-age': '86400' } });
     try {
+      const lifecycleResponse = await handleIntegrationLifecycle(request, env, url);
+      if (lifecycleResponse) return lifecycleResponse;
       const credentialResponse = await handleCredentialRequest(request, env, url);
       if (credentialResponse) return credentialResponse;
       const runtimeEnv = await hydrateIntegrationEnv(env);
