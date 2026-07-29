@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronDown, ChevronRight, Filter, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
+import '../v36-dashboard.css';
 
 type Campaign={key:string;platform:string;source:string;campaign_id:string;campaign_name:string;utm_source:string;utm_medium:string;utm_campaign:string;spend:number;revenue:number;impressions:number;reach:number;clicks:number;ads_leads:number;crm_leads:number;target_leads:number;in_work:number;rejected:number;appointments:number;arrived:number;deals_in_work:number;deals_rejected:number;sales:number;roas:number;cpl:number;cpm:number;ctr:number;link_ctr:number;frequency:number;recommendation:string};
 type Platform={platform:string;campaigns:number;spend:number;revenue:number;leads:number;target_leads:number;arrived:number;sales:number;impressions:number;roas:number;sale_rate:number};
