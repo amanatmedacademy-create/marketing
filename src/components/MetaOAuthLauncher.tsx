@@ -142,7 +142,7 @@ export default function MetaOAuthLauncher() {
         .catch((error) => setMessage(error instanceof Error ? error.message : String(error)))
         .finally(() => setBusy(false));
     }, {
-      scope: 'ads_read,read_insights,business_management',
+      scope: 'ads_read,business_management',
       return_scopes: true,
     });
   };
