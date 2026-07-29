@@ -2,16 +2,21 @@ import app from './index';
 import { handleAnalytics } from './analytics';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { isFrontendAdmin } from './credentials';
+import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleOperationsRequest } from './operations';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
+type MainEnv = AuthEnv & MetaOAuthEnv;
+
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
     || pathname.startsWith('/api/integrations/config')
-    || pathname.startsWith('/api/integrations/test/');
+    || pathname.startsWith('/api/integrations/test/')
+    || pathname === '/api/integrations/meta/connect'
+    || pathname === '/api/integrations/meta/oauth-config';
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -24,11 +29,16 @@ function withTrustedIdentity(request: Request, role?: string, userId?: string): 
 }
 
 export default {
-  async fetch(request: Request, env: AuthEnv): Promise<Response> {
+  async fetch(request: Request, env: MainEnv): Promise<Response> {
     const url = new URL(request.url);
     let forwardedRequest = withTrustedIdentity(request);
 
     try {
+      if (url.pathname === '/api/integrations/meta/callback') {
+        const callbackResponse = await handleMetaOAuthRequest(request, env, url);
+        if (callbackResponse) return callbackResponse;
+      }
+
       const authResponse = await handleAuthRequest(request, env, url);
       if (authResponse) return authResponse;
 
@@ -49,6 +59,9 @@ export default {
         }
       }
 
+      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
+      if (metaOAuthResponse) return metaOAuthResponse;
+
       const analytics = await handleAnalytics(forwardedRequest, env, url);
       if (analytics) return analytics;
 
@@ -65,7 +78,7 @@ export default {
     return app.fetch(forwardedRequest, env);
   },
 
-  async scheduled(controller: WorkerScheduledController, env: AuthEnv, ctx: WorkerExecutionContext): Promise<void> {
+  async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
     await app.scheduled(controller, env, ctx);
   },
 };
