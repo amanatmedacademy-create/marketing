@@ -6,12 +6,13 @@ import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleOperationsRequest } from './operations';
+import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -21,7 +22,9 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config'
     || pathname === '/api/integrations/meta/sdk-config'
-    || pathname === '/api/integrations/meta/sdk-connect';
+    || pathname === '/api/integrations/meta/sdk-connect'
+    || pathname === '/api/integrations/waba/config'
+    || pathname === '/api/integrations/waba/connect';
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -64,9 +67,10 @@ export default {
         }
       }
 
-      // Strip any spoofed internal headers exactly once. Reconstructing the same
-      // POST Request twice consumes its body and causes "used body" failures.
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
+
+      const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, env, url);
+      if (wabaResponse) return wabaResponse;
 
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, env, url);
       if (metaSdkResponse) return metaSdkResponse;
