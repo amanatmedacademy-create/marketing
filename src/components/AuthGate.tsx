@@ -5,7 +5,6 @@ import {
   LineChart,
   LoaderCircle,
   LockKeyhole,
-  LogOut,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -37,16 +36,6 @@ function GoogleIcon() {
     <path fill="#FBBC05" d="M6.4 13.94A6 6 0 0 1 6.09 12c0-.67.12-1.32.31-1.94V7.43H3.07A10 10 0 0 0 2 12c0 1.61.39 3.14 1.07 4.57l3.33-2.63Z"/>
     <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.88A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.93 5.43l3.33 2.63C7.19 7.7 9.4 5.94 12 5.94Z"/>
   </svg>;
-}
-
-function roleLabel(role: string) {
-  const labels: Record<string, string> = {
-    administrator: 'Администратор',
-    marketer: 'Маркетолог',
-    analyst: 'Аналитик',
-    viewer: 'Наблюдатель',
-  };
-  return labels[role] || role;
 }
 
 export default function AuthGate({ children }: { children: ReactNode }) {
@@ -142,19 +131,16 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           <div className="auth-brand-mark"><LineChart size={24}/></div>
           <div><b>AMANAT MED</b><span>Marketing Intelligence</span></div>
         </div>
-
         <div className="auth-copy">
           <div className="auth-eyebrow"><Sparkles size={14}/>Сквозная рекламная аналитика</div>
           <h1>Маркетинг, CRM и продажи — в одном контуре</h1>
           <p>Контролируйте расходы, качество лидов, приходы, продажи и ROAS по каждому источнику и рекламной кампании.</p>
         </div>
-
         <div className="auth-benefits">
           <div><CheckCircle2 size={17}/><span>Рекламные кабинеты и Bitrix24</span></div>
           <div><CheckCircle2 size={17}/><span>Полная CRM-воронка до покупки</span></div>
           <div><CheckCircle2 size={17}/><span>Автоматические рекомендации по кампаниям</span></div>
         </div>
-
         <div className="auth-preview" aria-hidden="true">
           <header><span>Результаты за 7 дней</span><i>Live data</i></header>
           <div className="auth-preview-kpis">
@@ -167,26 +153,19 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           </div>
         </div>
       </section>
-
       <section className="auth-login-panel">
         <div className="auth-login-card">
           <div className="auth-login-icon"><ShieldCheck size={28}/></div>
           <span className="auth-login-product">AMANAT MED</span>
           <h2>Вход в систему</h2>
           <p>Используйте рабочий Google-аккаунт. При первом входе профиль будет зарегистрирован автоматически.</p>
-
           {error && <div className="auth-error" role="alert">{error}</div>}
-
           <button className="google-login" onClick={() => void signIn()} disabled={signingIn}>
             {signingIn ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
             <span>{signingIn ? 'Открываем Google…' : 'Продолжить через Google'}</span>
             {!signingIn && <ArrowRight size={17}/>} 
           </button>
-
-          {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>
-            Выйти и выбрать другой аккаунт
-          </button>}
-
+          {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
           <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся AMANAT MED.</span></div>
           <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
         </div>
@@ -195,12 +174,5 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     </div>
   </div>;
 
-  return <AuthContext.Provider value={context}>
-    <div className="auth-user-bar">
-      {user.avatarUrl ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer"/> : <span>{user.name.slice(0, 1).toUpperCase()}</span>}
-      <div><b>{user.name}</b><small>{roleLabel(user.role)}</small></div>
-      <button onClick={() => void signOut()} title="Выйти"><LogOut size={16}/></button>
-    </div>
-    {children}
-  </AuthContext.Provider>;
+  return <AuthContext.Provider value={context}>{children}</AuthContext.Provider>;
 }
