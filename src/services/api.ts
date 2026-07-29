@@ -76,6 +76,13 @@ export interface AdSummaryRow {
   date_to?: string | null;
 }
 
+export interface AdvertisingAccountCurrency {
+  platform: 'Meta' | 'TikTok';
+  account_id: string;
+  account_name: string | null;
+  currency: string;
+}
+
 export interface IntegrationRun {
   id: string;
   source: string;
@@ -164,6 +171,7 @@ export const marketingApi = {
 
   sources: () => apiRequest<SourceSummaryRow[]>('/sources'),
   ads: () => apiRequest<AdSummaryRow[]>('/ads'),
+  adCurrencies: () => apiRequest<{ accounts: AdvertisingAccountCurrency[] }>('/ads/currencies'),
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
   integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
   saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) =>
