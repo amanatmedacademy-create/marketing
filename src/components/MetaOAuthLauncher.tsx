@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Facebook, LoaderCircle, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Facebook, LoaderCircle } from 'lucide-react';
 
 interface SdkConfig {
   configured?: boolean;
@@ -23,7 +24,6 @@ interface FacebookLoginResponse {
 interface FacebookSdk {
   init(options: { appId: string; cookie: boolean; xfbml: boolean; version: string }): void;
   login(callback: (response: FacebookLoginResponse) => void, options?: { scope?: string; return_scopes?: boolean }): void;
-  getLoginStatus(callback: (response: FacebookLoginResponse) => void): void;
   AppEvents?: { logPageView(): void };
 }
 
@@ -62,8 +62,7 @@ async function loadFacebookSdk(config: SdkConfig): Promise<FacebookSdk> {
       resolve(target.FB);
     };
 
-    const existing = document.getElementById('facebook-jssdk');
-    if (existing) return;
+    if (document.getElementById('facebook-jssdk')) return;
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.async = true;
@@ -83,10 +82,24 @@ export default function MetaOAuthLauncher() {
   const [ready, setReady] = useState(false);
   const [sdk, setSdk] = useState<FacebookSdk | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [target, setTarget] = useState<Element | null>(null);
 
   useEffect(() => {
     if (!isIntegrationsRoute()) return;
     let cancelled = false;
+
+    const mountIntoCard = () => {
+      const card = document.querySelector('.connection-card--meta');
+      const actions = card?.querySelector('.connection-actions');
+      if (card && actions) {
+        card.classList.add('connection-card--oauth');
+        setTarget(actions);
+      }
+    };
+
+    mountIntoCard();
+    const observer = new MutationObserver(mountIntoCard);
+    observer.observe(document.body, { childList: true, subtree: true });
 
     const initialize = async () => {
       try {
@@ -105,10 +118,13 @@ export default function MetaOAuthLauncher() {
     };
 
     void initialize();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
   }, []);
 
-  if (!isIntegrationsRoute()) return null;
+  if (!isIntegrationsRoute() || !target) return null;
 
   const saveToken = async (accessToken: string) => {
     const response = await fetch('/api/integrations/meta/sdk-connect', {
@@ -120,7 +136,7 @@ export default function MetaOAuthLauncher() {
     if (!response.ok) throw new Error(parseError(body || `HTTP ${response.status}`));
     const result = JSON.parse(body) as { accounts?: number };
 
-    setMessage(`Meta подключена. Загружаем данные из ${result.accounts || 0} рекламных кабинетов…`);
+    setMessage(`Подключено кабинетов: ${result.accounts || 0}. Загружаем историю за 90 дней…`);
     const syncResponse = await fetch('/api/integrations/sync', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -132,18 +148,17 @@ export default function MetaOAuthLauncher() {
     const metaResult = syncResult.results?.[0];
     if (metaResult?.skipped || metaResult?.reason) throw new Error(metaResult.reason || 'Meta синхронизация пропущена');
 
-    setMessage(`Meta подключена. Загружено строк: ${metaResult?.written ?? metaResult?.fetched ?? 0}.`);
-    window.setTimeout(() => window.location.assign('/'), 1500);
+    setMessage(`Meta подключена. Записано строк: ${metaResult?.written ?? metaResult?.fetched ?? 0}.`);
+    window.setTimeout(() => window.location.reload(), 1200);
   };
 
-  const connect = async () => {
+  const connect = () => {
     if (!sdk) {
       setMessage('Facebook SDK ещё загружается');
       return;
     }
     setBusy(true);
     setMessage(null);
-
     sdk.login((response) => {
       const accessToken = response.authResponse?.accessToken;
       if (response.status !== 'connected' || !accessToken) {
@@ -154,48 +169,18 @@ export default function MetaOAuthLauncher() {
       void saveToken(accessToken)
         .catch((error) => setMessage(error instanceof Error ? error.message : String(error)))
         .finally(() => setBusy(false));
-    }, {
-      scope: 'ads_read,business_management',
-      return_scopes: true,
-    });
+    }, { scope: 'ads_read,business_management', return_scopes: true });
   };
 
-  return <div style={{
-    position: 'fixed',
-    right: 24,
-    bottom: 24,
-    zIndex: 10000,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    maxWidth: 560,
-    padding: 12,
-    borderRadius: 14,
-    background: '#111827',
-    boxShadow: '0 18px 48px rgba(0,0,0,.32)',
-    color: '#fff',
-  }}>
+  return createPortal(<>
     <button
       type="button"
-      onClick={() => void connect()}
+      className="connections-button connections-button--facebook"
+      onClick={connect}
       disabled={busy || !ready}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        border: 0,
-        borderRadius: 10,
-        padding: '10px 14px',
-        fontWeight: 700,
-        cursor: busy || !ready ? 'wait' : 'pointer',
-        opacity: ready ? 1 : 0.72,
-        background: '#1877f2',
-        color: '#fff',
-      }}
     >
-      {busy || !ready ? <LoaderCircle size={18} className="spin"/> : <Facebook size={18}/>} {ready ? 'Войти через Facebook' : 'Загружаем Facebook'}
+      {busy || !ready ? <LoaderCircle size={16} className="spin"/> : <Facebook size={16}/>} {busy ? 'Подключаем Meta…' : ready ? 'Подключить через Facebook' : 'Загружаем Facebook'}
     </button>
-    {message && <span style={{ fontSize: 13, lineHeight: 1.35 }}>{message}</span>}
-    {message && <button type="button" aria-label="Закрыть" onClick={() => setMessage(null)} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 4 }}><X size={16}/></button>}
-  </div>;
+    {message && <span className="meta-oauth-message">{message}</span>}
+  </>, target);
 }
