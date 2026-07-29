@@ -2,6 +2,7 @@ import app from './index';
 import { handleAnalytics } from './analytics';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { isFrontendAdmin } from './credentials';
+import { handleOperationsRequest } from './operations';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -50,6 +51,9 @@ export default {
 
       const analytics = await handleAnalytics(forwardedRequest, env, url);
       if (analytics) return analytics;
+
+      const operations = await handleOperationsRequest(forwardedRequest, env, url);
+      if (operations) return operations;
     } catch (error) {
       console.error(error);
       return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), {
