@@ -4,6 +4,7 @@ type JsonRecord = Record<string, unknown>;
 
 export type AuthEnv = Env & {
   SUPABASE_ANON_KEY?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
   AUTH_ALLOWED_EMAIL_DOMAINS?: string;
   AUTH_AUTO_APPROVE?: string;
 };
@@ -21,6 +22,10 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
 });
+
+function publicSupabaseKey(env: AuthEnv): string {
+  return (env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || '').trim();
+}
 
 const supabaseHeaders = (env: AuthEnv, extra: HeadersInit = {}): HeadersInit => ({
   apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -57,10 +62,11 @@ function domainAllowed(email: string, env: AuthEnv): boolean {
 
 async function fetchSupabaseUser(request: Request, env: AuthEnv): Promise<JsonRecord | null> {
   const token = bearerToken(request);
-  if (!token || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
+  const publicKey = publicSupabaseKey(env);
+  if (!token || !env.SUPABASE_URL || !publicKey) return null;
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
     headers: {
-      apikey: env.SUPABASE_ANON_KEY,
+      apikey: publicKey,
       authorization: `Bearer ${token}`,
     },
   });
@@ -146,10 +152,17 @@ export async function authenticateRequest(request: Request, env: AuthEnv): Promi
 
 export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL): Promise<Response | null> {
   if (url.pathname === '/api/auth/config' && request.method === 'GET') {
+    const publicKey = publicSupabaseKey(env);
+    const missing: string[] = [];
+    if (!env.SUPABASE_URL) missing.push('SUPABASE_URL');
+    if (!publicKey) missing.push('SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY');
+
     return json({
-      supabaseUrl: env.SUPABASE_URL,
-      supabaseAnonKey: env.SUPABASE_ANON_KEY || '',
-      googleEnabled: Boolean(env.SUPABASE_ANON_KEY),
+      supabaseUrl: env.SUPABASE_URL || '',
+      supabaseAnonKey: publicKey,
+      googleEnabled: missing.length === 0,
+      keySource: env.SUPABASE_PUBLISHABLE_KEY ? 'SUPABASE_PUBLISHABLE_KEY' : env.SUPABASE_ANON_KEY ? 'SUPABASE_ANON_KEY' : null,
+      missing,
     });
   }
 
