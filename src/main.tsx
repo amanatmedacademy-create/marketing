@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AnalyticsApp from './AnalyticsApp';
 import AuthGate from './components/AuthGate';
-import ExtendedDashboardMetrics from './components/ExtendedDashboardMetrics';
+import DashboardV36Overview from './components/DashboardV36Overview';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
@@ -25,7 +25,7 @@ function Root() {
 
   return <>
     <AnalyticsApp />
-    <ExtendedDashboardMetrics />
+    <DashboardV36Overview />
     <MetaOAuthLauncher />
   </>;
 }
