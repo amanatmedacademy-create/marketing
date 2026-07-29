@@ -9,7 +9,7 @@ import './analytics.css';
 import './dashboard-theme.css';
 import './auth.css';
 import './operations.css';
-import './integration-catalog.css';
+import './integration-catalog.css?catalog=2';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
