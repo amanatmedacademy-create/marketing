@@ -13,6 +13,7 @@ import {
   updateCredentialVerification,
   type IntegrationProvider,
 } from './credentials';
+import { detectAdvertisingCurrencies } from './adCurrencies';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -240,6 +241,10 @@ export default {
       if (url.pathname === '/api/dashboard') return handleDashboard(request, runtimeEnv, url);
       if (url.pathname === '/api/sources') return handleSources(request, runtimeEnv);
       if (url.pathname === '/api/ads') return handleAds(request, runtimeEnv);
+      if (url.pathname === '/api/ads/currencies' && request.method === 'GET') {
+        const accounts = await detectAdvertisingCurrencies(runtimeEnv);
+        return json({ accounts }, 200, corsHeaders(request, runtimeEnv));
+      }
 
       if (url.pathname.startsWith('/api/')) {
         return json({ error: 'API route not found' }, 404, corsHeaders(request, runtimeEnv));
