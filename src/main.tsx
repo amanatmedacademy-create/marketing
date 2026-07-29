@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
+import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
@@ -27,6 +28,7 @@ function Root() {
 
   return <>
     <MarketingPlatform />
+    <AnalyticsTableColorizer />
     <MetaOAuthLauncher />
   </>;
 }
