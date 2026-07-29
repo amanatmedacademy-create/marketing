@@ -11,6 +11,12 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from './AuthGate';
+import {
+  DISPLAY_CURRENCIES,
+  readDisplayCurrency,
+  saveDisplayCurrency,
+  type DisplayCurrency,
+} from '../currency';
 import '../user-workspace.css';
 
 type Tab = 'profile' | 'security' | 'notifications' | 'access' | 'users';
@@ -33,6 +39,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>(mode === 'settings' ? 'users' : 'profile');
   const [saved, setSaved] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(() => readDisplayCurrency());
   const [notifications, setNotifications] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem('imds-marketing-notifications') || '{}'); } catch { return {}; }
   });
@@ -52,6 +59,11 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
     window.setTimeout(() => setSaved(false), 1800);
   };
 
+  const changeCurrency = (currency: DisplayCurrency) => {
+    setDisplayCurrency(currency);
+    saveDisplayCurrency(currency);
+  };
+
   return <div className="user-workspace-layer" role="dialog" aria-modal="true">
     <button className="user-workspace-overlay" type="button" aria-label="Закрыть" onClick={onClose}/>
     <section className={`user-workspace user-workspace--${mode}`}>
@@ -66,7 +78,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
           <button className="user-workspace-signout" type="button" onClick={() => void signOut()}><LogOut size={16}/>Выйти из системы</button>
         </aside>
         <main>
-          {tab === 'profile' && <section><h3>Личные данные</h3><p>Информация, отображаемая в IMDS Marketing.</p><div className="profile-card"><div className="user-workspace-avatar user-workspace-avatar--large">{initials}</div><div><strong>{user.name || 'Администратор'}</strong><span>{user.role === 'administrator' ? 'Полный доступ' : user.role}</span></div></div><div className="profile-grid"><label><span>Имя</span><input value={user.name || ''} readOnly/></label><label><span>Должность</span><input value={user.role === 'administrator' ? 'Администратор' : user.role} readOnly/></label><label className="profile-grid-full"><span>Email</span><input value={user.email || ''} readOnly/></label></div></section>}
+          {tab === 'profile' && <section><h3>Личные данные</h3><p>Информация, отображаемая в IMDS Marketing.</p><div className="profile-card"><div className="user-workspace-avatar user-workspace-avatar--large">{initials}</div><div><strong>{user.name || 'Администратор'}</strong><span>{user.role === 'administrator' ? 'Полный доступ' : user.role}</span></div></div><div className="profile-grid"><label><span>Имя</span><input value={user.name || ''} readOnly/></label><label><span>Должность</span><input value={user.role === 'administrator' ? 'Администратор' : user.role} readOnly/></label><label className="profile-grid-full"><span>Email</span><input value={user.email || ''} readOnly/></label><label className="profile-grid-full"><span>Валюта отображения</span><select value={displayCurrency} onChange={(event) => changeCurrency(event.target.value as DisplayCurrency)}>{DISPLAY_CURRENCIES.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label} ({item.region})</option>)}</select><small>Все финансовые показатели дашборда будут пересчитаны в выбранную валюту по актуальному курсу.</small></label></div></section>}
           {tab === 'security' && <section><h3>Безопасность</h3><p>Управление паролем и активными сессиями.</p><div className="workspace-card"><h4>Смена пароля</h4><label><span>Текущий пароль</span><div className="password-field"><input type="password" placeholder="••••••••"/><Eye size={15}/></div></label><label><span>Новый пароль</span><div className="password-field"><input type="password" placeholder="••••••••"/><Eye size={15}/></div></label><label><span>Повтор нового пароля</span><div className="password-field"><input type="password" placeholder="••••••••"/><Eye size={15}/></div></label><button type="button" disabled>Смена пароля через Google</button></div><div className="workspace-card"><h4>Активные сессии</h4><div className="session-row"><div><strong>Текущая сессия</strong><span>Chrome · защищённый вход Google</span></div><em>Текущая</em></div></div></section>}
           {tab === 'notifications' && <section><h3>Уведомления</h3><p>Настройте события, о которых должна сообщать система.</p><div className="notification-list">{notificationItems.map(([id, title, text]) => <label key={id}><div><strong>{title}</strong><span>{text}</span></div><input type="checkbox" checked={notifications[id] ?? id !== 'lead'} onChange={(event) => setNotifications((previous) => ({ ...previous, [id]: event.target.checked }))}/><i/></label>)}</div><button className="workspace-primary" type="button" onClick={saveNotifications}>{saved ? 'Сохранено' : 'Сохранить настройки'}</button></section>}
           {tab === 'access' && <section><h3>Мой доступ</h3><p>Разрешения текущей роли.</p><div className="access-list">{['Аналитика и Dashboard', 'Рекламные кабинеты', 'Лиды и воронка', 'Настройки интеграций', 'Журнал и аудит', 'Управление пользователями'].map((item) => <div key={item}><span>{item}</span><em>✓ Разрешено</em></div>)}</div></section>}
