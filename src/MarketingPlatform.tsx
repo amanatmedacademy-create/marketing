@@ -33,6 +33,7 @@ import {
   type MarketingLead,
 } from './services/api';
 import './marketing-platform.css';
+import './journal.css';
 
 type LoadState<T> = { data: T; loading: boolean; error: string | null };
 type JournalTab = 'logs' | 'sync' | 'audit' | 'errors' | 'system';
