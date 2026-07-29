@@ -1,5 +1,6 @@
 type ChatProxyEnv = {
   IMDS_MIS_API_URL?: string;
+  IMDS_INTERNAL_SERVICE_TOKEN?: string;
 };
 
 const DEFAULT_MIS_API_URL = 'https://misv0001-b.amanat-med-academy.workers.dev/api';
@@ -30,16 +31,23 @@ export async function handleChatProxy(request: Request, env: ChatProxyEnv, url: 
   const mappedPath = targetPath(url.pathname);
   if (!mappedPath) return null;
 
+  const serviceToken = env.IMDS_INTERNAL_SERVICE_TOKEN?.trim();
+  if (!serviceToken) {
+    return json({
+      error: 'Не настроен внутренний доступ к IMDS Chat',
+      code: 'IMDS_SERVICE_AUTH_NOT_CONFIGURED',
+    }, 503);
+  }
+
   const base = (env.IMDS_MIS_API_URL || DEFAULT_MIS_API_URL).replace(/\/+$/, '');
   const target = new URL(`${base}${mappedPath}`);
   target.search = url.search;
 
-  const headers = new Headers();
-  const authorization = request.headers.get('authorization');
-  const cookie = request.headers.get('cookie');
-  if (authorization) headers.set('authorization', authorization);
-  if (cookie) headers.set('cookie', cookie);
-  headers.set('accept', 'application/json');
+  const headers = new Headers({
+    accept: 'application/json',
+    'x-imds-service-token': serviceToken,
+    'x-imds-service-name': 'amanat-marketing',
+  });
 
   let body: BodyInit | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
