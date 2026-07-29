@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Cable, CheckCircle2, KeyRound, LoaderCircle, Play, Save, Trash2, XCircle } from 'lucide-react';
+import { Cable, CheckCircle2, LoaderCircle, Play, Save, ShieldAlert, Trash2, XCircle } from 'lucide-react';
+import { useAuth } from './AuthGate';
 import {
   marketingApi,
   type IntegrationConfigResponse,
-  type IntegrationCredentialSummary,
   type IntegrationProvider,
   type IntegrationStatus,
 } from '../services/api';
@@ -86,51 +86,41 @@ function errorText(error: unknown): string {
 }
 
 export default function IntegrationManager() {
+  const { user } = useAuth();
+  const isAdmin = user.role === 'administrator';
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [configs, setConfigs] = useState<IntegrationConfigResponse>({ providers: [] });
   const [forms, setForms] = useState<FormState>(emptyForms);
-  const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem('marketing-admin-key') || '');
-  const [unlocked, setUnlocked] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
   const configMap = useMemo(() => new Map(configs.providers.map((item) => [item.provider, item])), [configs.providers]);
 
-  const loadStatus = async () => setStatus(await marketingApi.integrationStatus());
-
-  const loadConfigs = async (key: string) => {
-    const result = await marketingApi.integrationConfigs(key);
+  const applyConfigs = (result: IntegrationConfigResponse) => {
     setConfigs(result);
     setForms((previous) => {
       const next = { ...previous } as FormState;
       for (const config of result.providers) next[config.provider] = { ...previous[config.provider], ...config.values };
       return next;
     });
-    setUnlocked(true);
-    sessionStorage.setItem('marketing-admin-key', key);
   };
 
-  useEffect(() => {
-    loadStatus().catch((error) => setMessage({ type: 'error', text: errorText(error) }));
-    if (adminKey) loadConfigs(adminKey).catch(() => {
-      sessionStorage.removeItem('marketing-admin-key');
-      setUnlocked(false);
-    });
-  }, []);
-
-  const unlock = async () => {
-    setBusy('unlock');
+  const load = async () => {
+    setLoading(true);
     setMessage(null);
     try {
-      await loadConfigs(adminKey);
-      setMessage({ type: 'ok', text: 'Панель подключения открыта.' });
+      const currentStatus = await marketingApi.integrationStatus();
+      setStatus(currentStatus);
+      if (isAdmin) applyConfigs(await marketingApi.integrationConfigs());
     } catch (error) {
-      setUnlocked(false);
       setMessage({ type: 'error', text: errorText(error) });
     } finally {
-      setBusy(null);
+      setLoading(false);
     }
   };
+
+  useEffect(() => { void load(); }, [isAdmin]);
 
   const updateField = (provider: IntegrationProvider, field: string, value: string) => {
     setForms((previous) => ({ ...previous, [provider]: { ...previous[provider], [field]: value } }));
@@ -145,18 +135,20 @@ export default function IntegrationManager() {
       const payload = { ...forms[definition.provider] };
       const missing = definition.fields.filter((field) => field.required && !payload[field.name] && !current?.secretFields[field.name]);
       if (missing.length) throw new Error(`Заполните: ${missing.map((field) => field.label).join(', ')}`);
-      for (const field of definition.fields) {
-        if (field.secret && !payload[field.name] && current?.secretFields[field.name]) {
-          throw new Error(`Для изменения подключения повторно вставьте секрет: ${field.label}`);
-        }
-      }
-      await marketingApi.saveIntegrationConfig(definition.provider, payload, adminKey);
-      await marketingApi.testIntegration(definition.provider, adminKey);
-      await Promise.all([loadConfigs(adminKey), loadStatus()]);
-      setForms((previous) => ({ ...previous, [definition.provider]: { ...previous[definition.provider], ...Object.fromEntries(definition.fields.filter((field) => field.secret).map((field) => [field.name, ''])) } }));
+      await marketingApi.saveIntegrationConfig(definition.provider, payload);
+      await marketingApi.testIntegration(definition.provider);
+      const [nextConfigs, nextStatus] = await Promise.all([marketingApi.integrationConfigs(), marketingApi.integrationStatus()]);
+      applyConfigs(nextConfigs);
+      setStatus(nextStatus);
+      setForms((previous) => ({
+        ...previous,
+        [definition.provider]: {
+          ...previous[definition.provider],
+          ...Object.fromEntries(definition.fields.filter((field) => field.secret).map((field) => [field.name, ''])),
+        },
+      }));
       setMessage({ type: 'ok', text: `${definition.title}: подключение сохранено и проверено.` });
     } catch (error) {
-      await loadConfigs(adminKey).catch(() => undefined);
       setMessage({ type: 'error', text: errorText(error) });
     } finally {
       setBusy(null);
@@ -167,9 +159,11 @@ export default function IntegrationManager() {
     setBusy(`delete:${provider}`);
     setMessage(null);
     try {
-      await marketingApi.deleteIntegrationConfig(provider, adminKey);
+      await marketingApi.deleteIntegrationConfig(provider);
       setForms((previous) => ({ ...previous, [provider]: {} }));
-      await Promise.all([loadConfigs(adminKey), loadStatus()]);
+      const [nextConfigs, nextStatus] = await Promise.all([marketingApi.integrationConfigs(), marketingApi.integrationStatus()]);
+      applyConfigs(nextConfigs);
+      setStatus(nextStatus);
       setMessage({ type: 'ok', text: 'Интеграция отключена.' });
     } catch (error) {
       setMessage({ type: 'error', text: errorText(error) });
@@ -182,8 +176,8 @@ export default function IntegrationManager() {
     setBusy(`sync:${source}`);
     setMessage(null);
     try {
-      await marketingApi.syncIntegrations(source, days, adminKey);
-      await loadStatus();
+      await marketingApi.syncIntegrations(source, days);
+      setStatus(await marketingApi.integrationStatus());
       setMessage({ type: 'ok', text: source === 'all' ? `Импорт за ${days} дней завершён.` : `${source}: синхронизация завершена.` });
     } catch (error) {
       setMessage({ type: 'error', text: errorText(error) });
@@ -192,22 +186,20 @@ export default function IntegrationManager() {
     }
   };
 
+  if (!isAdmin) return <section className="panel integration-unlock">
+    <div className="integration-unlock__icon"><ShieldAlert size={24}/></div>
+    <div><h2>Недостаточно прав</h2><p className="note">Подключать и изменять интеграции может только пользователь с ролью «Администратор».</p></div>
+  </section>;
+
   return <div className="stack">
     <div className="integration-heading">
-      <div className="heading"><span>Data connections</span><h1>Подключение интеграций</h1><p>Реквизиты вводятся через интерфейс, шифруются в Cloudflare Worker и не возвращаются в браузер.</p></div>
-      {unlocked && <button className="button button--primary" onClick={() => sync('all', 90)} disabled={Boolean(busy)}><Play size={16}/>{busy === 'sync:all' ? 'Синхронизация…' : 'Загрузить 90 дней'}</button>}
+      <div className="heading"><span>Data connections</span><h1>Подключение интеграций</h1><p>Реквизиты шифруются в Cloudflare Worker и не возвращаются в браузер.</p></div>
+      <button className="button button--primary" onClick={() => void sync('all', 90)} disabled={Boolean(busy) || loading}><Play size={16}/>{busy === 'sync:all' ? 'Синхронизация…' : 'Загрузить 90 дней'}</button>
     </div>
 
     {message && <div className={`alert alert--${message.type}`}>{message.type === 'ok' ? <CheckCircle2 size={18}/> : <XCircle size={18}/>}<span>{message.text}</span></div>}
 
-    {!unlocked && <section className="panel integration-unlock">
-      <div className="integration-unlock__icon"><KeyRound size={24}/></div>
-      <div><h2>Административный доступ</h2><p className="note">Введите FRONTEND_ADMIN_KEY. Ключ хранится только в текущей вкладке браузера.</p></div>
-      <input type="password" value={adminKey} onChange={(event) => setAdminKey(event.target.value)} placeholder="Административный ключ" onKeyDown={(event) => { if (event.key === 'Enter') unlock(); }}/>
-      <button className="button button--primary" onClick={unlock} disabled={!adminKey || busy === 'unlock'}>{busy === 'unlock' ? <LoaderCircle className="spin" size={16}/> : <KeyRound size={16}/>}Открыть</button>
-    </section>}
-
-    {unlocked && <>
+    {loading ? <section className="panel integration-unlock"><LoaderCircle className="spin" size={24}/><div><h2>Загружаем подключения</h2><p className="note">Проверяем сохранённые реквизиты и статусы синхронизации.</p></div></section> : <>
       <div className="integration-grid">
         {definitions.map((definition) => {
           const config = configMap.get(definition.provider);
@@ -234,9 +226,9 @@ export default function IntegrationManager() {
             <footer>
               <small>Проверено: {dateTime(config?.lastVerifiedAt)}</small>
               <div>
-                {config && <button className="button button--danger" onClick={() => disconnect(definition.provider)} disabled={Boolean(busy)}><Trash2 size={15}/>Отключить</button>}
-                <button className="button" onClick={() => sync(definition.provider, 7)} disabled={!config || Boolean(busy)}><Play size={15}/>7 дней</button>
-                <button className="button button--primary" onClick={() => saveAndTest(definition)} disabled={Boolean(busy)}>{busy === `save:${definition.provider}` ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>}Сохранить и проверить</button>
+                {config && <button className="button button--danger" onClick={() => void disconnect(definition.provider)} disabled={Boolean(busy)}><Trash2 size={15}/>Отключить</button>}
+                <button className="button" onClick={() => void sync(definition.provider, 7)} disabled={!config || Boolean(busy)}><Play size={15}/>7 дней</button>
+                <button className="button button--primary" onClick={() => void saveAndTest(definition)} disabled={Boolean(busy)}>{busy === `save:${definition.provider}` ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>}Сохранить и проверить</button>
               </div>
             </footer>
           </section>;
