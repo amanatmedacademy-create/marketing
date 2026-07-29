@@ -36,7 +36,7 @@ function withTrustedIdentity(request: Request, role?: string, userId?: string): 
 export default {
   async fetch(request: Request, env: MainEnv): Promise<Response> {
     const url = new URL(request.url);
-    let forwardedRequest = withTrustedIdentity(request);
+    let forwardedRequest = request;
 
     try {
       if (url.pathname === '/api/integrations/meta/callback') {
@@ -63,6 +63,10 @@ export default {
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
+
+      // Strip any spoofed internal headers exactly once. Reconstructing the same
+      // POST Request twice consumes its body and causes "used body" failures.
+      if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
 
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, env, url);
       if (metaSdkResponse) return metaSdkResponse;
