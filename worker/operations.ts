@@ -27,7 +27,7 @@ const headers = (env: Env, extra: HeadersInit = {}): HeadersInit => ({
   ...extra,
 });
 
-async function request(env: Env, path: string, init: RequestInit = {}) {
+async function supabaseRequest(env: Env, path: string, init: RequestInit = {}) {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'Supabase is not configured' }, 503);
   return fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { ...init, headers: headers(env, init.headers) });
 }
@@ -41,7 +41,7 @@ async function proxy(response: Response) {
 }
 
 async function logActivity(env: Env, eventType: string, message: string, entityType?: string, entityId?: string) {
-  await request(env, 'marketing_activity_log', {
+  await supabaseRequest(env, 'marketing_activity_log', {
     method: 'POST',
     headers: { prefer: 'return=minimal' },
     body: JSON.stringify({ event_type: eventType, message, entity_type: entityType || null, entity_id: entityId || null }),
@@ -64,7 +64,7 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
 
   if (request.method === 'POST' && !id) {
     const payload = (await request.json()) as JsonRecord;
-    const response = await request(env, resource.table, {
+    const response = await supabaseRequest(env, resource.table, {
       method: 'POST',
       headers: { prefer: 'return=representation' },
       body: JSON.stringify(payload),
@@ -75,7 +75,7 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
 
   if (request.method === 'PATCH' && id) {
     const payload = (await request.json()) as JsonRecord;
-    const response = await request(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
+    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=representation' },
       body: JSON.stringify({ ...payload, updated_at: new Date().toISOString() }),
@@ -85,7 +85,7 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
   }
 
   if (request.method === 'DELETE' && id) {
-    const response = await request(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
+    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: { prefer: 'return=representation' },
     });
@@ -98,5 +98,5 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
 
 function requestSupabaseList(env: Env, resource: Resource, limit: number) {
   const params = new URLSearchParams({ select: '*', order: resource.order, limit: String(limit) });
-  return request(env, `${resource.table}?${params.toString()}`);
+  return supabaseRequest(env, `${resource.table}?${params.toString()}`);
 }
