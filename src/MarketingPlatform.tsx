@@ -20,11 +20,11 @@ import {
   UsersRound,
   Workflow,
 } from 'lucide-react';
+import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import IntegrationManager from './components/IntegrationManager';
 import MarketingChatBox from './components/MarketingChatBox';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
-import V36Dashboard from './components/V36Dashboard';
 import {
   AttributionPage,
   MarketingArchitecturePage,
@@ -161,7 +161,7 @@ function Shell() {
         <Route path="/pipeline" element={<SalesPipelinePage/>}/>
         <Route path="/advertising" element={<AdvertisingPage/>}/>
         <Route path="/attribution" element={<AttributionPage/>}/>
-        <Route path="/analytics" element={<V36Dashboard/>}/>
+        <Route path="/analytics" element={<AnalyticsWorkspace/>}/>
         <Route path="/integrations" element={<IntegrationManager/>}/>
         <Route path="/journal" element={<JournalPage/>}/>
         <Route path="/sync-journal" element={<JournalPage/>}/>
