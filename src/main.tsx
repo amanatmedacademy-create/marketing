@@ -2,12 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AnalyticsApp from './AnalyticsApp';
 import AuthGate from './components/AuthGate';
-import DashboardV36Overview from './components/DashboardV36Overview';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
-import './dashboard-v36.css';
 import './auth.css';
 import './operations.css';
 
@@ -26,7 +24,6 @@ function Root() {
 
   return <>
     <AnalyticsApp />
-    <DashboardV36Overview />
     <MetaOAuthLauncher />
   </>;
 }
