@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAdManager } from './adManager';
 import { handleAnalytics } from './analytics';
+import { handleBitrixOAuth } from './bitrixOAuth';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
@@ -18,12 +19,17 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & {
+  BITRIX_CLIENT_ID?: string;
+  BITRIX_CLIENT_SECRET?: string;
+  INTEGRATION_ENCRYPTION_KEY?: string;
+};
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
     || pathname.startsWith('/api/integrations/config')
     || pathname.startsWith('/api/integrations/test/')
+    || pathname === '/api/integrations/bitrix/oauth/start'
     || pathname === '/api/integrations/meta/start'
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config'
@@ -51,6 +57,11 @@ export default {
     let forwardedRequest = request;
 
     try {
+      if (url.pathname === '/api/integrations/bitrix/oauth/callback' || url.pathname.startsWith('/api/integrations/bitrix/oauth/proxy/')) {
+        const bitrixResponse = await handleBitrixOAuth(request, env, url);
+        if (bitrixResponse) return bitrixResponse;
+      }
+
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url);
         if (callbackResponse) return callbackResponse;
@@ -76,6 +87,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const bitrixResponse = await handleBitrixOAuth(forwardedRequest, runtimeEnv, url);
+      if (bitrixResponse) return bitrixResponse;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
