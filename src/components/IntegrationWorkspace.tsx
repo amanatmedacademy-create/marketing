@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -12,6 +11,8 @@ import {
   DatabaseZap,
   Facebook,
   LoaderCircle,
+  LogIn,
+  LogOut,
   Play,
   RefreshCw,
   Save,
@@ -30,6 +31,7 @@ import {
   type IntegrationProvider,
   type IntegrationRun,
   type IntegrationStatus,
+  type TikTokLoginStatus,
 } from '../services/api';
 import '../integrations.css';
 
@@ -79,8 +81,8 @@ const definitions: ProviderDefinition[] = [
     provider: 'tiktok', title: 'TikTok Ads', mark: 'TT', group: 'ADVERTISING', tone: 'tiktok',
     description: 'Рекламная статистика, кампании, объявления и лиды TikTok.',
     capabilities: ['Расход и показы', 'Кампании', 'Lead Generation'],
-    steps: ['Создайте приложение TikTok for Business.', 'Получите Marketing API access token.', 'Укажите Advertiser ID и проверьте подключение.'],
-    webhookPath: '/api/webhooks/tiktok',
+    steps: ['Для демонстрации Login Kit нажмите «Войти через TikTok».', 'Для рекламных данных создайте приложение TikTok for Business.', 'После одобрения подключите Advertiser ID и Marketing API token.'],
+    webhookPath: '/api/integrations/tiktok/webhook',
     fields: [
       { name: 'accessToken', label: 'Access token', placeholder: 'TikTok Business API token', secret: true, required: true },
       { name: 'advertiserIds', label: 'Advertiser IDs', placeholder: '123456789,987654321', required: true },
@@ -150,6 +152,7 @@ export default function IntegrationWorkspace() {
   const isAdmin = user.role === 'administrator';
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [configs, setConfigs] = useState<IntegrationConfigResponse>({ providers: [] });
+  const [tiktokLogin, setTikTokLogin] = useState<TikTokLoginStatus>({ connected: false, profile: null });
   const [forms, setForms] = useState<FormState>(emptyForms);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -179,15 +182,31 @@ export default function IntegrationWorkspace() {
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [currentStatus, currentConfigs] = await Promise.all([marketingApi.integrationStatus(), isAdmin ? marketingApi.integrationConfigs() : Promise.resolve({ providers: [] })]);
-      setStatus(currentStatus); applyConfigs(currentConfigs);
+      const [currentStatus, currentConfigs, loginStatus] = await Promise.all([
+        marketingApi.integrationStatus(),
+        isAdmin ? marketingApi.integrationConfigs() : Promise.resolve({ providers: [] }),
+        marketingApi.tiktokLoginStatus().catch(() => ({ connected: false, profile: null })),
+      ]);
+      setStatus(currentStatus); applyConfigs(currentConfigs); setTikTokLogin(loginStatus);
     } catch (error) { setMessage({ type: 'error', text: errorText(error) }); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void load(); }, [isAdmin]);
+  useEffect(() => {
+    void load();
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('tiktok_login');
+    if (result === 'connected') setMessage({ type: 'ok', text: 'TikTok Login Kit: вход выполнен.' });
+    if (result === 'error') setMessage({ type: 'error', text: `TikTok Login Kit: ${params.get('reason') || 'ошибка авторизации'}` });
+  }, [isAdmin]);
 
   const updateField = (provider: IntegrationProvider, field: string, value: string) => setForms((previous) => ({ ...previous, [provider]: { ...previous[provider], [field]: value } }));
   const refresh = async () => { setBusy('refresh'); setMessage(null); await load(true); setBusy(null); };
+  const disconnectTikTokLogin = async () => {
+    setBusy('tiktok-login-disconnect');
+    try { await marketingApi.disconnectTikTokLogin(); setTikTokLogin({ connected: false, profile: null }); setMessage({ type: 'ok', text: 'TikTok Login Kit отключён.' }); }
+    catch (error) { setMessage({ type: 'error', text: errorText(error) }); }
+    finally { setBusy(null); }
+  };
   const saveAndTest = async (definition: ProviderDefinition) => {
     setBusy(`save:${definition.provider}`); setMessage(null);
     try {
@@ -273,7 +292,14 @@ export default function IntegrationWorkspace() {
           <div className="integration-modal-body">
             <main>
               {definition.provider === 'meta' && <section className="meta-fast-connect"><Facebook size={22}/><div><strong>Быстрое подключение через Facebook</strong><small>Войдите в Facebook — рекламные кабинеты определятся автоматически.</small></div></section>}
-              <div className="connection-setup__head"><div><h3>{definition.provider === 'meta' ? 'Ручные и резервные настройки' : 'Реквизиты подключения'}</h3><p>Сохранённые секреты не возвращаются в браузер.</p></div><div className="connection-last-check"><ShieldCheck size={15}/><span>Проверено: {dateTime(config?.lastVerifiedAt)}</span></div></div>
+              {definition.provider === 'tiktok' && <section className="meta-fast-connect">
+                {tiktokLogin.profile?.avatarUrl ? <img src={tiktokLogin.profile.avatarUrl} alt="TikTok avatar" width={42} height={42} style={{ borderRadius: '50%' }}/> : <LogIn size={22}/>} 
+                <div><strong>{tiktokLogin.connected ? `TikTok: ${tiktokLogin.profile?.displayName || 'подключено'}` : 'Вход через TikTok Login Kit'}</strong><small>{tiktokLogin.connected ? 'Профиль user.info.basic получен. Этот экран можно показать в demo video.' : 'Откроется официальный экран TikTok и вернёт имя и аватар пользователя.'}</small></div>
+                {tiktokLogin.connected
+                  ? <button className="connections-button" type="button" onClick={() => void disconnectTikTokLogin()} disabled={Boolean(busy)}><LogOut size={15}/> Выйти</button>
+                  : <button className="connections-button connections-button--primary" type="button" onClick={() => marketingApi.startTikTokLogin()}><LogIn size={15}/> Войти через TikTok</button>}
+              </section>}
+              <div className="connection-setup__head"><div><h3>{definition.provider === 'meta' ? 'Ручные и резервные настройки' : definition.provider === 'tiktok' ? 'TikTok Ads — отдельные реквизиты' : 'Реквизиты подключения'}</h3><p>Сохранённые секреты не возвращаются в браузер.</p></div><div className="connection-last-check"><ShieldCheck size={15}/><span>Проверено: {dateTime(config?.lastVerifiedAt)}</span></div></div>
               <div className="connection-fields">{primaryFields.map((field) => <label key={field.name}><span>{field.label}{field.required && <b> *</b>}</span><input type={field.secret ? 'password' : 'text'} value={forms[definition.provider][field.name] || ''} onChange={(event) => updateField(definition.provider, field.name, event.target.value)} placeholder={field.secret && config?.secretFields[field.name] ? 'Секрет уже сохранён' : field.placeholder} autoComplete="off"/>{field.helper && <small>{field.helper}</small>}</label>)}</div>
               {advancedFields.length > 0 && <div className="connection-advanced"><button type="button" onClick={() => setAdvanced((previous) => ({ ...previous, [definition.provider]: !previous[definition.provider] }))}>{advanced[definition.provider] ? <ChevronUp size={15}/> : <ChevronDown size={15}/>} Дополнительные настройки</button>{advanced[definition.provider] && <div className="connection-fields">{advancedFields.map((field) => <label key={field.name}><span>{field.label}</span><input type={field.secret ? 'password' : 'text'} value={forms[definition.provider][field.name] || ''} onChange={(event) => updateField(definition.provider, field.name, event.target.value)} placeholder={field.secret && config?.secretFields[field.name] ? 'Секрет уже сохранён' : field.placeholder}/></label>)}</div>}</div>}
               {config?.lastError && <div className="connection-error"><XCircle size={16}/><div><strong>Ошибка последней проверки</strong><span>{config.lastError}</span></div></div>}
