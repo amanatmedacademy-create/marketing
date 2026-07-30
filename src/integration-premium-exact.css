@@ -1,17 +1,44 @@
 /* Exact premium card proportions in dark mode. */
-.connections-page .integration-catalog-grid{
-  display:grid!important;
-  grid-template-columns:repeat(4,minmax(0,1fr))!important;
-  gap:20px!important;
-  align-items:stretch!important;
-  grid-auto-rows:1fr!important;
-}
+.connections-page .integration-catalog-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:20px!important;align-items:stretch!important;grid-auto-rows:1fr!important}
+.connections-page .integration-catalog-card{box-sizing:border-box!important;position:relative!important;display:flex!important;flex-direction:column!important;gap:0!important;width:100%!important;height:214px!important;min-height:214px!important;max-height:214px!important;padding:18px!important;overflow:hidden!important;border:1px solid #203552!important;border-radius:14px!important;background:linear-gradient(180deg,#0d1728 0%,#0a1423 100%)!important;color:#f8fafc!important;box-shadow:0 10px 30px rgba(0,0,0,.22)!important;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease!important}
+.connections-page .integration-catalog-card:hover{transform:translateY(-2px)!important;border-color:#3b82f6!important;box-shadow:0 16px 36px rgba(0,0,0,.3)!important}
+.connections-page .integration-card-top{min-height:46px!important;display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:12px!important}
+.connections-page .integration-card-logo{width:46px!important;height:46px!important;flex:0 0 46px!important;border:1px solid #28405f!important;border-radius:11px!important;background:#13243d!important;color:#c9defd!important;box-shadow:0 4px 12px rgba(0,0,0,.16)!important;font-size:15px!important}
+.connections-page .integration-tone-meta .integration-card-logo{background:#102e63!important;color:#8fc2ff!important;border-color:#244e91!important}
+.connections-page .integration-tone-tiktok .integration-card-logo{background:#050505!important;color:#fff!important;border-color:#202938!important}
+.connections-page .integration-tone-bitrix .integration-card-logo{background:#123a7b!important;color:#8fd0ff!important;border-color:#235ca7!important}
+.connections-page .integration-tone-waba .integration-card-logo{background:#0d4d36!important;color:#5ef0a0!important;border-color:#156b4b!important}
+.connections-page .integration-card-top em{padding:5px 9px!important;border-radius:999px!important;background:#162234!important;color:#94a3b8!important;font-size:11px!important;font-weight:700!important}
+.connections-page .integration-state-connected .integration-card-top em{background:#10341f!important;color:#4ade80!important}
+.connections-page .integration-state-error .integration-card-top em{background:#3b1620!important;color:#fb7185!important}
+.connections-page .integration-state-configured .integration-card-top em{background:#3a2b10!important;color:#fbbf24!important}
+.connections-page .integration-state-planned .integration-card-top em{background:#202b3b!important;color:#a8b3c4!important}
+.connections-page .integration-platform-heading{margin-top:-46px!important;margin-left:58px!important;min-height:46px!important;padding-right:72px!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;gap:3px!important}
+.connections-page .integration-platform-heading>strong,.connections-page .integration-catalog-card>strong{margin:0!important;color:#f8fafc!important;font-size:16px!important;font-weight:800!important;line-height:1.2!important}
+.connections-page .integration-platform-heading>span{display:none!important}
+.connections-page .integration-catalog-card>p{display:block!important;overflow:hidden!important;color:#8a9ab1!important;font-size:12px!important;line-height:17px!important;text-overflow:ellipsis!important}
+.connections-page .integration-card-tags,.connections-page .integration-connect-method{display:none!important}
+.connections-page .integration-premium-metrics{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;min-height:46px!important;max-height:46px!important;margin:15px 0 14px!important;padding-top:13px!important;border-top:1px solid #22324a!important}
+.connections-page .integration-premium-metrics span{display:block!important;margin-bottom:3px!important;color:#7f8da3!important;font-size:11px!important}
+.connections-page .integration-premium-metrics strong{color:#f8fafc!important;font-size:16px!important;font-weight:800!important}
+.connections-page .integration-premium-metrics strong.is-positive{color:#4ade80!important}
+.connections-page .integration-premium-actions{display:grid!important;grid-template-columns:42px minmax(0,1fr) 28px!important;gap:10px!important;align-items:center!important;margin-top:0!important}
+.connections-page .integration-premium-actions button{height:38px!important;min-height:38px!important;margin:0!important;border-radius:8px!important;cursor:pointer!important;font-weight:700!important}
+.connections-page .integration-premium-icon,.connections-page .integration-premium-arrow{border:1px solid #2a3a55!important;background:#101b2d!important;color:#c5d0df!important}
+.connections-page .integration-premium-icon:hover,.connections-page .integration-premium-arrow:hover{background:#15243a!important}
+.connections-page .integration-premium-primary{border:0!important;background:linear-gradient(180deg,#1d6fff,#1457df)!important;color:#fff!important}
+.connections-page .integration-premium-primary:hover{filter:brightness(.98)!important}
 
-.connections-page .integration-catalog-card{
-  box-sizing:border-box!important;
-  width:100%!important;
-  height:205px!important;
-  min-height:205px!important;
-  max-height:205px!important;
-  padding:18px!important;
-  overflow:hidden
+/* Connected cards use a legacy DOM. Pin each block so nothing can overflow. */
+.connections-page .integration-catalog-card.integration-premium-card{display:block!important;gap:0!important;background:linear-gradient(180deg,#0d1728 0%,#0a1423 100%)!important;color:#f8fafc!important}
+.connections-page .integration-catalog-card.integration-premium-card>.integration-card-top{position:absolute!important;top:18px!important;left:18px!important;right:18px!important;height:46px!important;min-height:46px!important}
+.connections-page .integration-catalog-card.integration-premium-card>strong{position:absolute!important;top:25px!important;left:76px!important;right:92px!important;min-height:20px!important;max-height:20px!important;overflow:hidden!important;white-space:nowrap!important;text-overflow:ellipsis!important}
+.connections-page .integration-catalog-card.integration-premium-card>p{position:absolute!important;top:53px!important;left:76px!important;right:18px!important;min-height:34px!important;max-height:34px!important;margin:0!important;display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;white-space:normal!important}
+.connections-page .integration-catalog-card.integration-premium-card>.integration-premium-metrics{position:absolute!important;top:95px!important;left:18px!important;right:18px!important;width:auto!important;height:48px!important;min-height:48px!important;max-height:48px!important;margin:0!important;padding-top:11px!important}
+.connections-page .integration-catalog-card.integration-premium-card>.integration-premium-actions{position:absolute!important;left:18px!important;right:18px!important;bottom:16px!important;height:38px!important}
+
+.connections-page .integration-state-planned{justify-content:flex-start!important}
+.connections-page .integration-state-planned>button{height:38px!important;min-height:38px!important;margin-top:auto!important;border:1px solid #263750!important;border-radius:8px!important;background:#121d2e!important;color:#8d9aad!important}
+@media(max-width:1280px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:980px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:680px){.connections-page .integration-catalog-grid{grid-template-columns:1fr!important}.connections-page .integration-catalog-card{height:222px!important;min-height:222px!important;max-height:222px!important}}
