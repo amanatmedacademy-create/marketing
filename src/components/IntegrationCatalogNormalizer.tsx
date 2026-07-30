@@ -7,17 +7,34 @@ const SECTION_ORDER = [
   'Автоматизация и API',
 ] as const;
 
+const REQUIRED_WORKING_CARDS = new Map([
+  ['meta ads', 'meta'],
+  ['tiktok ads', 'tiktok'],
+  ['bitrix24', 'bitrix24'],
+]);
+
 function sectionTitle(section: Element): string {
   const title = section.querySelector('h2')?.textContent?.trim() || '';
   return title === 'Телефония' ? 'Коммуникации и телефония' : title;
 }
 
 function cardTitle(card: HTMLElement): string {
-  return (
+  const explicit = (
     card.querySelector('.integration-platform-heading > strong')?.textContent ||
     card.querySelector(':scope > strong')?.textContent ||
+    card.querySelector('h3')?.textContent ||
+    card.querySelector('h4')?.textContent ||
     ''
   ).trim().toLowerCase();
+
+  if (explicit) return explicit;
+
+  const text = card.textContent?.toLowerCase() || '';
+  for (const title of REQUIRED_WORKING_CARDS.keys()) {
+    if (text.includes(title)) return title;
+  }
+
+  return '';
 }
 
 function cardIdentity(card: HTMLElement): string {
@@ -34,26 +51,34 @@ function isWorkingCard(card: HTMLElement): boolean {
 
 function cloneWorkingCard(sourceCard: HTMLElement): HTMLElement {
   const clone = sourceCard.cloneNode(true) as HTMLElement;
+  const title = cardTitle(sourceCard);
+  const platform = REQUIRED_WORKING_CARDS.get(title);
+
   clone.dataset.migratedWorkingCard = 'true';
+  if (platform) clone.dataset.platform = platform;
 
-  const sourceButton = sourceCard.querySelector<HTMLButtonElement>('button');
-  const cloneButton = clone.querySelector<HTMLButtonElement>('button');
+  const sourceButtons = Array.from(sourceCard.querySelectorAll<HTMLButtonElement>('button'));
+  const cloneButtons = Array.from(clone.querySelectorAll<HTMLButtonElement>('button'));
 
-  if (cloneButton && sourceButton) {
+  cloneButtons.forEach((cloneButton, index) => {
+    const sourceButton = sourceButtons[index];
+    if (!sourceButton) return;
+
     cloneButton.disabled = sourceButton.disabled;
     cloneButton.addEventListener('click', (event) => {
       event.preventDefault();
       sourceButton.click();
     });
-  }
+  });
 
   return clone;
 }
 
 function replacePlannedWithWorking(targetGrid: HTMLElement, sourceCard: HTMLElement) {
-  const identity = cardIdentity(sourceCard);
-  if (!identity) return;
+  const title = cardTitle(sourceCard);
+  if (!REQUIRED_WORKING_CARDS.has(title)) return;
 
+  const identity = `title:${title}`;
   const existingCards = Array.from(targetGrid.querySelectorAll<HTMLElement>(':scope > .integration-catalog-card'));
   const existingWorking = existingCards.find(
     (card) => cardIdentity(card) === identity && isWorkingCard(card),
@@ -132,7 +157,7 @@ function normalizeCatalog(): boolean {
 
       legacy.dataset.legacyCatalogSection = 'true';
       legacy.hidden = true;
-      legacy.style.display = 'none';
+      legacy.style.setProperty('display', 'none', 'important');
     }
 
     deduplicateCards(primary);
@@ -140,7 +165,13 @@ function normalizeCatalog(): boolean {
   }
 
   for (const section of normalized) page.appendChild(section);
-  return true;
+
+  const newAdvertising = grouped.get('Рекламные кабинеты')?.find((section) => section.dataset.catalogExpanded === 'true');
+  const newCrm = grouped.get('CRM')?.find((section) => section.dataset.catalogExpanded === 'true');
+  const advertisingText = newAdvertising?.textContent?.toLowerCase() || '';
+  const crmText = newCrm?.textContent?.toLowerCase() || '';
+
+  return advertisingText.includes('meta ads') && advertisingText.includes('tiktok ads') && crmText.includes('bitrix24');
 }
 
 export default function IntegrationCatalogNormalizer() {
@@ -148,11 +179,16 @@ export default function IntegrationCatalogNormalizer() {
     if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return;
 
     let attempts = 0;
+    let stablePasses = 0;
     let timer: number | undefined;
 
     const run = () => {
-      if (normalizeCatalog()) return;
-      if (attempts++ < 80) timer = window.setTimeout(run, 100);
+      const complete = normalizeCatalog();
+      if (complete) stablePasses += 1;
+      else stablePasses = 0;
+
+      if (stablePasses >= 5 || attempts++ >= 100) return;
+      timer = window.setTimeout(run, 150);
     };
 
     run();
