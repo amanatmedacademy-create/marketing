@@ -12,18 +12,20 @@ import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaStatusSync } from './metaStatusSync';
 import { handleOperationsRequest } from './operations';
+import { handleTikTokOAuth, type TikTokOAuthEnv } from './tiktokOAuth';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & TikTokOAuthEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
     || pathname.startsWith('/api/integrations/config')
     || pathname.startsWith('/api/integrations/test/')
+    || pathname === '/api/integrations/tiktok/oauth/start'
     || pathname === '/api/integrations/meta/start'
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config'
@@ -51,6 +53,11 @@ export default {
     let forwardedRequest = request;
 
     try {
+      if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
+        const callbackResponse = await handleTikTokOAuth(request, env, url);
+        if (callbackResponse) return callbackResponse;
+      }
+
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url);
         if (callbackResponse) return callbackResponse;
@@ -76,6 +83,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const tiktokOAuthResponse = await handleTikTokOAuth(forwardedRequest, runtimeEnv, url);
+      if (tiktokOAuthResponse) return tiktokOAuthResponse;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
