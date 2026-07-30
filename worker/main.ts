@@ -18,6 +18,8 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
+const TIKTOK_VERIFICATION_PATH = '/tiktok6AQJh4oppaU12M1PXnEw5CkEu9zCofPk.txt';
+const TIKTOK_VERIFICATION_BODY = 'tiktok-developers-site-verification=6AQJh4oppaU12M1PXnEw5CkEu9zCofPk';
 
 type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & TikTokOAuthEnv;
 
@@ -53,6 +55,16 @@ export default {
     let forwardedRequest = request;
 
     try {
+      if (url.pathname === TIKTOK_VERIFICATION_PATH) {
+        return new Response(TIKTOK_VERIFICATION_BODY, {
+          status: 200,
+          headers: {
+            'content-type': 'text/plain; charset=utf-8',
+            'cache-control': 'public, max-age=300',
+          },
+        });
+      }
+
       if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
         const callbackResponse = await handleTikTokOAuth(request, env, url);
         if (callbackResponse) return callbackResponse;
