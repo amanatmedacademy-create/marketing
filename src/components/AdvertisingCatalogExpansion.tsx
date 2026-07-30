@@ -39,6 +39,11 @@ const crm: CatalogPlatform[] = [
 ];
 
 const communications: CatalogPlatform[] = [
+  { id:'whatsapp-cloud', title:'WhatsApp Business Cloud API', description:'Сообщения, шаблоны, медиа и статусы доставки WhatsApp.', capabilities:['Сообщения','Шаблоны','Webhooks'], tone:'whatsapp', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/whatsapp/25D366', fallback:'WA', connectMethod:'Meta OAuth + access token' },
+  { id:'telegram-bot', title:'Telegram Bot API', description:'Боты, уведомления, команды и автоматические ответы.', capabilities:['Боты','Сообщения','Webhook'], tone:'telegram', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/telegram/26A5E4', fallback:'TB', connectMethod:'Bot token + webhook' },
+  { id:'wazzup', title:'Wazzup', description:'WhatsApp и Telegram для CRM и отделов продаж.', capabilities:['WhatsApp','Telegram','CRM'], tone:'wazzup', priority:'Высокий', logoUrl:'https://wazzup24.com/favicon.ico', fallback:'W', connectMethod:'API key + webhook' },
+  { id:'chat2desk', title:'Chat2Desk', description:'Единое окно для WhatsApp, Telegram и операторов.', capabilities:['Омниканал','Операторы','Webhooks'], tone:'chat2desk', priority:'Высокий', logoUrl:'https://chat2desk.com/favicon.ico', fallback:'C2', connectMethod:'API token + webhook' },
+  { id:'sendpulse', title:'SendPulse', description:'Чат-боты, WhatsApp, email, SMS и автоматические цепочки.', capabilities:['Чат-боты','Email','SMS'], tone:'sendpulse', priority:'Высокий', logoUrl:'https://sendpulse.com/favicon.ico', fallback:'SP', connectMethod:'OAuth 2.0 / API credentials' },
   { id:'zadarma', title:'Zadarma', description:'Облачная АТС, номера, записи и события.', capabilities:['АТС','Записи','Webhooks'], tone:'zadarma', priority:'Критический', logoUrl:'https://zadarma.com/favicon.ico', fallback:'Z', connectMethod:'API key + secret' },
   { id:'asterisk', title:'Asterisk', description:'Локальная IP-АТС с полным контролем звонков.', capabilities:['AMI','ARI','CDR'], tone:'asterisk', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/asterisk/F68F1E', fallback:'A', connectMethod:'AMI / ARI' },
   { id:'freepbx', title:'FreePBX', description:'Управление Asterisk, SIP и маршрутизация.', capabilities:['Asterisk','SIP','CDR'], tone:'freepbx', priority:'Высокий', logoUrl:'https://www.freepbx.org/favicon.ico', fallback:'FP', connectMethod:'AMI / CDR' },
@@ -54,6 +59,14 @@ const communications: CatalogPlatform[] = [
   { id:'kazakhtelecom', title:'Казахтелеком SIP', description:'Корпоративные SIP-линии для АТС.', capabilities:['SIP trunk','Входящие','Исходящие'], tone:'kazakhtelecom', priority:'Высокий', logoUrl:'https://telecom.kz/favicon.ico', fallback:'KT', connectMethod:'SIP credentials' },
   { id:'beeline-business', title:'Beeline Business SIP', description:'Корпоративная SIP-телефония.', capabilities:['SIP trunk','Номера','Маршрутизация'], tone:'beeline', priority:'Высокий', logoUrl:'https://cdn.simpleicons.org/beeline/FFC800', fallback:'B', connectMethod:'SIP credentials' },
   { id:'kcell-business', title:'Kcell Business SIP', description:'Корпоративная мобильная и SIP-телефония.', capabilities:['SIP','Мобильная связь','Номера'], tone:'kcell', priority:'Средний', logoUrl:'https://www.kcell.kz/favicon.ico', fallback:'K', connectMethod:'SIP / ручная настройка' },
+];
+
+const automation: CatalogPlatform[] = [
+  { id:'albato', title:'Albato', description:'No-code интеграции и встроенный конструктор автоматизаций.', capabilities:['Embedded','Apps','Webhooks'], tone:'albato', priority:'Высокий', logoUrl:'https://albato.com/favicon.ico', fallback:'A', connectMethod:'OAuth 2.0 / API token' },
+  { id:'apix-drive', title:'ApiX-Drive', description:'Связка CRM, рекламы, мессенджеров и таблиц без кода.', capabilities:['No-code','Коннекторы','Сценарии'], tone:'apix', priority:'Высокий', logoUrl:'https://apix-drive.com/favicon.ico', fallback:'AX', connectMethod:'API / готовый коннектор' },
+  { id:'make', title:'Make', description:'Визуальные сценарии, webhooks и тысячи готовых приложений.', capabilities:['Сценарии','Webhooks','Apps'], tone:'make', priority:'Высокий', logoUrl:'https://cdn.simpleicons.org/make/6D00CC', fallback:'M', connectMethod:'OAuth 2.0 / API token' },
+  { id:'google-sheets', title:'Google Sheets', description:'Чтение, запись и синхронизация таблиц и диапазонов.', capabilities:['Таблицы','Импорт','Экспорт'], tone:'sheets', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/googlesheets/34A853', fallback:'GS', connectMethod:'Google OAuth 2.0' },
+  { id:'webhooks', title:'Webhooks', description:'Универсальный приём и отправка событий между системами.', capabilities:['Incoming','Outgoing','JSON'], tone:'webhooks', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/webhook/2088FF', fallback:'WH', connectMethod:'URL + shared secret' },
 ];
 
 function ensureSection(page: Element, title: string, description: string, before?: Element | null) {
@@ -91,7 +104,7 @@ function PlatformCard({ platform }: { platform: CatalogPlatform }) {
 }
 
 export default function AdvertisingCatalogExpansion() {
-  const [targets, setTargets] = useState<{ads: Element|null; crm: Element|null; communications: Element|null}>({ads:null,crm:null,communications:null});
+  const [targets, setTargets] = useState<{ads: Element|null; crm: Element|null; communications: Element|null; automation: Element|null}>({ads:null,crm:null,communications:null,automation:null});
   useEffect(() => {
     const locate = () => {
       if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return;
@@ -101,8 +114,10 @@ export default function AdvertisingCatalogExpansion() {
       const byTitle = (title:string) => sections.find((section) => section.querySelector('h2')?.textContent?.trim() === title);
       const ads = byTitle('Рекламные кабинеты')?.querySelector('.integration-catalog-grid') || null;
       const crmTarget = byTitle('CRM')?.querySelector('.integration-catalog-grid') || null;
-      const communicationsTarget = ensureSection(page, 'Коммуникации и телефония', 'Мессенджеры, облачные и локальные АТС, SIP, записи и коллтрекинг', byTitle('Автоматизация и API'));
-      setTargets({ads, crm:crmTarget, communications:communicationsTarget});
+      const automationSection = byTitle('Автоматизация и API');
+      const communicationsTarget = ensureSection(page, 'Коммуникации и телефония', 'Мессенджеры, облачные и локальные АТС, SIP, записи и коллтрекинг', automationSection);
+      const automationTarget = automationSection?.querySelector('.integration-catalog-grid') || ensureSection(page, 'Автоматизация и API', 'No-code платформы, таблицы, webhooks и обмен данными');
+      setTargets({ads, crm:crmTarget, communications:communicationsTarget, automation:automationTarget});
     };
     locate();
     const observer = new MutationObserver(locate);
@@ -114,5 +129,6 @@ export default function AdvertisingCatalogExpansion() {
     {targets.ads && createPortal(advertising.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.ads)}
     {targets.crm && createPortal(crm.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.crm)}
     {targets.communications && createPortal(communications.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.communications)}
+    {targets.automation && createPortal(automation.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.automation)}
   </>;
 }
