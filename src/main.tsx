@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
+import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
+import TelephonySectionDeduplicator from './components/TelephonySectionDeduplicator';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
@@ -11,6 +13,7 @@ import './dashboard-theme.css';
 import './auth.css';
 import './operations.css';
 import './integration-catalog.css';
+import './advertising-platform-cards.css';
 import './v36-dashboard-advanced.css';
 
 function Root() {
@@ -30,6 +33,8 @@ function Root() {
     <MarketingPlatform />
     <AnalyticsTableColorizer />
     <MetaOAuthLauncher />
+    <AdvertisingCatalogExpansion />
+    <TelephonySectionDeduplicator />
   </>;
 }
 
