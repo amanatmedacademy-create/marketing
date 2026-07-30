@@ -4,7 +4,7 @@
 
 .integration-catalog-card {
   display: flex;
-  min-height: 292px;
+  min-height: 330px;
   flex-direction: column;
   gap: 12px;
   overflow: hidden;
@@ -77,6 +77,34 @@
   background: color-mix(in srgb, var(--platform-accent, #0a1426) 7%, #0a1426);
 }
 
+.integration-connect-method {
+  display: grid;
+  gap: 3px;
+  min-height: 45px;
+  padding: 9px 11px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--platform-accent, #334155) 24%, #253652);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--platform-accent, #0b172b) 6%, #0b172b);
+}
+
+.integration-connect-method span {
+  color: #71839f;
+  font-size: .57rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.integration-connect-method strong {
+  overflow: hidden;
+  color: #c7d4e7;
+  font-size: .68rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .integration-catalog-card > button {
   width: 100%;
   min-height: 42px;
@@ -115,25 +143,47 @@
 .integration-tone-meta { --platform-accent: #0866ff; }
 .integration-tone-tiktok { --platform-accent: #ff3158; }
 .integration-tone-google { --platform-accent: #4285f4; }
-.integration-tone-yandex { --platform-accent: #ffcc00; }
+.integration-tone-yandex { --platform-accent: #ff0000; }
 .integration-tone-telegram { --platform-accent: #26a5e4; }
 .integration-tone-twogis { --platform-accent: #5dc62f; }
 .integration-tone-vk { --platform-accent: #0077ff; }
 .integration-tone-bitrix { --platform-accent: #2fc6f6; }
 .integration-tone-n8n { --platform-accent: #ea4b71; }
+.integration-tone-kommo { --platform-accent: #5f4dee; }
+.integration-tone-onec { --platform-accent: #e31e24; }
+.integration-tone-retailcrm { --platform-accent: #22b573; }
+.integration-tone-megaplan { --platform-accent: #ff7a00; }
+.integration-tone-planfix { --platform-accent: #2f80ed; }
+.integration-tone-creatio { --platform-accent: #7c3aed; }
+.integration-tone-elma { --platform-accent: #e64046; }
+.integration-tone-hubspot { --platform-accent: #ff7a59; }
+.integration-tone-salesforce { --platform-accent: #00a1e0; }
+.integration-tone-zadarma { --platform-accent: #ff8a00; }
+.integration-tone-asterisk { --platform-accent: #f68f1e; }
+.integration-tone-freepbx { --platform-accent: #ef7d00; }
+.integration-tone-onlinepbx { --platform-accent: #6c63ff; }
+.integration-tone-uis { --platform-accent: #00a8e8; }
+.integration-tone-novofon { --platform-accent: #32b67a; }
+.integration-tone-sipuni { --platform-accent: #f15a24; }
+.integration-tone-mango { --platform-accent: #f28c00; }
+.integration-tone-binotel { --platform-accent: #6c3cff; }
+.integration-tone-telphin { --platform-accent: #eb5b25; }
+.integration-tone-voximplant { --platform-accent: #662d91; }
+.integration-tone-infobip { --platform-accent: #ff5a00; }
+.integration-tone-kazakhtelecom { --platform-accent: #00a0df; }
+.integration-tone-beeline { --platform-accent: #ffc800; }
+.integration-tone-kcell { --platform-accent: #7b2cbf; }
 
-.integration-tone-yandex .integration-card-logo {
-  background: #fff;
-}
-
+.integration-tone-yandex .integration-card-logo,
 .integration-tone-twogis .integration-card-logo,
-.integration-tone-bitrix .integration-card-logo {
+.integration-tone-bitrix .integration-card-logo,
+.integration-tone-beeline .integration-card-logo {
   background: #fff;
 }
 
 @media (max-width: 760px) {
   .integration-catalog-card {
-    min-height: 270px;
+    min-height: 310px;
   }
 
   .integration-platform-heading {
@@ -143,5 +193,9 @@
 
   .integration-platform-heading > span {
     align-self: flex-start;
+  }
+
+  .integration-connect-method strong {
+    white-space: normal;
   }
 }
