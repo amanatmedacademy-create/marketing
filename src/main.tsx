@@ -11,6 +11,7 @@ import './dashboard-theme.css';
 import './auth.css';
 import './operations.css';
 import './integration-catalog.css';
+import './meta-integration-card.css';
 import './v36-dashboard-advanced.css';
 
 function Root() {
