@@ -3,7 +3,7 @@ import { handleAdManager } from './adManager';
 import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
-import { isFrontendAdmin } from './credentials';
+import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
@@ -72,29 +72,32 @@ export default {
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
+      const runtimeEnv = await hydrateIntegrationEnv(env);
 
-      const chatResponse = await handleMarketingChat(forwardedRequest, env, url);
+      const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
-      const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, env, url);
+      const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
       if (wabaResponse) return wabaResponse;
-      const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, env, url);
+      const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url);
       if (metaSdkResponse) return metaSdkResponse;
-      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, env, url);
+      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
-      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
+      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url);
       if (metaOAuthResponse) return metaOAuthResponse;
-      const metaReach = await handleMetaReachSync(forwardedRequest, env, url);
+      const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url);
       if (metaReach) return metaReach;
-      const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, env, url);
+      const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url);
       if (metaAdsets) return metaAdsets;
-      const adManager = await handleAdManager(forwardedRequest, env, url);
+      const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url);
       if (adManager) return adManager;
-      const conversionMatrix = await handleConversionMatrix(forwardedRequest, env, url);
+      const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
       if (conversionMatrix) return conversionMatrix;
-      const analytics = await handleAnalytics(forwardedRequest, env, url);
+      const analytics = await handleAnalytics(forwardedRequest, runtimeEnv, url);
       if (analytics) return analytics;
-      const operations = await handleOperationsRequest(forwardedRequest, env, url);
+      const operations = await handleOperationsRequest(forwardedRequest, runtimeEnv, url);
       if (operations) return operations;
+
+      return app.fetch(forwardedRequest, runtimeEnv);
     } catch (error) {
       console.error(error);
       return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), {
@@ -102,8 +105,6 @@ export default {
         headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
       });
     }
-
-    return app.fetch(forwardedRequest, env);
   },
 
   async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
