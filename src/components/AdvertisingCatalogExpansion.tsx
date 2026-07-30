@@ -11,6 +11,12 @@ interface PlannedPlatform {
   logoUrl: string;
 }
 
+const yandexLogo = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Yandex">
+  <rect width="48" height="48" rx="12" fill="#ffffff"/>
+  <path d="M27.6 38V25.2L37 8h-7.3l-5.5 11.1L18.8 8H11l9.5 17.4V38h7.1Z" fill="#FF0000"/>
+</svg>`)} `;
+
 const brandLogos: Record<string, { url: string; alt: string }> = {
   'Meta Ads': { url: 'https://cdn.simpleicons.org/meta/0866FF', alt: 'Meta' },
   'TikTok Ads': { url: 'https://cdn.simpleicons.org/tiktok/FFFFFF', alt: 'TikTok' },
@@ -35,7 +41,7 @@ const platforms: PlannedPlatform[] = [
     capabilities: ['Поиск', 'РСЯ', 'Конверсии'],
     tone: 'yandex',
     priority: 'Высокий',
-    logoUrl: 'https://yastatic.net/s3/home-static/_/i/favicon-32x32.png',
+    logoUrl: yandexLogo.trim(),
   },
   {
     id: 'telegram',
