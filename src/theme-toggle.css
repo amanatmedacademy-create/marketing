@@ -4,6 +4,19 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --bg-primary: #f4f7fb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #edf3fa;
+  --surface: #ffffff;
+  --surface-hover: #f8fbff;
+  --text-primary: #172033;
+  --text-secondary: #52627a;
+  --text-muted: #7b8aa0;
+  --border: #dce5f0;
+  --border-strong: #c9d6e6;
+  --accent: #2563eb;
+  --accent-soft: #eaf2ff;
+  --shadow: 0 12px 34px rgba(26, 44, 76, .08);
 }
 
 .imds-theme-slot {
@@ -75,6 +88,7 @@
   font-weight: 700;
 }
 
+:root[data-theme="light"] html,
 :root[data-theme="light"] body,
 :root[data-theme="light"] #root,
 :root[data-theme="light"] .app-shell,
@@ -84,16 +98,16 @@
 :root[data-theme="light"] .page-content,
 :root[data-theme="light"] .operations-content,
 :root[data-theme="light"] main {
-  background: #f4f7fb !important;
-  color: #172033 !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
 }
 
 :root[data-theme="light"] .app-sidebar,
 :root[data-theme="light"] .sidebar,
 :root[data-theme="light"] .marketing-sidebar {
-  background: #fff !important;
-  color: #172033 !important;
-  border-color: #dbe4f0 !important;
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
 }
 
 :root[data-theme="light"] .app-sidebar a,
@@ -107,18 +121,20 @@
 
 :root[data-theme="light"] .app-sidebar .active,
 :root[data-theme="light"] .sidebar .active,
-:root[data-theme="light"] .marketing-sidebar .active {
-  background: #eaf2ff !important;
+:root[data-theme="light"] .marketing-sidebar .active,
+:root[data-theme="light"] [class*="nav"] .active {
+  background: var(--accent-soft) !important;
   color: #1458d6 !important;
 }
 
 :root[data-theme="light"] .topbar,
 :root[data-theme="light"] .app-header,
 :root[data-theme="light"] .marketing-topbar,
-:root[data-theme="light"] .operations-topbar {
-  border-color: #dbe4f0 !important;
+:root[data-theme="light"] .operations-topbar,
+:root[data-theme="light"] header[role="banner"] {
+  border-color: var(--border) !important;
   background: rgba(255, 255, 255, .96) !important;
-  color: #172033 !important;
+  color: var(--text-primary) !important;
   box-shadow: 0 8px 24px rgba(26, 44, 76, .06) !important;
 }
 
@@ -133,26 +149,27 @@
   color: #263750 !important;
 }
 
-:root[data-theme="light"] .connections-hero h1,
-:root[data-theme="light"] .connections-section__head h2,
-:root[data-theme="light"] .integration-catalog-card strong,
-:root[data-theme="light"] .integration-platform-heading > strong,
 :root[data-theme="light"] h1,
 :root[data-theme="light"] h2,
 :root[data-theme="light"] h3,
-:root[data-theme="light"] h4 {
-  color: #172033 !important;
+:root[data-theme="light"] h4,
+:root[data-theme="light"] h5,
+:root[data-theme="light"] h6,
+:root[data-theme="light"] strong,
+:root[data-theme="light"] label,
+:root[data-theme="light"] legend {
+  color: var(--text-primary) !important;
 }
 
-:root[data-theme="light"] .connections-hero p,
-:root[data-theme="light"] .connections-section__head p,
-:root[data-theme="light"] .integration-catalog-card > p,
 :root[data-theme="light"] p,
 :root[data-theme="light"] small,
 :root[data-theme="light"] .muted,
 :root[data-theme="light"] [class*="subtitle"],
-:root[data-theme="light"] [class*="description"] {
-  color: #65738a !important;
+:root[data-theme="light"] [class*="description"],
+:root[data-theme="light"] [class*="caption"],
+:root[data-theme="light"] [class*="helper"],
+:root[data-theme="light"] [class*="secondary"] {
+  color: var(--text-secondary) !important;
 }
 
 :root[data-theme="light"] .connections-summary article,
@@ -165,12 +182,37 @@
 :root[data-theme="light"] .card,
 :root[data-theme="light"] .panel,
 :root[data-theme="light"] .widget,
-:root[data-theme="light"] article,
-:root[data-theme="light"] section[class*="card"],
-:root[data-theme="light"] div[class*="card"] {
-  border-color: #dce5f0 !important;
-  background-color: #fff !important;
-  box-shadow: 0 12px 34px rgba(26, 44, 76, .08) !important;
+:root[data-theme="light"] [class*="-card"],
+:root[data-theme="light"] [class*="_card"],
+:root[data-theme="light"] [class*="widget"],
+:root[data-theme="light"] [class*="panel"],
+:root[data-theme="light"] [class*="kpi"],
+:root[data-theme="light"] [class*="metric"],
+:root[data-theme="light"] [class*="summary"],
+:root[data-theme="light"] [class*="stat"],
+:root[data-theme="light"] [class*="chart"],
+:root[data-theme="light"] [class*="graph"],
+:root[data-theme="light"] [class*="kanban-column"],
+:root[data-theme="light"] [class*="drawer"],
+:root[data-theme="light"] [class*="popover"],
+:root[data-theme="light"] [class*="dropdown"],
+:root[data-theme="light"] [class*="modal"] {
+  border-color: var(--border) !important;
+  background-color: var(--surface) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+:root[data-theme="light"] [class*="toolbar"],
+:root[data-theme="light"] [class*="filters"],
+:root[data-theme="light"] [class*="filter-bar"],
+:root[data-theme="light"] [class*="tabs"],
+:root[data-theme="light"] [class*="controls"],
+:root[data-theme="light"] [class*="header-row"],
+:root[data-theme="light"] [class*="section-head"] {
+  border-color: var(--border) !important;
+  background-color: var(--surface) !important;
+  color: var(--text-primary) !important;
 }
 
 :root[data-theme="light"] table,
@@ -179,33 +221,122 @@
 :root[data-theme="light"] tr,
 :root[data-theme="light"] th,
 :root[data-theme="light"] td {
-  border-color: #dce5f0 !important;
+  border-color: var(--border) !important;
 }
 
 :root[data-theme="light"] table,
 :root[data-theme="light"] tbody,
 :root[data-theme="light"] td {
-  background: #fff !important;
+  background: var(--surface) !important;
   color: #263750 !important;
 }
 
 :root[data-theme="light"] thead,
 :root[data-theme="light"] th {
-  background: #edf3fa !important;
+  background: var(--bg-tertiary) !important;
   color: #3c4d67 !important;
+}
+
+:root[data-theme="light"] tbody tr:hover td {
+  background: #f7faff !important;
 }
 
 :root[data-theme="light"] input,
 :root[data-theme="light"] select,
-:root[data-theme="light"] textarea {
-  border-color: #ccd8e7 !important;
-  background: #fff !important;
-  color: #172033 !important;
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] [contenteditable="true"] {
+  border-color: var(--border-strong) !important;
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
 }
 
 :root[data-theme="light"] input::placeholder,
 :root[data-theme="light"] textarea::placeholder {
   color: #94a3b8 !important;
+}
+
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] select:focus,
+:root[data-theme="light"] textarea:focus {
+  border-color: #7aa7ef !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important;
+}
+
+:root[data-theme="light"] button:not(.connections-button--primary):not(.connections-button--danger):not(.imds-theme-toggle),
+:root[data-theme="light"] .connections-button,
+:root[data-theme="light"] .integration-catalog-card > button {
+  border-color: var(--border-strong) !important;
+  background-color: var(--surface) !important;
+  color: #22324a !important;
+}
+
+:root[data-theme="light"] button:hover:not(:disabled) {
+  background-color: #f3f7fc !important;
+}
+
+:root[data-theme="light"] .connections-button--primary,
+:root[data-theme="light"] button[class*="primary"],
+:root[data-theme="light"] button[class*="accent"],
+:root[data-theme="light"] .active > button {
+  border-color: var(--accent) !important;
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+:root[data-theme="light"] [class*="badge"],
+:root[data-theme="light"] [class*="chip"],
+:root[data-theme="light"] [class*="tag"],
+:root[data-theme="light"] [class*="pill"] {
+  border-color: #d7e2f0 !important;
+  background: #edf4ff !important;
+  color: #315b99 !important;
+}
+
+:root[data-theme="light"] [class*="empty"],
+:root[data-theme="light"] [class*="loading"],
+:root[data-theme="light"] [class*="skeleton"] {
+  border-color: var(--border) !important;
+  background-color: #f8fbff !important;
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme="light"] [class*="overlay"] {
+  background: rgba(22, 32, 51, .42) !important;
+}
+
+:root[data-theme="light"] hr,
+:root[data-theme="light"] [class*="divider"] {
+  border-color: var(--border) !important;
+  background-color: var(--border) !important;
+}
+
+:root[data-theme="light"] svg text,
+:root[data-theme="light"] .recharts-text,
+:root[data-theme="light"] .recharts-cartesian-axis-tick-value,
+:root[data-theme="light"] .apexcharts-text,
+:root[data-theme="light"] .chartjs-render-monitor {
+  fill: #52627a !important;
+  color: #52627a !important;
+}
+
+:root[data-theme="light"] .recharts-cartesian-grid line,
+:root[data-theme="light"] .recharts-cartesian-axis line,
+:root[data-theme="light"] .recharts-cartesian-axis-tick line,
+:root[data-theme="light"] .apexcharts-gridline {
+  stroke: #dce5f0 !important;
+}
+
+:root[data-theme="light"] .recharts-tooltip-wrapper > div,
+:root[data-theme="light"] .apexcharts-tooltip,
+:root[data-theme="light"] [class*="tooltip"] {
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+:root[data-theme="light"] canvas {
+  filter: none;
 }
 
 :root[data-theme="light"] .integration-catalog-card .integration-card-tags span,
@@ -221,21 +352,6 @@
 
 :root[data-theme="light"] .integration-connect-method strong {
   color: #263750 !important;
-}
-
-:root[data-theme="light"] .connections-button,
-:root[data-theme="light"] .integration-catalog-card > button,
-:root[data-theme="light"] button:not(.connections-button--primary):not(.connections-button--danger):not(.imds-theme-toggle) {
-  border-color: #ccd8e7 !important;
-  background-color: #fff !important;
-  color: #22324a !important;
-}
-
-:root[data-theme="light"] .connections-button--primary,
-:root[data-theme="light"] button[class*="primary"] {
-  border-color: #2563eb !important;
-  background-color: #2563eb !important;
-  color: #fff !important;
 }
 
 :root[data-theme="light"] .imds-theme-toggle {
