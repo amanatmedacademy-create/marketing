@@ -28,7 +28,7 @@ async function loadFacebookSdk(config: WabaConfigResponse): Promise<FacebookSdk>
     script.async = true;
     script.defer = true;
     script.crossOrigin = 'anonymous';
-    script.src = 'https://connect.facebook.net/ru_RU/sdk.js';
+    script.src = 'https://connect.facebook.net/en_US/sdk.js';
     script.onerror = () => reject(new Error('Не удалось загрузить Meta SDK'));
     document.head.appendChild(script);
   });
@@ -80,9 +80,14 @@ async function connect(button: HTMLButtonElement, card: HTMLElement) {
         resolve(code);
       }, {
         config_id: config.configId,
+        auth_type: 'rerequest',
         response_type: 'code',
         override_default_response_type: true,
-        extras: { feature: 'whatsapp_embedded_signup', sessionInfoVersion: '3' },
+        extras: {
+          feature: 'whatsapp_embedded_signup',
+          sessionInfoVersion: 3,
+          setup: {},
+        },
       });
     });
 
