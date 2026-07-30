@@ -14,6 +14,14 @@ interface CatalogPlatform {
   connectMethod: string;
 }
 
+type Targets = {
+  ads: Element | null;
+  crm: Element | null;
+  communications: Element | null;
+  automation: Element | null;
+};
+
+const EMPTY_TARGETS: Targets = { ads: null, crm: null, communications: null, automation: null };
 const svgLogo = (label: string, background = '#14213d') => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="${background}"/><text x="24" y="30" text-anchor="middle" font-family="Arial" font-size="17" font-weight="800" fill="#fff">${label}</text></svg>`)}`;
 const yandexLogo = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#fff"/><path d="M27.6 38V25.2L37 8h-7.3l-5.5 11.1L18.8 8H11l9.5 17.4V38h7.1Z" fill="#f00"/></svg>')}`;
 
@@ -76,7 +84,7 @@ function ensureSection(page: Element, title: string, description: string, before
   });
   if (existing) {
     const heading = existing.querySelector('h2');
-    if (heading) heading.textContent = title;
+    if (heading && heading.textContent?.trim() !== title) heading.textContent = title;
     return existing.querySelector('.integration-catalog-grid');
   }
   const section = document.createElement('section');
@@ -103,27 +111,43 @@ function PlatformCard({ platform }: { platform: CatalogPlatform }) {
   </article>;
 }
 
+function sameTargets(previous: Targets, next: Targets) {
+  return previous.ads === next.ads && previous.crm === next.crm && previous.communications === next.communications && previous.automation === next.automation;
+}
+
 export default function AdvertisingCatalogExpansion() {
-  const [targets, setTargets] = useState<{ads: Element|null; crm: Element|null; communications: Element|null; automation: Element|null}>({ads:null,crm:null,communications:null,automation:null});
+  const [targets, setTargets] = useState<Targets>(EMPTY_TARGETS);
+
   useEffect(() => {
+    if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return;
+
+    let attempts = 0;
+    let timer: number | undefined;
+
     const locate = () => {
-      if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return;
       const page = document.querySelector('.connections-page');
-      if (!page) return;
+      if (!page) {
+        if (attempts++ < 20) timer = window.setTimeout(locate, 100);
+        return;
+      }
+
       const sections = Array.from(page.querySelectorAll('.integration-catalog-section'));
-      const byTitle = (title:string) => sections.find((section) => section.querySelector('h2')?.textContent?.trim() === title);
+      const byTitle = (title: string) => sections.find((section) => section.querySelector('h2')?.textContent?.trim() === title);
       const ads = byTitle('Рекламные кабинеты')?.querySelector('.integration-catalog-grid') || null;
       const crmTarget = byTitle('CRM')?.querySelector('.integration-catalog-grid') || null;
       const automationSection = byTitle('Автоматизация и API');
       const communicationsTarget = ensureSection(page, 'Коммуникации и телефония', 'Мессенджеры, облачные и локальные АТС, SIP, записи и коллтрекинг', automationSection);
       const automationTarget = automationSection?.querySelector('.integration-catalog-grid') || ensureSection(page, 'Автоматизация и API', 'No-code платформы, таблицы, webhooks и обмен данными');
-      setTargets({ads, crm:crmTarget, communications:communicationsTarget, automation:automationTarget});
+      const next = { ads, crm: crmTarget, communications: communicationsTarget, automation: automationTarget };
+      setTargets((previous) => sameTargets(previous, next) ? previous : next);
     };
+
     locate();
-    const observer = new MutationObserver(locate);
-    observer.observe(document.body, {childList:true, subtree:true});
-    return () => observer.disconnect();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, []);
+
   if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return null;
   return <>
     {targets.ads && createPortal(advertising.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.ads)}
