@@ -32,28 +32,40 @@ function isWorkingCard(card: HTMLElement): boolean {
   return !card.classList.contains('integration-state-planned');
 }
 
-function mergeSectionCards(primary: HTMLElement, duplicate: HTMLElement) {
-  const targetGrid = primary.querySelector<HTMLElement>('.integration-catalog-grid');
-  const sourceGrid = duplicate.querySelector<HTMLElement>('.integration-catalog-grid');
+function cloneWorkingCard(sourceCard: HTMLElement): HTMLElement {
+  const clone = sourceCard.cloneNode(true) as HTMLElement;
+  clone.dataset.migratedWorkingCard = 'true';
 
-  if (targetGrid && sourceGrid) {
-    for (const child of Array.from(sourceGrid.children)) {
-      const sourceCard = child as HTMLElement;
-      const sourceIdentity = cardIdentity(sourceCard);
+  const sourceButton = sourceCard.querySelector<HTMLButtonElement>('button');
+  const cloneButton = clone.querySelector<HTMLButtonElement>('button');
 
-      if (sourceIdentity && isWorkingCard(sourceCard)) {
-        const existingCards = Array.from(targetGrid.querySelectorAll<HTMLElement>(':scope > .integration-catalog-card'));
-        const plannedDuplicate = existingCards.find(
-          (card) => cardIdentity(card) === sourceIdentity && !isWorkingCard(card),
-        );
-        plannedDuplicate?.remove();
-      }
-
-      targetGrid.appendChild(sourceCard);
-    }
+  if (cloneButton && sourceButton) {
+    cloneButton.disabled = sourceButton.disabled;
+    cloneButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      sourceButton.click();
+    });
   }
 
-  duplicate.remove();
+  return clone;
+}
+
+function replacePlannedWithWorking(targetGrid: HTMLElement, sourceCard: HTMLElement) {
+  const identity = cardIdentity(sourceCard);
+  if (!identity) return;
+
+  const existingCards = Array.from(targetGrid.querySelectorAll<HTMLElement>(':scope > .integration-catalog-card'));
+  const existingWorking = existingCards.find(
+    (card) => cardIdentity(card) === identity && isWorkingCard(card),
+  );
+  if (existingWorking) return;
+
+  const planned = existingCards.find(
+    (card) => cardIdentity(card) === identity && !isWorkingCard(card),
+  );
+  planned?.remove();
+
+  targetGrid.prepend(cloneWorkingCard(sourceCard));
 }
 
 function deduplicateCards(section: HTMLElement) {
@@ -106,8 +118,21 @@ function normalizeCatalog(): boolean {
     const heading = primary.querySelector('h2');
     if (heading) heading.textContent = title;
 
-    for (const duplicate of sections) {
-      if (duplicate !== primary) mergeSectionCards(primary, duplicate);
+    const targetGrid = primary.querySelector<HTMLElement>('.integration-catalog-grid');
+    if (!targetGrid) return false;
+
+    for (const legacy of sections) {
+      if (legacy === primary) continue;
+
+      const workingCards = Array.from(
+        legacy.querySelectorAll<HTMLElement>('.integration-catalog-grid > .integration-catalog-card'),
+      );
+
+      for (const card of workingCards) replacePlannedWithWorking(targetGrid, card);
+
+      legacy.dataset.legacyCatalogSection = 'true';
+      legacy.hidden = true;
+      legacy.style.display = 'none';
     }
 
     deduplicateCards(primary);
@@ -115,7 +140,6 @@ function normalizeCatalog(): boolean {
   }
 
   for (const section of normalized) page.appendChild(section);
-
   return true;
 }
 
@@ -128,7 +152,7 @@ export default function IntegrationCatalogNormalizer() {
 
     const run = () => {
       if (normalizeCatalog()) return;
-      if (attempts++ < 60) timer = window.setTimeout(run, 100);
+      if (attempts++ < 80) timer = window.setTimeout(run, 100);
     };
 
     run();
