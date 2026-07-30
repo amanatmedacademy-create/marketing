@@ -10,6 +10,7 @@ import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
+import { handleMetaStatusSync } from './metaStatusSync';
 import { handleOperationsRequest } from './operations';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
@@ -29,6 +30,7 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/sdk-config'
     || pathname === '/api/integrations/meta/sdk-connect'
     || pathname === '/api/integrations/meta/reach-sync'
+    || pathname === '/api/integrations/meta/status-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect';
@@ -84,6 +86,8 @@ export default {
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url);
       if (metaOAuthResponse) return metaOAuthResponse;
+      const metaStatus = await handleMetaStatusSync(forwardedRequest, runtimeEnv, url);
+      if (metaStatus) return metaStatus;
       const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url);
       if (metaReach) return metaReach;
       const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url);
