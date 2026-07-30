@@ -1,0 +1,102 @@
+.integration-catalog-card.integration-tone-meta {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(24, 119, 242, 0.5);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(24, 119, 242, 0.22), transparent 42%),
+    linear-gradient(180deg, #0f1d36 0%, #091321 100%);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+}
+
+.integration-catalog-card.integration-tone-meta::before {
+  content: 'FACEBOOK + INSTAGRAM';
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: #93c5fd;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.integration-catalog-card.integration-tone-meta .integration-card-logo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: #1877f2;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(24, 119, 242, 0.28);
+}
+
+.integration-catalog-card.integration-tone-meta > strong {
+  margin-top: 4px;
+  font-size: 1.05rem;
+}
+
+.integration-catalog-card.integration-tone-meta > p {
+  min-height: 46px;
+  color: #9fb0c8;
+  line-height: 1.55;
+}
+
+.integration-catalog-card.integration-tone-meta .integration-card-tags span {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: rgba(23, 37, 84, 0.66);
+  color: #bfdbfe;
+}
+
+.integration-catalog-card.integration-tone-meta > button {
+  border-color: #1877f2;
+  background: #1877f2;
+  color: #fff;
+}
+
+.integration-catalog-card.integration-tone-meta > button:hover {
+  background: #0f68db;
+}
+
+.integration-catalog-card.integration-tone-meta.integration-state-connected {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.integration-catalog-card.integration-tone-meta.integration-state-connected > button {
+  border-color: #2b3b59;
+  background: #101b31;
+}
+
+.connection-card--meta .meta-fast-connect {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 15px;
+  border: 1px solid rgba(24, 119, 242, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(24, 119, 242, 0.18), rgba(24, 119, 242, 0.06));
+  color: #dbeafe;
+}
+
+.connection-card--meta .meta-fast-connect > svg {
+  flex: 0 0 auto;
+  color: #60a5fa;
+}
+
+.connection-card--meta .meta-fast-connect div {
+  display: grid;
+  gap: 3px;
+}
+
+.connection-card--meta .meta-fast-connect small {
+  color: #93a4bd;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .integration-catalog-card.integration-tone-meta::before {
+    position: static;
+    display: block;
+    margin-bottom: 8px;
+  }
+}
