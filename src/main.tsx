@@ -19,6 +19,7 @@ import './advertising-platform-cards.css';
 import './v36-dashboard-advanced.css';
 import './integration-premium-exact.css';
 import './theme-toggle.css';
+import './v36-light-theme.css';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
