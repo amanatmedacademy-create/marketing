@@ -14,14 +14,6 @@ interface CatalogPlatform {
   connectMethod: string;
 }
 
-type Targets = {
-  ads: Element | null;
-  crm: Element | null;
-  communications: Element | null;
-  automation: Element | null;
-};
-
-const EMPTY_TARGETS: Targets = { ads: null, crm: null, communications: null, automation: null };
 const svgLogo = (label: string, background = '#14213d') => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="${background}"/><text x="24" y="30" text-anchor="middle" font-family="Arial" font-size="17" font-weight="800" fill="#fff">${label}</text></svg>`)}`;
 const yandexLogo = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#fff"/><path d="M27.6 38V25.2L37 8h-7.3l-5.5 11.1L18.8 8H11l9.5 17.4V38h7.1Z" fill="#f00"/></svg>')}`;
 
@@ -77,24 +69,6 @@ const automation: CatalogPlatform[] = [
   { id:'webhooks', title:'Webhooks', description:'Универсальный приём и отправка событий между системами.', capabilities:['Incoming','Outgoing','JSON'], tone:'webhooks', priority:'Критический', logoUrl:'https://cdn.simpleicons.org/webhook/2088FF', fallback:'WH', connectMethod:'URL + shared secret' },
 ];
 
-function ensureSection(page: Element, title: string, description: string, before?: Element | null) {
-  const existing = Array.from(page.querySelectorAll('.integration-catalog-section')).find((section) => {
-    const heading = section.querySelector('h2')?.textContent?.trim();
-    return heading === title || (title === 'Коммуникации и телефония' && heading === 'Телефония');
-  });
-  if (existing) {
-    const heading = existing.querySelector('h2');
-    if (heading && heading.textContent?.trim() !== title) heading.textContent = title;
-    return existing.querySelector('.integration-catalog-grid');
-  }
-  const section = document.createElement('section');
-  section.className = 'integration-catalog-section';
-  section.dataset.catalogSection = title === 'Коммуникации и телефония' ? 'telephony' : title.toLowerCase();
-  section.innerHTML = `<div class="connections-section__head"><div><h2>${title}</h2><p>${description}</p></div></div><div class="integration-catalog-grid"></div>`;
-  if (before) page.insertBefore(section, before); else page.appendChild(section);
-  return section.querySelector('.integration-catalog-grid');
-}
-
 function BrandLogo({ platform }: { platform: CatalogPlatform }) {
   const [failed, setFailed] = useState(false);
   return <span className="integration-card-logo" data-brand-logo="true"><img src={failed ? svgLogo(platform.fallback) : platform.logoUrl} alt={platform.title} onError={() => setFailed(true)} /></span>;
@@ -111,48 +85,35 @@ function PlatformCard({ platform }: { platform: CatalogPlatform }) {
   </article>;
 }
 
-function sameTargets(previous: Targets, next: Targets) {
-  return previous.ads === next.ads && previous.crm === next.crm && previous.communications === next.communications && previous.automation === next.automation;
+function CatalogSection({ title, description, platforms, sectionId }: { title: string; description: string; platforms: CatalogPlatform[]; sectionId: string }) {
+  return <section className="integration-catalog-section" data-catalog-expanded="true" data-catalog-section={sectionId}>
+    <div className="connections-section__head"><div><h2>{title}</h2><p>{description}</p></div></div>
+    <div className="integration-catalog-grid">{platforms.map((item) => <PlatformCard key={item.id} platform={item}/>)}</div>
+  </section>;
 }
 
 export default function AdvertisingCatalogExpansion() {
-  const [targets, setTargets] = useState<Targets>(EMPTY_TARGETS);
+  const [page, setPage] = useState<Element | null>(null);
 
   useEffect(() => {
     if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return;
-
     let attempts = 0;
     let timer: number | undefined;
-
     const locate = () => {
-      const page = document.querySelector('.connections-page');
-      if (!page) {
-        if (attempts++ < 20) timer = window.setTimeout(locate, 100);
-        return;
-      }
-
-      const sections = Array.from(page.querySelectorAll('.integration-catalog-section'));
-      const byTitle = (title: string) => sections.find((section) => section.querySelector('h2')?.textContent?.trim() === title);
-      const ads = byTitle('Рекламные кабинеты')?.querySelector('.integration-catalog-grid') || null;
-      const crmTarget = byTitle('CRM')?.querySelector('.integration-catalog-grid') || null;
-      const automationSection = byTitle('Автоматизация и API');
-      const communicationsTarget = ensureSection(page, 'Коммуникации и телефония', 'Мессенджеры, облачные и локальные АТС, SIP, записи и коллтрекинг', automationSection);
-      const automationTarget = automationSection?.querySelector('.integration-catalog-grid') || ensureSection(page, 'Автоматизация и API', 'No-code платформы, таблицы, webhooks и обмен данными');
-      const next = { ads, crm: crmTarget, communications: communicationsTarget, automation: automationTarget };
-      setTargets((previous) => sameTargets(previous, next) ? previous : next);
+      const target = document.querySelector('.connections-page');
+      if (target) setPage(target);
+      else if (attempts++ < 40) timer = window.setTimeout(locate, 100);
     };
-
     locate();
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
+    return () => { if (timer !== undefined) window.clearTimeout(timer); };
   }, []);
 
-  if (window.location.pathname.replace(/\/+$/, '') !== '/integrations') return null;
-  return <>
-    {targets.ads && createPortal(advertising.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.ads)}
-    {targets.crm && createPortal(crm.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.crm)}
-    {targets.communications && createPortal(communications.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.communications)}
-    {targets.automation && createPortal(automation.map((item) => <PlatformCard key={item.id} platform={item}/>), targets.automation)}
-  </>;
+  if (!page || window.location.pathname.replace(/\/+$/, '') !== '/integrations') return null;
+
+  return createPortal(<>
+    <CatalogSection title="Рекламные кабинеты" description="Расходы, кампании, объявления, лиды и сквозная аналитика" platforms={advertising} sectionId="advertising"/>
+    <CatalogSection title="CRM" description="Лиды, контакты, сделки, визиты и оплаты" platforms={crm} sectionId="crm"/>
+    <CatalogSection title="Коммуникации и телефония" description="Мессенджеры, облачные и локальные АТС, SIP, записи и коллтрекинг" platforms={communications} sectionId="telephony"/>
+    <CatalogSection title="Автоматизация и API" description="No-code платформы, таблицы, webhooks и обмен данными" platforms={automation} sectionId="automation"/>
+  </>, page);
 }
