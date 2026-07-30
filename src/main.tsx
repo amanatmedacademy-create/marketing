@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
+import WabaCatalogActivation from './components/WabaCatalogActivation';
 import IntegrationCatalogNormalizer from './components/IntegrationCatalogNormalizer';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import ThemeToggle from './components/ThemeToggle';
@@ -41,6 +42,7 @@ function Root() {
     <AnalyticsTableColorizer />
     <MetaOAuthLauncher />
     <AdvertisingCatalogExpansion />
+    <WabaCatalogActivation />
     <IntegrationCatalogNormalizer />
   </>;
 }
