@@ -91,11 +91,36 @@
 .integration-tone-make { --platform-accent:#6d00cc; }
 .integration-tone-sheets { --platform-accent:#34a853; }
 .integration-tone-webhooks { --platform-accent:#2088ff; }
+
+.integration-tone-meta .integration-card-logo,
+.integration-tone-tiktok .integration-card-logo,
+.integration-tone-bitrix .integration-card-logo {
+  padding: 8px;
+  font-size: 0;
+  background-color: #fff;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 72% 72%;
+}
+
+.integration-tone-meta .integration-card-logo {
+  background-image: url('https://cdn.simpleicons.org/meta/0866FF');
+}
+
+.integration-tone-tiktok .integration-card-logo {
+  background-color: #050505;
+  background-image: url('https://cdn.simpleicons.org/tiktok/FFFFFF');
+}
+
+.integration-tone-bitrix .integration-card-logo {
+  background-image: url('https://www.bitrix24.com/favicon.ico');
+}
+
 .integration-tone-yandex .integration-card-logo,
 .integration-tone-twogis .integration-card-logo,
 .integration-tone-bitrix .integration-card-logo,
 .integration-tone-beeline .integration-card-logo,
-.integration-tone-sheets .integration-card-logo { background:#fff; }
+.integration-tone-sheets .integration-card-logo { background-color:#fff; }
 
 .connections-page:has(.integration-catalog-section[data-catalog-expanded="true"])
   > .integration-catalog-section:not([data-catalog-expanded="true"]) {
