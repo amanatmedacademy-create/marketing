@@ -1,4 +1,4 @@
-/* Exact card proportions and visual language from the approved premium prototype. */
+/* Exact premium card proportions in dark mode. */
 .connections-page .integration-catalog-grid{
   display:grid!important;
   grid-template-columns:repeat(4,minmax(0,1fr))!important;
@@ -15,18 +15,18 @@
   max-height:205px!important;
   padding:18px!important;
   overflow:hidden!important;
-  border:1px solid #e5e9f1!important;
+  border:1px solid #203552!important;
   border-radius:14px!important;
-  background:#fff!important;
-  color:#101828!important;
-  box-shadow:0 8px 24px rgba(16,24,40,.08)!important;
+  background:linear-gradient(180deg,#0d1728 0%,#0a1423 100%)!important;
+  color:#f8fafc!important;
+  box-shadow:0 10px 30px rgba(0,0,0,.22)!important;
   transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease!important;
 }
 
 .connections-page .integration-catalog-card:hover{
   transform:translateY(-2px)!important;
-  border-color:#4f8cff!important;
-  box-shadow:0 14px 32px rgba(16,24,40,.12)!important;
+  border-color:#3b82f6!important;
+  box-shadow:0 16px 36px rgba(0,0,0,.3)!important;
 }
 
 .connections-page .integration-card-top{
@@ -41,29 +41,31 @@
   width:46px!important;
   height:46px!important;
   flex:0 0 46px!important;
-  border:1px solid #e5e9f1!important;
+  border:1px solid #28405f!important;
   border-radius:11px!important;
-  background:#fff!important;
-  box-shadow:0 4px 12px rgba(16,24,40,.06)!important;
+  background:#13243d!important;
+  color:#c9defd!important;
+  box-shadow:0 4px 12px rgba(0,0,0,.16)!important;
   font-size:15px!important;
 }
 
-.connections-page .integration-tone-meta .integration-card-logo{color:#1570ef!important}
-.connections-page .integration-tone-tiktok .integration-card-logo{background:#050505!important;color:#fff!important;border-color:#050505!important}
-.connections-page .integration-tone-bitrix .integration-card-logo{color:#1697e5!important}
-.connections-page .integration-tone-waba .integration-card-logo{background:#25d366!important;color:#fff!important;border-color:#25d366!important}
+.connections-page .integration-tone-meta .integration-card-logo{background:#102e63!important;color:#8fc2ff!important;border-color:#244e91!important}
+.connections-page .integration-tone-tiktok .integration-card-logo{background:#050505!important;color:#fff!important;border-color:#202938!important}
+.connections-page .integration-tone-bitrix .integration-card-logo{background:#123a7b!important;color:#8fd0ff!important;border-color:#235ca7!important}
+.connections-page .integration-tone-waba .integration-card-logo{background:#0d4d36!important;color:#5ef0a0!important;border-color:#156b4b!important}
 
 .connections-page .integration-card-top em{
   padding:5px 9px!important;
   border-radius:999px!important;
-  background:#f2f4f7!important;
-  color:#667085!important;
+  background:#162234!important;
+  color:#94a3b8!important;
   font-size:11px!important;
   font-weight:700!important;
 }
-.connections-page .integration-state-connected .integration-card-top em{background:#eaf8ef!important;color:#16a34a!important}
-.connections-page .integration-state-error .integration-card-top em{background:#fff1f2!important;color:#e5484d!important}
-.connections-page .integration-state-configured .integration-card-top em{background:#fff7e6!important;color:#b7791f!important}
+.connections-page .integration-state-connected .integration-card-top em{background:#10341f!important;color:#4ade80!important}
+.connections-page .integration-state-error .integration-card-top em{background:#3b1620!important;color:#fb7185!important}
+.connections-page .integration-state-configured .integration-card-top em{background:#3a2b10!important;color:#fbbf24!important}
+.connections-page .integration-state-planned .integration-card-top em{background:#202b3b!important;color:#a8b3c4!important}
 
 .connections-page .integration-platform-heading{
   margin-top:-46px!important;
@@ -79,7 +81,7 @@
 .connections-page .integration-platform-heading>strong,
 .connections-page .integration-catalog-card>strong{
   margin:0!important;
-  color:#101828!important;
+  color:#f8fafc!important;
   font-size:16px!important;
   font-weight:800!important;
   line-height:1.2!important;
@@ -92,7 +94,7 @@
   max-height:17px!important;
   margin:4px 0 0 58px!important;
   overflow:hidden!important;
-  color:#667085!important;
+  color:#8a9ab1!important;
   font-size:12px!important;
   line-height:17px!important;
   white-space:nowrap!important;
@@ -112,20 +114,20 @@
   max-height:46px!important;
   margin:15px 0 14px!important;
   padding-top:13px!important;
-  border-top:1px solid #e5e9f1!important;
+  border-top:1px solid #22324a!important;
 }
 .connections-page .integration-premium-metrics span{
   display:block!important;
   margin-bottom:3px!important;
-  color:#667085!important;
+  color:#7f8da3!important;
   font-size:11px!important;
 }
 .connections-page .integration-premium-metrics strong{
-  color:#101828!important;
+  color:#f8fafc!important;
   font-size:16px!important;
   font-weight:800!important;
 }
-.connections-page .integration-premium-metrics strong.is-positive{color:#16a34a!important}
+.connections-page .integration-premium-metrics strong.is-positive{color:#4ade80!important}
 
 .connections-page .integration-premium-actions{
   display:grid!important;
@@ -144,28 +146,29 @@
 }
 .connections-page .integration-premium-icon,
 .connections-page .integration-premium-arrow{
-  border:1px solid #ccd4e2!important;
-  background:#fff!important;
-  color:#475467!important;
+  border:1px solid #2a3a55!important;
+  background:#101b2d!important;
+  color:#c5d0df!important;
 }
+.connections-page .integration-premium-icon:hover,
+.connections-page .integration-premium-arrow:hover{background:#15243a!important}
 .connections-page .integration-premium-primary{
   border:0!important;
-  background:linear-gradient(180deg,#1267f5,#0b58d7)!important;
+  background:linear-gradient(180deg,#1d6fff,#1457df)!important;
   color:#fff!important;
 }
+.connections-page .integration-premium-primary:hover{filter:brightness(.98)!important}
 
-/* Planned cards keep the same footprint even before integration logic is available. */
-.connections-page .integration-state-planned{
-  justify-content:flex-start!important;
-}
+/* Planned cards keep the same premium dark footprint. */
+.connections-page .integration-state-planned{justify-content:flex-start!important}
 .connections-page .integration-state-planned>button{
   height:38px!important;
   min-height:38px!important;
   margin-top:auto!important;
-  border:0!important;
+  border:1px solid #263750!important;
   border-radius:8px!important;
-  background:#eef2f7!important;
-  color:#667085!important;
+  background:#121d2e!important;
+  color:#8d9aad!important;
 }
 
 @media(max-width:1280px){
