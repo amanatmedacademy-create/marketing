@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
+import BitrixOAuthLauncher from './components/BitrixOAuthLauncher';
 import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
 import IntegrationCatalogNormalizer from './components/IntegrationCatalogNormalizer';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
@@ -33,6 +34,7 @@ function Root() {
     <MarketingPlatform />
     <AnalyticsTableColorizer />
     <MetaOAuthLauncher />
+    <BitrixOAuthLauncher />
     <AdvertisingCatalogExpansion />
     <IntegrationCatalogNormalizer />
   </>;
