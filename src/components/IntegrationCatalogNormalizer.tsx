@@ -61,18 +61,22 @@ function normalizeCatalog(): boolean {
   }
 
   if (!SECTION_ORDER.every((title) => grouped.has(title))) return false;
+  if (!SECTION_ORDER.every((title) => grouped.get(title)?.some((section) => section.dataset.catalogExpanded === 'true'))) return false;
 
   const normalized: HTMLElement[] = [];
 
   for (const title of SECTION_ORDER) {
     const sections = grouped.get(title) || [];
-    const primary = sections[0];
+    const primary = sections.find((section) => section.dataset.catalogExpanded === 'true');
     if (!primary) return false;
 
     const heading = primary.querySelector('h2');
     if (heading) heading.textContent = title;
 
-    for (const duplicate of sections.slice(1)) mergeSectionCards(primary, duplicate);
+    for (const duplicate of sections) {
+      if (duplicate !== primary) mergeSectionCards(primary, duplicate);
+    }
+
     deduplicateCards(primary);
     normalized.push(primary);
   }
@@ -91,7 +95,7 @@ export default function IntegrationCatalogNormalizer() {
 
     const run = () => {
       if (normalizeCatalog()) return;
-      if (attempts++ < 40) timer = window.setTimeout(run, 100);
+      if (attempts++ < 60) timer = window.setTimeout(run, 100);
     };
 
     run();
