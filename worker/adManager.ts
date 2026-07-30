@@ -22,6 +22,16 @@ function dateRange(days: number, url: URL) {
   return { from, to };
 }
 
+function isMeta(row: Row): boolean {
+  return /^(meta|facebook|instagram)$/i.test(text(row.platform, text(row.source)));
+}
+
+function isActiveAccount(row: Row): boolean {
+  if (!isMeta(row)) return true;
+  const status = text(row.account_status).toUpperCase();
+  return status === '1' || status === 'ACTIVE';
+}
+
 export async function handleAdManager(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/ad-manager') return null;
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 30), 1), 365);
@@ -34,7 +44,8 @@ export async function handleAdManager(_request: Request, env: Env, url: URL): Pr
     console.error('Meta status refresh failed', error);
   }
 
-  const rows = await query<Row[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,account_status,currency,account_timezone,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,effective_status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&and=(report_date.gte.${from},report_date.lte.${to})&limit=50000`);
+  const allRows = await query<Row[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,account_status,currency,account_timezone,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,effective_status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&and=(report_date.gte.${from},report_date.lte.${to})&limit=50000`);
+  const rows = allRows.filter(isActiveAccount);
 
   const map = new Map<string, Row>();
   for (const row of rows) {
@@ -61,7 +72,13 @@ export async function handleAdManager(_request: Request, env: Env, url: URL): Pr
   });
 
   const accounts = Array.from(new Map(result.map((item) => [String(item.account_id), { id: item.account_id, name: item.account_name, platform: item.platform, currency: item.currency, timezone: item.account_timezone, status: item.account_status }])).values());
-  return new Response(JSON.stringify({ period: { from, to, days }, accounts, rows: result, statusSync }), {
+  return new Response(JSON.stringify({
+    period: { from, to, days },
+    accounts,
+    rows: result,
+    statusSync,
+    filter: { metaAccounts: 'ACTIVE_ONLY', excludedRows: allRows.length - rows.length },
+  }), {
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
