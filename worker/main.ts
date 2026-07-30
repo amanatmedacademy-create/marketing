@@ -12,6 +12,7 @@ import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaStatusSync } from './metaStatusSync';
 import { handleOperationsRequest } from './operations';
+import { handleTikTokLoginKit, type TikTokLoginKitEnv } from './tiktokLoginKit';
 import { handleTikTokOAuth, type TikTokOAuthEnv } from './tiktokOAuth';
 import { handleTikTokWebhook } from './tiktokWebhook';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
@@ -22,13 +23,14 @@ const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 const TIKTOK_VERIFICATION_PATH = '/tiktok6AQJh4oppaU12M1PXnEw5CkEu9zCofPk.txt';
 const TIKTOK_VERIFICATION_BODY = 'tiktok-developers-site-verification=6AQJh4oppaU12M1PXnEw5CkEu9zCofPk';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & TikTokOAuthEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & TikTokOAuthEnv & TikTokLoginKitEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
     || pathname.startsWith('/api/integrations/config')
     || pathname.startsWith('/api/integrations/test/')
     || pathname === '/api/integrations/tiktok/oauth/start'
+    || pathname === '/api/integrations/tiktok/login/start'
     || pathname === '/api/integrations/meta/start'
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config'
@@ -68,6 +70,9 @@ export default {
 
       const tiktokWebhookResponse = await handleTikTokWebhook(request, url);
       if (tiktokWebhookResponse) return tiktokWebhookResponse;
+
+      const tiktokLoginResponse = await handleTikTokLoginKit(request, env, url);
+      if (tiktokLoginResponse) return tiktokLoginResponse;
 
       if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
         const callbackResponse = await handleTikTokOAuth(request, env, url);
