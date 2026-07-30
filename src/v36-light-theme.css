@@ -1,0 +1,203 @@
+:root[data-theme="light"] .v36-dashboard {
+  color: #172033 !important;
+}
+
+:root[data-theme="light"] .v36-toolbar,
+:root[data-theme="light"] .v36-card,
+:root[data-theme="light"] .v36-kpi,
+:root[data-theme="light"] .v36-popover,
+:root[data-theme="light"] .v36-filter-summary {
+  border-color: #d8e2ef !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: 0 10px 30px rgba(26, 44, 76, .07) !important;
+}
+
+:root[data-theme="light"] .v36-toolbar button,
+:root[data-theme="light"] .v36-search,
+:root[data-theme="light"] .v36-table-actions > button,
+:root[data-theme="light"] .v36-mode button {
+  border-color: #ccd8e7 !important;
+  background: #ffffff !important;
+  color: #34445d !important;
+}
+
+:root[data-theme="light"] .v36-toolbar button:hover,
+:root[data-theme="light"] .v36-toolbar button.active,
+:root[data-theme="light"] .v36-table-actions > button:hover,
+:root[data-theme="light"] .v36-mode button:hover,
+:root[data-theme="light"] .v36-mode button.active {
+  border-color: #2563eb !important;
+  background: #eaf2ff !important;
+  color: #1458d6 !important;
+}
+
+:root[data-theme="light"] .v36-search input,
+:root[data-theme="light"] .v36-popover--utm input {
+  border-color: #ccd8e7 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+:root[data-theme="light"] .v36-toolbar > span,
+:root[data-theme="light"] .v36-card p,
+:root[data-theme="light"] .v36-kpi small,
+:root[data-theme="light"] .v36-table td small,
+:root[data-theme="light"] .v36-popover label,
+:root[data-theme="light"] .v36-popover--utm label span {
+  color: #718096 !important;
+}
+
+:root[data-theme="light"] .v36-kpi span,
+:root[data-theme="light"] .v36-kpi strong,
+:root[data-theme="light"] .v36-card h2,
+:root[data-theme="light"] .v36-source b,
+:root[data-theme="light"] .v36-source strong,
+:root[data-theme="light"] .v36-bar > p b,
+:root[data-theme="light"] .v36-popover > strong {
+  color: #172033 !important;
+}
+
+:root[data-theme="light"] .v36-source {
+  border-color: #e0e8f2 !important;
+}
+
+:root[data-theme="light"] .v36-bar > i {
+  background: #e7edf5 !important;
+}
+
+:root[data-theme="light"] .v36-table-card {
+  border-color: #d8e2ef !important;
+  background: #ffffff !important;
+}
+
+:root[data-theme="light"] .v36-table-card > header {
+  border-color: #d8e2ef !important;
+  background: #ffffff !important;
+}
+
+:root[data-theme="light"] .v36-table table,
+:root[data-theme="light"] .v36-table tbody,
+:root[data-theme="light"] .v36-table tr,
+:root[data-theme="light"] .v36-table td {
+  background: #ffffff !important;
+  color: #263750 !important;
+}
+
+:root[data-theme="light"] .v36-table th {
+  border-color: #d8e2ef !important;
+  background: #edf3fa !important;
+  color: #53647c !important;
+}
+
+:root[data-theme="light"] .v36-table th:first-child {
+  background: #edf3fa !important;
+  box-shadow: 1px 0 0 #d8e2ef !important;
+}
+
+:root[data-theme="light"] .v36-table td:first-child {
+  background: #ffffff !important;
+  box-shadow: 1px 0 0 #d8e2ef !important;
+}
+
+:root[data-theme="light"] .v36-level-platform td,
+:root[data-theme="light"] .v36-level-platform td:first-child {
+  background: #eaf2ff !important;
+  color: #172033 !important;
+}
+
+:root[data-theme="light"] .v36-level-account td,
+:root[data-theme="light"] .v36-level-account td:first-child {
+  background: #f3f7fc !important;
+  color: #263750 !important;
+}
+
+:root[data-theme="light"] .v36-level-campaign td,
+:root[data-theme="light"] .v36-level-campaign td:first-child,
+:root[data-theme="light"] .v36-level-adset td,
+:root[data-theme="light"] .v36-level-adset td:first-child,
+:root[data-theme="light"] .v36-level-ad td,
+:root[data-theme="light"] .v36-level-ad td:first-child {
+  background: #ffffff !important;
+  color: #263750 !important;
+}
+
+:root[data-theme="light"] .v36-hierarchy-row:hover td,
+:root[data-theme="light"] .v36-hierarchy-row:hover td:first-child,
+:root[data-theme="light"] .v36-group:hover td {
+  background: #f0f6ff !important;
+}
+
+:root[data-theme="light"] .v36-tree-toggle {
+  background: transparent !important;
+  color: #58708f !important;
+}
+
+:root[data-theme="light"] .v36-chart,
+:root[data-theme="light"] .v36-pie,
+:root[data-theme="light"] .recharts-responsive-container,
+:root[data-theme="light"] .recharts-wrapper,
+:root[data-theme="light"] .recharts-surface {
+  background: transparent !important;
+}
+
+:root[data-theme="light"] .recharts-cartesian-grid line,
+:root[data-theme="light"] .recharts-cartesian-axis line,
+:root[data-theme="light"] .recharts-cartesian-axis-tick line {
+  stroke: #dce5f0 !important;
+}
+
+:root[data-theme="light"] .recharts-text,
+:root[data-theme="light"] .recharts-cartesian-axis-tick-value,
+:root[data-theme="light"] .recharts-legend-item-text {
+  fill: #53647c !important;
+  color: #53647c !important;
+}
+
+:root[data-theme="light"] .recharts-default-tooltip {
+  border-color: #d8e2ef !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: 0 10px 28px rgba(26, 44, 76, .12) !important;
+}
+
+:root[data-theme="light"] .recharts-tooltip-label,
+:root[data-theme="light"] .recharts-tooltip-item {
+  color: #263750 !important;
+}
+
+:root[data-theme="light"] .v36-heat-grid > div {
+  border-color: #d8e2ef !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="light"] .v36-heat-grid strong,
+:root[data-theme="light"] .v36-heat-grid span {
+  color: #52627a !important;
+}
+
+:root[data-theme="light"] .heat-high {
+  border-color: #a7dfbd !important;
+  background: #eaf8ef !important;
+}
+
+:root[data-theme="light"] .heat-mid {
+  border-color: #b8d6f0 !important;
+  background: #edf6fd !important;
+}
+
+:root[data-theme="light"] .heat-low {
+  border-color: #ead79a !important;
+  background: #fff9e5 !important;
+}
+
+:root[data-theme="light"] .heat-bad {
+  border-color: #efc3d0 !important;
+  background: #fff1f5 !important;
+}
+
+:root[data-theme="light"] .v36-filter-summary em {
+  border-color: #c7daf5 !important;
+  background: #eaf2ff !important;
+  color: #245da8 !important;
+}
