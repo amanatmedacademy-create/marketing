@@ -88,15 +88,19 @@ async function accounts(env: MetaSdkEnv, accessToken: string): Promise<MetaAccou
   return result;
 }
 
+function supabaseHeaders(env: MetaSdkEnv, prefer: string): HeadersInit {
+  return {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'content-type': 'application/json',
+    prefer,
+  };
+}
+
 async function supabaseWrite(env: MetaSdkEnv, path: string, rows: unknown, prefer: string): Promise<void> {
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
     method: 'POST',
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      'content-type': 'application/json',
-      prefer,
-    },
+    headers: supabaseHeaders(env, prefer),
     body: JSON.stringify(rows),
   });
   if (!response.ok) throw new Error(`Supabase: ${response.status} ${await response.text()}`);
@@ -105,9 +109,11 @@ async function supabaseWrite(env: MetaSdkEnv, path: string, rows: unknown, prefe
 async function save(env: MetaSdkEnv, accessToken: string, items: MetaAccount[]): Promise<void> {
   const ids = items.map((item) => item.id || (item.account_id ? `act_${item.account_id}` : '')).filter(Boolean);
   if (!ids.length) throw new Error('В профиле Facebook не найдено доступных рекламных кабинетов');
+
   const encrypted = await encrypt({ accessToken, adAccountIds: ids.join(','), graphVersion: graphVersion(env), appSecret: env.META_APP_SECRET }, encryptionSecret(env));
-  await supabaseWrite(env, 'integration_credentials?on_conflict=provider', {
+  const payload = {
     provider: 'meta',
+    user_id: null,
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
@@ -117,7 +123,25 @@ async function save(env: MetaSdkEnv, accessToken: string, items: MetaAccount[]):
     status: 'connected',
     last_error: null,
     last_verified_at: new Date().toISOString(),
-  }, 'resolution=merge-duplicates,return=minimal');
+  };
+
+  const base = env.SUPABASE_URL.replace(/\/$/, '');
+  const updateResponse = await fetch(`${base}/rest/v1/integration_credentials?provider=eq.meta&user_id=is.null`, {
+    method: 'PATCH',
+    headers: supabaseHeaders(env, 'return=representation'),
+    body: JSON.stringify(payload),
+  });
+  if (!updateResponse.ok) throw new Error(`Supabase: ${updateResponse.status} ${await updateResponse.text()}`);
+
+  const updatedRows = await updateResponse.json() as JsonRecord[];
+  if (updatedRows.length > 0) return;
+
+  const insertResponse = await fetch(`${base}/rest/v1/integration_credentials`, {
+    method: 'POST',
+    headers: supabaseHeaders(env, 'return=minimal'),
+    body: JSON.stringify(payload),
+  });
+  if (!insertResponse.ok) throw new Error(`Supabase: ${insertResponse.status} ${await insertResponse.text()}`);
 }
 
 function actionValue(items: unknown, accepted: string[]): number {
