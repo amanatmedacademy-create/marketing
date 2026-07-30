@@ -77,8 +77,7 @@ function normalizeCatalog(): boolean {
     normalized.push(primary);
   }
 
-  const anchor = normalized[0];
-  for (const section of normalized) page.insertBefore(section, anchor);
+  for (const section of normalized) page.appendChild(section);
 
   return true;
 }
