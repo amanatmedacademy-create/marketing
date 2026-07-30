@@ -8,6 +8,7 @@ import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
+import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleOperationsRequest } from './operations';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
@@ -27,6 +28,7 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/oauth-config'
     || pathname === '/api/integrations/meta/sdk-config'
     || pathname === '/api/integrations/meta/sdk-connect'
+    || pathname === '/api/integrations/meta/reach-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect';
@@ -81,6 +83,8 @@ export default {
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, env, url);
       if (metaOAuthResponse) return metaOAuthResponse;
+      const metaReach = await handleMetaReachSync(forwardedRequest, env, url);
+      if (metaReach) return metaReach;
       const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, env, url);
       if (metaAdsets) return metaAdsets;
       const adManager = await handleAdManager(forwardedRequest, env, url);
