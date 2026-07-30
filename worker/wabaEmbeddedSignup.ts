@@ -4,9 +4,9 @@ export interface WabaEmbeddedSignupEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
-  META_APP_ID?: string;
-  META_APP_SECRET?: string;
-  META_GRAPH_VERSION?: string;
+  META_WABA_APP_ID?: string;
+  META_WABA_APP_SECRET?: string;
+  META_WABA_GRAPH_VERSION?: string;
   META_WABA_CONFIG_ID?: string;
 }
 
@@ -17,7 +17,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const record = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const graphVersion = (env: WabaEmbeddedSignupEnv): string => {
-  const value = text(env.META_GRAPH_VERSION) || 'v23.0';
+  const value = text(env.META_WABA_GRAPH_VERSION) || 'v23.0';
   return value.startsWith('v') ? value : `v${value}`;
 };
 const encryptionSecret = (env: WabaEmbeddedSignupEnv): string => text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
@@ -45,10 +45,10 @@ async function encrypt(payload: JsonRecord, secret: string): Promise<{ encrypted
 }
 
 async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<string> {
-  if (!env.META_APP_ID || !env.META_APP_SECRET) throw new Error('META_APP_ID или META_APP_SECRET не настроены');
+  if (!env.META_WABA_APP_ID || !env.META_WABA_APP_SECRET) throw new Error('META_WABA_APP_ID или META_WABA_APP_SECRET не настроены');
   const params = new URLSearchParams({
-    client_id: env.META_APP_ID,
-    client_secret: env.META_APP_SECRET,
+    client_id: env.META_WABA_APP_ID,
+    client_secret: env.META_WABA_APP_SECRET,
     code,
   });
   const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/oauth/access_token?${params}`, {
@@ -59,15 +59,15 @@ async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<s
   try { parsed = record(body ? JSON.parse(body) : {}); } catch { parsed = { error: body }; }
   if (!response.ok) {
     const error = record(parsed.error);
-    throw new Error(text(error.message) || text(parsed.error) || `Meta OAuth: ${response.status}`);
+    throw new Error(text(error.message) || text(parsed.error) || `Meta WABA OAuth: ${response.status}`);
   }
   const accessToken = text(parsed.access_token);
-  if (!accessToken) throw new Error('Meta не вернула access token для WABA');
+  if (!accessToken) throw new Error('Facebook не вернул отдельный access token для WABA');
   return accessToken;
 }
 
 async function saveCredential(env: WabaEmbeddedSignupEnv, userId: string, accessToken: string, wabaId: string, phoneNumberId: string): Promise<void> {
-  const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env) }, encryptionSecret(env));
+  const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env), appId: text(env.META_WABA_APP_ID) }, encryptionSecret(env));
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
   const filter = `user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
   const payload = {
@@ -76,7 +76,7 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, userId: string, access
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
-      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env) },
+      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env), appId: text(env.META_WABA_APP_ID) },
       secretFields: { accessToken: true },
     },
     status: 'connected',
@@ -118,13 +118,14 @@ async function readConnection(env: WabaEmbeddedSignupEnv, userId: string): Promi
 
 export async function handleWabaEmbeddedSignupRequest(request: Request, env: WabaEmbeddedSignupEnv, url: URL): Promise<Response | null> {
   if (url.pathname === '/api/integrations/waba/config' && request.method === 'GET') {
-    const appId = text(env.META_APP_ID);
+    const appId = text(env.META_WABA_APP_ID);
     const configId = text(env.META_WABA_CONFIG_ID);
     const userId = authenticatedUserId(request);
-    const configured = Boolean(appId && env.META_APP_SECRET && configId);
+    const configured = Boolean(appId && env.META_WABA_APP_SECRET && configId);
     const connection = userId ? await readConnection(env, userId).catch(() => null) : null;
     return json({
       configured,
+      authMode: 'separate_waba_facebook_app',
       appId,
       configId,
       version: graphVersion(env),
@@ -135,7 +136,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
         lastVerifiedAt: connection.last_verified_at || null,
         lastError: connection.last_error || null,
       } : null,
-      error: configured ? undefined : 'Нужны META_APP_ID, META_APP_SECRET и META_WABA_CONFIG_ID',
+      error: configured ? undefined : 'Нужны отдельные META_WABA_APP_ID, META_WABA_APP_SECRET и META_WABA_CONFIG_ID',
     }, configured ? 200 : 503);
   }
 
@@ -148,11 +149,11 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       const code = text(payload.code);
       const wabaId = text(payload.wabaId);
       const phoneNumberId = text(payload.phoneNumberId);
-      if (!code) return json({ error: 'Facebook authorization code не получен' }, 400);
+      if (!code) return json({ error: 'Facebook authorization code для WABA не получен' }, 400);
       if (!wabaId || !phoneNumberId) return json({ error: 'Facebook не вернул WABA ID или Phone Number ID' }, 400);
       const accessToken = await exchangeCode(env, code);
       await saveCredential(env, userId, accessToken, wabaId, phoneNumberId);
-      return json({ ok: true, wabaId, phoneNumberId });
+      return json({ ok: true, authMode: 'separate_waba_facebook_app', wabaId, phoneNumberId });
     } catch (error) {
       console.error('WABA Embedded Signup failed', error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
