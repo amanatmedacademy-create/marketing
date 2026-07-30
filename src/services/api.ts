@@ -86,6 +86,8 @@ export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
 export interface IntegrationCredentialSummary { provider: IntegrationProvider; configured: boolean; status: string; values: Record<string, string>; secretFields: Record<string, boolean>; updatedAt: string; lastVerifiedAt?: string | null; lastError?: string | null; }
 export interface IntegrationConfigResponse { providers: IntegrationCredentialSummary[]; }
 export interface IntegrationDisconnectResponse { ok: boolean; provider: IntegrationProvider; mode: 'archived' | 'purged'; data?: unknown; }
+export interface TikTokLoginProfile { openId: string; displayName: string; avatarUrl: string; scope: string; connectedAt: string; }
+export interface TikTokLoginStatus { connected: boolean; profile: TikTokLoginProfile | null; }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -125,6 +127,9 @@ export const marketingApi = {
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
   integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
   startTikTokOAuth: () => { window.location.assign('/api/integrations/tiktok/oauth/start'); },
+  startTikTokLogin: () => { window.location.assign('/api/integrations/tiktok/login/start'); },
+  tiktokLoginStatus: () => apiRequest<TikTokLoginStatus>('/integrations/tiktok/login/status'),
+  disconnectTikTokLogin: () => apiRequest<{ ok: boolean }>('/integrations/tiktok/login/disconnect', { method: 'POST', body: '{}' }),
   saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
   deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
