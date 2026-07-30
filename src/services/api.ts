@@ -124,6 +124,7 @@ export const marketingApi = {
   exchangeRates: () => apiRequest<ExchangeRatesResponse>('/exchange-rates'),
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
   integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
+  startBitrixOAuth: () => { window.location.assign('/api/integrations/bitrix/oauth/start'); },
   saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
   deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
