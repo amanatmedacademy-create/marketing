@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import CommunicationIntegrations from './CommunicationIntegrations';
 import IntegrationWorkspace from './IntegrationWorkspace';
 import { marketingApi, type IntegrationProvider } from '../services/api';
 import '../integration-catalog.css';
@@ -60,8 +59,5 @@ export default function IntegrationManager() {
     return () => observer.disconnect();
   }, []);
 
-  return <div className="stack">
-    <IntegrationWorkspace />
-    <CommunicationIntegrations />
-  </div>;
+  return <IntegrationWorkspace />;
 }
