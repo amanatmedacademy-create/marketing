@@ -39,24 +39,52 @@
 .connections-page .integration-state-planned{justify-content:flex-start!important}
 .connections-page .integration-state-planned>button{height:38px!important;min-height:38px!important;margin-top:auto!important;border:1px solid #263750!important;border-radius:8px!important;background:#121d2e!important;color:#8d9aad!important}
 
-/* Integration setup modal: use the full viewport and prevent the guide from being clipped. */
-.integration-modal-layer{padding:24px!important;align-items:center!important;justify-items:center!important}
-.integration-modal{width:min(1320px,calc(100vw - 48px))!important;max-width:1320px!important;max-height:calc(100vh - 48px)!important;overflow:hidden!important}
-.integration-modal>header{position:sticky!important;top:0!important;z-index:4!important}
-.integration-modal-body{display:grid!important;grid-template-columns:minmax(0,1fr) 430px!important;min-width:0!important;max-height:calc(100vh - 132px)!important;overflow:hidden!important}
-.integration-modal-body>main{min-width:0!important;overflow:auto!important;padding:24px!important}
-.integration-modal-body>.connection-guide{box-sizing:border-box!important;width:430px!important;min-width:430px!important;max-width:430px!important;overflow-y:auto!important;overflow-x:hidden!important;padding:18px!important}
-.connection-guide-gallery{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;width:100%!important;min-width:0!important}
-.connection-guide-card{box-sizing:border-box!important;min-width:0!important;width:100%!important;overflow:hidden!important}
-.connection-guide-card__top{display:grid!important;grid-template-columns:26px minmax(0,1fr)!important;gap:8px!important;align-items:start!important}
-.connection-guide-card__top strong{min-width:0!important;font-size:12px!important;line-height:1.25!important;white-space:normal!important}
-.connection-guide-card p{margin:9px 0 0!important;font-size:11px!important;line-height:1.4!important;overflow-wrap:anywhere!important}
-.connection-guide-visual{width:100%!important;min-width:0!important;height:108px!important;margin-top:10px!important}
-.connection-webhook,.connection-run-status{width:100%!important;min-width:0!important;box-sizing:border-box!important}
-.connection-webhook code{display:block!important;max-width:100%!important;overflow-wrap:anywhere!important;white-space:normal!important}
-.connection-actions{display:flex!important;align-items:center!important;gap:10px!important;flex-wrap:wrap!important}
-.connection-actions>.connections-button--danger{margin-left:0!important}
+/* Premium connection screen based on the approved HTML prototype. */
+.integration-modal-layer{padding:24px!important;align-items:center!important;justify-items:center!important;background:rgba(2,6,23,.68)!important;backdrop-filter:blur(7px)!important}
+.integration-modal.premium-connection-modal{width:min(1180px,calc(100vw - 48px))!important;max-width:1180px!important;max-height:calc(100vh - 48px)!important;overflow:hidden!important;border:1px solid #dbe3ef!important;border-radius:18px!important;background:#f6f8fc!important;color:#101828!important;box-shadow:0 30px 90px rgba(0,0,0,.34)!important}
+.integration-modal.premium-connection-modal>header{position:sticky!important;top:0!important;z-index:5!important;display:grid!important;grid-template-columns:auto 1fr auto!important;gap:14px!important;align-items:center!important;padding:18px 20px!important;border-bottom:1px solid #e5e9f1!important;background:#fff!important;color:#101828!important}
+.integration-modal.premium-connection-modal>header small{color:#667085!important}
+.integration-modal.premium-connection-modal>header h2{color:#101828!important}
+.integration-modal.premium-connection-modal>header p{color:#667085!important}
+.integration-modal.premium-connection-modal>header>button{border:1px solid #d0d7e3!important;background:#fff!important;color:#475467!important}
+.integration-modal.premium-connection-modal .integration-modal-body{display:block!important;max-height:calc(100vh - 130px)!important;overflow:auto!important;background:#f6f8fc!important}
+.integration-modal.premium-connection-modal .premium-instruction-screen{display:block!important;padding:24px!important}
+.integration-modal.premium-connection-modal .premium-original-settings,
+.integration-modal.premium-connection-modal .premium-original-guide{display:none!important}
+.integration-modal.premium-connection-modal.premium-show-settings .premium-instruction-screen{display:none!important}
+.integration-modal.premium-connection-modal.premium-show-settings .premium-original-settings{display:block!important;padding:24px!important;background:#fff!important;color:#101828!important}
+.integration-modal.premium-connection-modal.premium-show-settings .premium-original-guide{display:none!important}
 
-@media(max-width:1280px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.integration-modal{width:min(1180px,calc(100vw - 32px))!important}.integration-modal-body{grid-template-columns:minmax(0,1fr) 380px!important}.integration-modal-body>.connection-guide{width:380px!important;min-width:380px!important;max-width:380px!important}}
-@media(max-width:980px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.integration-modal{width:calc(100vw - 20px)!important;max-height:calc(100vh - 20px)!important}.integration-modal-body{display:block!important;max-height:calc(100vh - 100px)!important;overflow:auto!important}.integration-modal-body>main{overflow:visible!important}.integration-modal-body>.connection-guide{width:100%!important;min-width:0!important;max-width:none!important;overflow:visible!important;border-left:0!important;border-top:1px solid #dbe3ef!important}.connection-guide-gallery{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
-@media(max-width:680px){.connections-page .integration-catalog-grid{grid-template-columns:1fr!important}.connections-page .integration-catalog-card{height:222px!important;min-height:222px!important;max-height:222px!important}.integration-modal-layer{padding:8px!important}.connection-guide-gallery{grid-template-columns:1fr!important}.connection-actions{display:grid!important;grid-template-columns:1fr!important}.connection-actions .connections-button{width:100%!important}}
+.premium-instruction-heading{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:20px!important;margin-bottom:18px!important}
+.premium-instruction-heading h3{margin:0 0 5px!important;color:#101828!important;font-size:21px!important;font-weight:800!important}
+.premium-instruction-heading p{margin:0!important;color:#667085!important;font-size:13px!important}
+.premium-instruction-steps{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important}
+.premium-instruction-step{box-sizing:border-box!important;min-width:0!important;min-height:330px!important;padding:17px!important;border:1px solid #e5e9f1!important;border-radius:13px!important;background:#fff!important;color:#101828!important;box-shadow:0 6px 18px rgba(16,24,40,.05)!important}
+.premium-step-title{display:grid!important;grid-template-columns:31px minmax(0,1fr)!important;gap:10px!important;align-items:center!important;margin-bottom:13px!important}
+.premium-step-title span{display:grid!important;place-items:center!important;width:31px!important;height:31px!important;border-radius:50%!important;background:#1267f5!important;color:#fff!important;font-size:13px!important;font-weight:800!important}
+.premium-step-title strong{min-width:0!important;color:#101828!important;font-size:14px!important;line-height:1.3!important}
+.premium-instruction-step>p{min-height:58px!important;margin:0 0 14px!important;color:#667085!important;font-size:13px!important;line-height:1.5!important}
+.premium-instruction-step .connection-guide-visual{width:100%!important;height:128px!important;margin:0!important;border:1px solid #dde3ec!important;border-radius:10px!important;background:#f8faff!important}
+.premium-step-requirement{margin-top:14px!important;padding:13px!important;border:1px solid #e1e7f0!important;border-radius:10px!important;background:#f8faff!important;color:#475467!important;font-size:12px!important;line-height:1.55!important}
+.premium-step-requirement strong{display:block!important;margin-bottom:6px!important;color:#101828!important}
+.premium-instruction-footer{display:flex!important;align-items:center!important;gap:10px!important;padding-top:20px!important}
+.premium-instruction-footer button{height:40px!important;padding:0 17px!important;border-radius:8px!important;font-size:14px!important;font-weight:700!important;cursor:pointer!important}
+.premium-start-button{border:0!important;background:linear-gradient(180deg,#1267f5,#0b58d7)!important;color:#fff!important}
+.premium-settings-button{border:1px solid #cfd7e6!important;background:#fff!important;color:#344054!important}
+.premium-instruction-footer>span{margin-left:4px!important;color:#667085!important;font-size:12px!important}
+
+/* Original settings, shown only after explicit request, use the same light palette. */
+.integration-modal.premium-connection-modal.premium-show-settings .meta-fast-connect{border:1px solid #b7cdf7!important;background:#edf4ff!important;color:#2457a7!important}
+.integration-modal.premium-connection-modal.premium-show-settings .meta-fast-connect small{color:#667085!important}
+.integration-modal.premium-connection-modal.premium-show-settings .connection-card,
+.integration-modal.premium-connection-modal.premium-show-settings .connection-field,
+.integration-modal.premium-connection-modal.premium-show-settings .connection-webhook,
+.integration-modal.premium-connection-modal.premium-show-settings .connection-run-status{border-color:#e5e9f1!important;background:#fff!important;color:#101828!important}
+.integration-modal.premium-connection-modal.premium-show-settings input{border-color:#d4dbea!important;background:#fff!important;color:#101828!important}
+.integration-modal.premium-connection-modal.premium-show-settings .connections-button{border-radius:8px!important}
+.integration-modal.premium-connection-modal.premium-show-settings .connections-button:not(.connections-button--danger){border-color:#1267f5!important;background:#1267f5!important;color:#fff!important}
+.integration-modal.premium-connection-modal.premium-show-settings .connections-button--danger{border-color:#ff9b9b!important;background:#fff5f5!important;color:#e5484d!important}
+
+@media(max-width:1280px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.premium-instruction-steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}.premium-instruction-step{min-height:300px!important}}
+@media(max-width:980px){.connections-page .integration-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.integration-modal.premium-connection-modal{width:calc(100vw - 20px)!important;max-height:calc(100vh - 20px)!important}}
+@media(max-width:680px){.connections-page .integration-catalog-grid{grid-template-columns:1fr!important}.connections-page .integration-catalog-card{height:222px!important;min-height:222px!important;max-height:222px!important}.integration-modal-layer{padding:8px!important}.premium-instruction-steps{grid-template-columns:1fr!important}.premium-instruction-step{min-height:0!important}.premium-instruction-footer{align-items:stretch!important;flex-direction:column!important}.premium-instruction-footer button{width:100%!important}.premium-instruction-footer>span{margin:0!important}}
