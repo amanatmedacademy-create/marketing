@@ -82,10 +82,20 @@
 .integration-tone-kazakhtelecom { --platform-accent:#00a0df; }
 .integration-tone-beeline { --platform-accent:#ffc800; }
 .integration-tone-kcell { --platform-accent:#7b2cbf; }
+.integration-tone-whatsapp { --platform-accent:#25d366; }
+.integration-tone-wazzup { --platform-accent:#21c063; }
+.integration-tone-chat2desk { --platform-accent:#5b6cff; }
+.integration-tone-sendpulse { --platform-accent:#00a9f4; }
+.integration-tone-albato { --platform-accent:#ff6b35; }
+.integration-tone-apix { --platform-accent:#7b61ff; }
+.integration-tone-make { --platform-accent:#6d00cc; }
+.integration-tone-sheets { --platform-accent:#34a853; }
+.integration-tone-webhooks { --platform-accent:#2088ff; }
 .integration-tone-yandex .integration-card-logo,
 .integration-tone-twogis .integration-card-logo,
 .integration-tone-bitrix .integration-card-logo,
-.integration-tone-beeline .integration-card-logo { background:#fff; }
+.integration-tone-beeline .integration-card-logo,
+.integration-tone-sheets .integration-card-logo { background:#fff; }
 @media (max-width:760px) {
   .integration-catalog-card { min-height:310px; }
   .integration-platform-heading { align-items:flex-start; flex-direction:column; }
