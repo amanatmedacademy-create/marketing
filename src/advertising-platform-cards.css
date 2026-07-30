@@ -1,1 +1,147 @@
-.integration-catalog-grid{align-items:stretch}.integration-catalog-card{min-height:280px}.integration-platform-card{position:relative;overflow:hidden}.integration-platform-card:before{content:'';position:absolute;inset:0 0 auto;height:3px;background:var(--platform-accent,#64748b)}.integration-platform-card .integration-card-logo{display:flex;align-items:center;justify-content:center;gap:5px}.integration-platform-card .integration-card-logo b{font-size:.64rem;letter-spacing:-.03em}.integration-platform-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.integration-platform-heading>strong{font-size:1rem}.integration-platform-heading>span{padding:4px 7px;border:1px solid color-mix(in srgb,var(--platform-accent,#64748b) 38%,transparent);border-radius:999px;background:color-mix(in srgb,var(--platform-accent,#64748b) 12%,transparent);color:color-mix(in srgb,var(--platform-accent,#94a3b8) 72%,white);font-size:.58rem;font-weight:800;white-space:nowrap}.integration-state-planned>button{border-style:dashed;opacity:.72;cursor:not-allowed}.integration-state-planned>button:hover{transform:none}.integration-tone-meta{--platform-accent:#1877f2}.integration-tone-tiktok{--platform-accent:#ff3158}.integration-tone-google{--platform-accent:#4285f4}.integration-tone-yandex{--platform-accent:#ffcc00}.integration-tone-telegram{--platform-accent:#27a7e7}.integration-tone-twogis{--platform-accent:#5dc62f}.integration-tone-vk{--platform-accent:#0077ff}.integration-tone-bitrix{--platform-accent:#2fc6f6}.integration-tone-n8n{--platform-accent:#ff6d5a}.integration-catalog-card[class*='integration-tone-']{border-color:color-mix(in srgb,var(--platform-accent,#334155) 26%,#1e2d4a);background:linear-gradient(155deg,color-mix(in srgb,var(--platform-accent,#111827) 8%,#0d1730),#091321 64%)}.integration-catalog-card[class*='integration-tone-']:hover{border-color:color-mix(in srgb,var(--platform-accent,#64748b) 48%,#1e2d4a);box-shadow:0 18px 42px color-mix(in srgb,var(--platform-accent,#000) 12%,transparent)}.integration-catalog-card[class*='integration-tone-'] .integration-card-logo{background:color-mix(in srgb,var(--platform-accent,#334155) 18%,#101b31);color:color-mix(in srgb,var(--platform-accent,#cbd5e1) 75%,white)}.integration-catalog-card[class*='integration-tone-'] .integration-card-tags span{border-color:color-mix(in srgb,var(--platform-accent,#334155) 22%,#243755);background:color-mix(in srgb,var(--platform-accent,#0a1426) 7%,#0a1426)}.integration-catalog-card[class*='integration-tone-']>button{margin-top:auto}.integration-catalog-card.integration-tone-google .integration-card-logo{background:conic-gradient(from 35deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);color:#fff}.integration-catalog-card.integration-tone-yandex .integration-card-logo{background:#ffcc00;color:#171717}.integration-catalog-card.integration-tone-telegram .integration-card-logo{background:#27a7e7;color:#fff}.integration-catalog-card.integration-tone-twogis .integration-card-logo{background:#5dc62f;color:#fff}.integration-catalog-card.integration-tone-vk .integration-card-logo{background:#0077ff;color:#fff}@media(max-width:760px){.integration-catalog-card{min-height:250px}.integration-platform-heading{align-items:flex-start;flex-direction:column}.integration-platform-heading>span{align-self:flex-start}}
+.integration-catalog-grid {
+  align-items: stretch;
+}
+
+.integration-catalog-card {
+  display: flex;
+  min-height: 292px;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  position: relative;
+  border-color: color-mix(in srgb, var(--platform-accent, #334155) 26%, #1e2d4a);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--platform-accent, #111827) 8%, #0d1730), #091321 64%);
+}
+
+.integration-catalog-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--platform-accent, #64748b);
+}
+
+.integration-catalog-card:hover {
+  border-color: color-mix(in srgb, var(--platform-accent, #64748b) 48%, #1e2d4a);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--platform-accent, #000) 12%, transparent);
+}
+
+.integration-card-top {
+  min-height: 50px;
+}
+
+.integration-catalog-card .integration-card-logo {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  overflow: hidden;
+  padding: 10px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--platform-accent, #334155) 28%, #243755);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--platform-accent, #334155) 13%, #101b31);
+  color: #fff;
+}
+
+.integration-catalog-card .integration-card-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.integration-catalog-card > strong,
+.integration-platform-heading > strong {
+  min-height: 24px;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.integration-catalog-card > p {
+  min-height: 66px;
+  margin: 0;
+  color: #8ea0b9;
+  font-size: .74rem;
+  line-height: 1.55;
+}
+
+.integration-card-tags {
+  min-height: 56px;
+  align-content: flex-start;
+}
+
+.integration-catalog-card .integration-card-tags span {
+  border-color: color-mix(in srgb, var(--platform-accent, #334155) 22%, #243755);
+  background: color-mix(in srgb, var(--platform-accent, #0a1426) 7%, #0a1426);
+}
+
+.integration-catalog-card > button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: auto;
+}
+
+.integration-platform-heading {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.integration-platform-heading > span {
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--platform-accent, #64748b) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--platform-accent, #64748b) 12%, transparent);
+  color: color-mix(in srgb, var(--platform-accent, #94a3b8) 72%, white);
+  font-size: .58rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.integration-state-planned > button {
+  border-style: dashed;
+  opacity: .72;
+  cursor: not-allowed;
+}
+
+.integration-state-planned > button:hover {
+  transform: none;
+}
+
+.integration-tone-meta { --platform-accent: #0866ff; }
+.integration-tone-tiktok { --platform-accent: #ff3158; }
+.integration-tone-google { --platform-accent: #4285f4; }
+.integration-tone-yandex { --platform-accent: #ffcc00; }
+.integration-tone-telegram { --platform-accent: #26a5e4; }
+.integration-tone-twogis { --platform-accent: #5dc62f; }
+.integration-tone-vk { --platform-accent: #0077ff; }
+.integration-tone-bitrix { --platform-accent: #2fc6f6; }
+.integration-tone-n8n { --platform-accent: #ea4b71; }
+
+.integration-tone-yandex .integration-card-logo {
+  background: #fff;
+}
+
+.integration-tone-twogis .integration-card-logo,
+.integration-tone-bitrix .integration-card-logo {
+  background: #fff;
+}
+
+@media (max-width: 760px) {
+  .integration-catalog-card {
+    min-height: 270px;
+  }
+
+  .integration-platform-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .integration-platform-heading > span {
+    align-self: flex-start;
+  }
+}
