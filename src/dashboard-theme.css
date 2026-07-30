@@ -12,4 +12,25 @@
   --accent-purple: #8b5cf6;
   --accent-green: #10b981;
   --accent-green-bright: #22c55e;
-  --accent-amber: #f59
+  --accent-amber: #f59e0b;
+  --accent-red: #ef4444;
+  --radius-card: 14px;
+  --shadow-card: 0 18px 45px rgb(0 0 0 / 20%);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  background: var(--background);
+}
+
+.analytics-page .analytics-panel,
+.analytics-page .analytics-kpi,
+.analytics-page .imds-metrics-block {
+  border-color: var(--card-border);
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow-card);
+}
+
+.analytics-page button,
+.analytics-page input,
+.analytics-page select {
+  font-family: inherit;
+}
