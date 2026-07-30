@@ -16,24 +16,24 @@ const premiumMetrics: Record<string, Array<[string, string, boolean?]>> = {
   n8n: [['Сценарии', '—'], ['Запуски', '—'], ['Успешно', '—', true]],
 };
 
-const guideVisuals: Record<string, Array<{ title: string; text: string; visual: string }>> = {
+const guideVisuals: Record<string, Array<{ title: string; text: string; visual: string; requirement: string }>> = {
   'meta ads': [
-    { title: 'Войдите через Facebook', text: 'Используйте пользователя с правами администратора Business Manager.', visual: 'facebook-login' },
-    { title: 'Разрешите доступ', text: 'Подтвердите доступ к рекламным кабинетам, страницам и Lead Ads.', visual: 'meta-permissions' },
-    { title: 'Выберите кабинеты', text: 'Отметьте рекламные аккаунты, которые нужно синхронизировать.', visual: 'meta-assets' },
-    { title: 'Завершите подключение', text: 'После возврата в IMDS начнётся первичная синхронизация.', visual: 'success' },
+    { title: 'Войдите через Facebook', text: 'Нажмите «Начать подключение». Система откроет безопасную авторизацию Meta.', visual: 'facebook-login', requirement: 'Пользователь с правами администратора Business Manager.' },
+    { title: 'Разрешите доступ', text: 'Подтвердите доступ к рекламным кабинетам, страницам и Lead Ads.', visual: 'meta-permissions', requirement: 'Не отключайте ads_read, ads_management и leads_retrieval.' },
+    { title: 'Выберите кабинеты', text: 'Отметьте рекламные аккаунты, которые должны синхронизироваться с IMDS.', visual: 'meta-assets', requirement: 'Выберите только рабочие кабинеты Amanat Med Academy.' },
+    { title: 'Завершите подключение', text: 'После возврата в IMDS начнётся первичная синхронизация.', visual: 'success', requirement: 'Первичная загрузка может занять несколько минут.' },
   ],
   'tiktok ads': [
-    { title: 'Откройте TikTok Business', text: 'Авторизуйтесь в TikTok for Business.', visual: 'tiktok-login' },
-    { title: 'Разрешите Marketing API', text: 'Подтвердите чтение кампаний, расходов и лидов.', visual: 'tiktok-permissions' },
-    { title: 'Выберите Advertiser ID', text: 'Укажите рекламные кабинеты для синхронизации.', visual: 'tiktok-assets' },
-    { title: 'Проверьте подключение', text: 'Сохраните настройки и выполните тестовый обмен.', visual: 'success' },
+    { title: 'Откройте TikTok Business', text: 'Нажмите «Начать подключение» и войдите в TikTok for Business.', visual: 'tiktok-login', requirement: 'Доступ к нужному Business Center.' },
+    { title: 'Разрешите Marketing API', text: 'Подтвердите чтение кампаний, расходов и лидов.', visual: 'tiktok-permissions', requirement: 'Права на рекламные аккаунты и Lead Generation.' },
+    { title: 'Выберите Advertiser ID', text: 'Укажите рекламные кабинеты для синхронизации.', visual: 'tiktok-assets', requirement: 'Проверьте правильность Advertiser ID.' },
+    { title: 'Проверьте подключение', text: 'Сохраните настройки и выполните тестовый обмен.', visual: 'success', requirement: 'После проверки включится автосинхронизация.' },
   ],
   bitrix24: [
-    { title: 'Введите адрес портала', text: 'Укажите домен Bitrix24 без https://.', visual: 'bitrix-domain' },
-    { title: 'Создайте webhook', text: 'В Bitrix24 откройте Разработчикам → Входящий webhook.', visual: 'bitrix-webhook' },
-    { title: 'Разрешите CRM', text: 'Выдайте права на лиды, сделки, контакты и пользователей.', visual: 'bitrix-permissions' },
-    { title: 'Сохраните и проверьте', text: 'Вставьте URL webhook и запустите проверку.', visual: 'success' },
+    { title: 'Введите адрес портала', text: 'Укажите домен Bitrix24 без https://.', visual: 'bitrix-domain', requirement: 'Например: amanatmed.bitrix24.kz.' },
+    { title: 'Создайте webhook', text: 'В Bitrix24 откройте Разработчикам → Входящий webhook.', visual: 'bitrix-webhook', requirement: 'Создавать webhook должен администратор портала.' },
+    { title: 'Разрешите CRM', text: 'Выдайте права на лиды, сделки, контакты и пользователей.', visual: 'bitrix-permissions', requirement: 'Не отключайте CRM и user permissions.' },
+    { title: 'Сохраните и проверьте', text: 'Вставьте URL webhook и запустите проверку.', visual: 'success', requirement: 'После проверки начнётся синхронизация.' },
   ],
 };
 
@@ -85,24 +85,59 @@ function addPremiumCardUi(card: HTMLElement) {
   card.appendChild(actions);
 }
 
-function addGuideVisuals(modal: HTMLElement) {
-  if (modal.dataset.guideVisualsReady === 'true') return;
+function findPrimaryConnectionButton(modal: HTMLElement): HTMLButtonElement | null {
+  const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('.integration-modal-body main button'));
+  return buttons.find((button) => /подключить через|подключить|продолжить|авториз/i.test(button.textContent || '')) || null;
+}
+
+function addPremiumModalScreen(modal: HTMLElement) {
+  if (modal.dataset.premiumScreenReady === 'true') return;
   const title = (modal.querySelector('header h2')?.textContent || '').trim().toLowerCase();
   const steps = guideVisuals[title];
-  const guide = modal.querySelector<HTMLElement>('.connection-guide');
-  if (!guide || !steps) return;
+  const body = modal.querySelector<HTMLElement>('.integration-modal-body');
+  const main = body?.querySelector<HTMLElement>(':scope > main');
+  const guide = body?.querySelector<HTMLElement>(':scope > .connection-guide');
+  if (!body || !main || !steps) return;
 
-  modal.dataset.guideVisualsReady = 'true';
-  const gallery = document.createElement('div');
-  gallery.className = 'connection-guide-gallery';
-  gallery.innerHTML = steps.map((step, index) => `
-    <article class="connection-guide-card">
-      <div class="connection-guide-card__top"><span>${index + 1}</span><strong>${step.title}</strong></div>
-      <div class="connection-guide-visual connection-guide-visual--${step.visual}" aria-hidden="true"><i></i><b></b><em></em></div>
-      <p>${step.text}</p>
-    </article>
-  `).join('');
-  guide.querySelector('ol')?.replaceWith(gallery);
+  modal.dataset.premiumScreenReady = 'true';
+  modal.classList.add('premium-connection-modal');
+  main.classList.add('premium-original-settings');
+  guide?.classList.add('premium-original-guide');
+
+  const screen = document.createElement('section');
+  screen.className = 'premium-instruction-screen';
+  screen.innerHTML = `
+    <div class="premium-instruction-heading">
+      <div>
+        <h3>Как подключить ${modal.querySelector('header h2')?.textContent || 'интеграцию'}</h3>
+        <p>Выполните четыре шага. После подключения данные начнут синхронизироваться автоматически.</p>
+      </div>
+    </div>
+    <div class="premium-instruction-steps">
+      ${steps.map((step, index) => `
+        <article class="premium-instruction-step">
+          <div class="premium-step-title"><span>${index + 1}</span><strong>${step.title}</strong></div>
+          <p>${step.text}</p>
+          <div class="connection-guide-visual connection-guide-visual--${step.visual}" aria-hidden="true"><i></i><b></b><em></em></div>
+          <div class="premium-step-requirement"><strong>Что потребуется</strong>${step.requirement}</div>
+        </article>
+      `).join('')}
+    </div>
+    <div class="premium-instruction-footer">
+      <button type="button" class="premium-start-button">Начать подключение</button>
+      <button type="button" class="premium-settings-button">Открыть настройки</button>
+      <span>Подключение выполняется через безопасную OAuth-авторизацию.</span>
+    </div>
+  `;
+
+  body.insertBefore(screen, main);
+  const start = screen.querySelector<HTMLButtonElement>('.premium-start-button');
+  const settings = screen.querySelector<HTMLButtonElement>('.premium-settings-button');
+  start?.addEventListener('click', () => findPrimaryConnectionButton(modal)?.click());
+  settings?.addEventListener('click', () => {
+    const showingSettings = modal.classList.toggle('premium-show-settings');
+    settings.textContent = showingSettings ? 'Вернуться к инструкции' : 'Открыть настройки';
+  });
 }
 
 export default function IntegrationManager() {
@@ -112,7 +147,7 @@ export default function IntegrationManager() {
       document.querySelectorAll<HTMLElement>('.integration-catalog-card').forEach(addPremiumCardUi);
 
       document.querySelectorAll<HTMLElement>('.integration-modal').forEach((modal) => {
-        addGuideVisuals(modal);
+        addPremiumModalScreen(modal);
         const provider = advertisingProvider(modal);
         if (!provider) return;
         const actions = modal.querySelector('.connection-actions');
