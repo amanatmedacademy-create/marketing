@@ -96,6 +96,12 @@
 .integration-tone-bitrix .integration-card-logo,
 .integration-tone-beeline .integration-card-logo,
 .integration-tone-sheets .integration-card-logo { background:#fff; }
+
+.connections-page:has(.integration-catalog-section[data-catalog-expanded="true"])
+  > .integration-catalog-section:not([data-catalog-expanded="true"]) {
+  display: none !important;
+}
+
 @media (max-width:760px) {
   .integration-catalog-card { min-height:310px; }
   .integration-platform-heading { align-items:flex-start; flex-direction:column; }
