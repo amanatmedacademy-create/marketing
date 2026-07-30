@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
+import IntegrationCatalogNormalizer from './components/IntegrationCatalogNormalizer';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
@@ -33,6 +34,7 @@ function Root() {
     <AnalyticsTableColorizer />
     <MetaOAuthLauncher />
     <AdvertisingCatalogExpansion />
+    <IntegrationCatalogNormalizer />
   </>;
 }
 
