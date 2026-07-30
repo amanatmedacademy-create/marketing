@@ -88,6 +88,16 @@ export interface IntegrationConfigResponse { providers: IntegrationCredentialSum
 export interface IntegrationDisconnectResponse { ok: boolean; provider: IntegrationProvider; mode: 'archived' | 'purged'; data?: unknown; }
 export interface TikTokLoginProfile { openId: string; displayName: string; avatarUrl: string; scope: string; connectedAt: string; }
 export interface TikTokLoginStatus { connected: boolean; profile: TikTokLoginProfile | null; }
+export interface WabaConfigResponse {
+  configured: boolean;
+  authMode: string;
+  appId: string;
+  configId: string;
+  version: string;
+  connected: boolean;
+  connection?: { status?: string; values?: { wabaId?: string; phoneNumberId?: string }; lastVerifiedAt?: string | null; lastError?: string | null } | null;
+  error?: string;
+}
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -130,6 +140,8 @@ export const marketingApi = {
   startTikTokLogin: () => { window.location.assign('/api/integrations/tiktok/login/start'); },
   tiktokLoginStatus: () => apiRequest<TikTokLoginStatus>('/integrations/tiktok/login/status'),
   disconnectTikTokLogin: () => apiRequest<{ ok: boolean }>('/integrations/tiktok/login/disconnect', { method: 'POST', body: '{}' }),
+  wabaConfig: () => apiRequest<WabaConfigResponse>('/integrations/waba/config'),
+  connectWaba: (payload: { code: string; wabaId: string; phoneNumberId: string }) => apiRequest<{ ok: boolean; wabaId: string; phoneNumberId: string }>('/integrations/waba/connect', { method: 'POST', body: JSON.stringify(payload) }),
   saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
   deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
