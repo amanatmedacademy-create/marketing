@@ -13,6 +13,7 @@ import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaStatusSync } from './metaStatusSync';
 import { handleOperationsRequest } from './operations';
 import { handleTikTokOAuth, type TikTokOAuthEnv } from './tiktokOAuth';
+import { handleTikTokWebhook } from './tiktokWebhook';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
@@ -64,6 +65,9 @@ export default {
           },
         });
       }
+
+      const tiktokWebhookResponse = await handleTikTokWebhook(request, url);
+      if (tiktokWebhookResponse) return tiktokWebhookResponse;
 
       if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
         const callbackResponse = await handleTikTokOAuth(request, env, url);
