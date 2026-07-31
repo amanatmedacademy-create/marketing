@@ -48,10 +48,17 @@ function Root() {
   </>;
 }
 
+function AppEntry() {
+  const authEnabled = import.meta.env.VITE_AUTH_ENABLED === 'true';
+  const app = <Root />;
+
+  // Production stays available even when Supabase Auth or its callback is not configured.
+  // Enable the gate only after VITE_AUTH_ENABLED=true is set in the deployment environment.
+  return authEnabled ? <AuthGate>{app}</AuthGate> : app;
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthGate>
-      <Root />
-    </AuthGate>
+    <AppEntry />
   </React.StrictMode>,
 );
