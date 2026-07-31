@@ -3,13 +3,16 @@ import { createClient, type User as SupabaseUser } from '@supabase/supabase-js';
 import type { FastifyRequest } from 'fastify';
 import { env } from '../config/env.js';
 
-export type AuthContext = {
+export type IdentityContext = {
   userId: string;
   supabaseUserId: string;
+  locale: 'KK' | 'RU' | 'EN';
+};
+
+export type AuthContext = IdentityContext & {
   companyId: string;
   membershipId: string;
   role: 'OWNER' | 'ADMIN' | 'MANAGER';
-  locale: 'KK' | 'RU' | 'EN';
 };
 
 function bearerToken(request: FastifyRequest): string {
@@ -18,7 +21,7 @@ function bearerToken(request: FastifyRequest): string {
   return value.slice(7).trim();
 }
 
-function names(user: SupabaseUser) {
+function profileFrom(user: SupabaseUser) {
   const metadata = user.user_metadata ?? {};
   const fullName = typeof metadata.full_name === 'string' ? metadata.full_name.trim() : '';
   const parts = fullName.split(/\s+/).filter(Boolean);
@@ -34,13 +37,15 @@ export default fp(async (app) => {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  app.decorateRequest('identity', null);
   app.decorateRequest('auth', null);
-  app.decorate('authenticate', async (request: FastifyRequest) => {
+
+  app.decorate('authenticateIdentity', async (request: FastifyRequest) => {
     const token = bearerToken(request);
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data.user?.email) throw app.httpErrors.unauthorized('INVALID_SUPABASE_TOKEN');
 
-    const profile = names(data.user);
+    const profile = profileFrom(data.user);
     const localUser = await app.prisma.user.upsert({
       where: { supabaseUserId: data.user.id },
       update: {
@@ -59,30 +64,44 @@ export default fp(async (app) => {
         emailVerifiedAt: data.user.email_confirmed_at ? new Date(data.user.email_confirmed_at) : null,
         lastLoginAt: new Date(),
       },
-      include: {
-        memberships: {
-          where: { status: 'ACTIVE' },
-          orderBy: { createdAt: 'asc' },
-          take: 1,
-        },
-      },
     });
 
-    const membership = localUser.memberships[0];
+    request.identity = {
+      userId: localUser.id,
+      supabaseUserId: data.user.id,
+      locale: localUser.locale,
+    };
+  });
+
+  app.decorate('authenticate', async (request: FastifyRequest) => {
+    await app.authenticateIdentity(request);
+    const requestedCompanyId = request.headers['x-company-id'];
+    const membership = await app.prisma.companyMember.findFirst({
+      where: {
+        userId: request.identity.userId,
+        status: 'ACTIVE',
+        ...(typeof requestedCompanyId === 'string' ? { companyId: requestedCompanyId } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+    });
     if (!membership) throw app.httpErrors.forbidden('NO_ACTIVE_COMPANY_MEMBERSHIP');
 
     request.auth = {
-      userId: localUser.id,
-      supabaseUserId: data.user.id,
+      ...request.identity,
       companyId: membership.companyId,
       membershipId: membership.id,
       role: membership.role,
-      locale: localUser.locale,
     };
   });
 });
 
 declare module 'fastify' {
-  interface FastifyRequest { auth: AuthContext }
-  interface FastifyInstance { authenticate: (request: FastifyRequest) => Promise<void> }
+  interface FastifyRequest {
+    identity: IdentityContext;
+    auth: AuthContext;
+  }
+  interface FastifyInstance {
+    authenticateIdentity: (request: FastifyRequest) => Promise<void>;
+    authenticate: (request: FastifyRequest) => Promise<void>;
+  }
 }
