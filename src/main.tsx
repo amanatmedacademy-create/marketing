@@ -10,6 +10,7 @@ import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import ThemeToggle from './components/ThemeToggle';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
+import CrmBoard from './pages/CrmBoard';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
@@ -21,23 +22,23 @@ import './v36-dashboard-advanced.css';
 import './integration-premium-exact.css';
 import './theme-toggle.css';
 import './v36-light-theme.css';
+import './crm.css';
 
 function Root() {
-  const operatingSystem = window.location.pathname === '/operations';
-
-  if (operatingSystem) {
+  const pathname = window.location.pathname;
+  if (pathname === '/crm') return <CrmBoard />;
+  if (pathname === '/operations') {
     return <>
       <ThemeToggle />
       <div className="operations-shell">
         <header className="operations-topbar">
           <a href="/">IMDS Marketing</a>
-          <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
+          <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/crm">CRM</a><a href="/integrations">Интеграции</a></nav>
         </header>
         <main className="operations-content"><MarketingOS /></main>
       </div>
     </>;
   }
-
   return <>
     <ThemeToggle />
     <MarketingPlatform />
@@ -52,16 +53,11 @@ function Root() {
 function AppEntry() {
   const authEnabled = import.meta.env.VITE_AUTH_ENABLED === 'true';
   const crmEnabled = import.meta.env.VITE_CRM_API_ENABLED === 'true';
-
+  const isCrmRoute = window.location.pathname === '/crm';
   let app = <Root />;
-  if (crmEnabled) app = <CrmGate>{app}</CrmGate>;
-  if (authEnabled) app = <AuthGate>{app}</AuthGate>;
-
+  if (crmEnabled && isCrmRoute) app = <CrmGate>{app}</CrmGate>;
+  if (authEnabled || isCrmRoute) app = <AuthGate>{app}</AuthGate>;
   return app;
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <AppEntry />
-  </React.StrictMode>,
-);
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppEntry /></React.StrictMode>);
