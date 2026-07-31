@@ -3,7 +3,7 @@ import { LoaderCircle } from 'lucide-react';
 import CompanyOnboarding from './CompanyOnboarding';
 import { loadCrmBootstrap, type CrmBootstrap } from '../services/crmBootstrap';
 
-const crmApiEnabled = import.meta.env.VITE_CRM_API_ENABLED === 'true';
+const crmApiEnabled = import.meta.env.VITE_CRM_API_ENABLED !== 'false';
 
 export default function CrmGate({ children }: { children: ReactNode }) {
   const [bootstrap, setBootstrap] = useState<CrmBootstrap | null>(null);
@@ -32,8 +32,6 @@ export default function CrmGate({ children }: { children: ReactNode }) {
     if (crmApiEnabled) void reload();
   }, [reload]);
 
-  // Fastify CRM API is deployed separately. Until it is explicitly enabled,
-  // keep the existing marketing application fully operational.
   if (!crmApiEnabled) return <>{children}</>;
 
   if (loading) return <div className="auth-screen auth-screen--loading">
