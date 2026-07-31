@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - agent/frontend-rebuild
+      - agent/harden-main-build-config
   pull_request:
     branches:
       - main
@@ -30,7 +31,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: TypeScript and Vite build
+      - name: TypeScript checks
+        run: bun run typecheck
+
+      - name: Vite production build
         run: bun run build
 
       - name: Verify dist
