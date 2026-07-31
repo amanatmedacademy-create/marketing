@@ -3,12 +3,16 @@ import { LoaderCircle } from 'lucide-react';
 import CompanyOnboarding from './CompanyOnboarding';
 import { loadCrmBootstrap, type CrmBootstrap } from '../services/crmBootstrap';
 
+const crmApiEnabled = import.meta.env.VITE_CRM_API_ENABLED === 'true';
+
 export default function CrmGate({ children }: { children: ReactNode }) {
   const [bootstrap, setBootstrap] = useState<CrmBootstrap | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(crmApiEnabled);
 
   const reload = useCallback(async () => {
+    if (!crmApiEnabled) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -25,8 +29,12 @@ export default function CrmGate({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void reload();
+    if (crmApiEnabled) void reload();
   }, [reload]);
+
+  // Fastify CRM API is deployed separately. Until it is explicitly enabled,
+  // keep the existing marketing application fully operational.
+  if (!crmApiEnabled) return <>{children}</>;
 
   if (loading) return <div className="auth-screen auth-screen--loading">
     <div className="auth-loading-card">
@@ -35,8 +43,8 @@ export default function CrmGate({ children }: { children: ReactNode }) {
     </div>
   </div>;
 
-  if (error) return <div className="auth-screen">
-    <div className="auth-login-card" style={{ margin: 'auto', maxWidth: 520 }}>
+  if (error) return <div className="auth-screen auth-screen--loading">
+    <div className="auth-login-card" style={{ maxWidth: 520 }}>
       <h2>Не удалось открыть CRM</h2>
       <div className="auth-error" role="alert">{error}</div>
       <button className="google-login" onClick={() => void reload()}><span>Повторить</span></button>
