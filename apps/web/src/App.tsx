@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bell, Cable, CalendarDays, Cloud, FolderKanban, Headphones, Instagram,
-  LayoutDashboard, Mail, Megaphone, MessageCircle, Moon, Search, Settings,
-  Sun, Trophy, UsersRound, Video, WalletCards, Workflow,
+  Bell, CalendarDays, FolderKanban, Headphones, LayoutDashboard, Moon, Search,
+  Settings, Sun, Trophy, UsersRound, WalletCards, Workflow,
 } from 'lucide-react';
 import { KanbanBoard } from './modules/deals/components/KanbanBoard';
 import {
@@ -13,8 +12,14 @@ import {
   useToggleTaskMutation,
   type TaskItem,
 } from './modules/core/useCrmModules';
+import {
+  ChannelsView,
+  channelNavigation,
+  type ChannelView,
+} from './modules/channels/ChannelsView';
 
-type View = 'dashboard' | 'deals' | 'tasks' | 'projects' | 'team' | 'accounting';
+type CoreView = 'dashboard' | 'deals' | 'tasks' | 'projects' | 'team' | 'accounting';
+type View = CoreView | ChannelView;
 type OpenMenu = 'notifications' | 'profile' | null;
 type DashboardResponse = {
   metrics: { amountInWork: number; newDeals: number; openTasks: number; unansweredConversations: number };
@@ -29,17 +34,15 @@ const primaryNavigation = [
   { id: 'team' as View, label: 'Команда', icon: UsersRound },
   { id: 'accounting' as View, label: 'Бухгалтерия', icon: WalletCards },
 ];
-const secondaryNavigation = [
-  ['WhatsApp', MessageCircle], ['Instagram', Instagram], ['Email', Mail],
-  ['Реклама', Megaphone], ['Облако', Cloud], ['Видеовстречи', Video], ['Интеграции', Cable],
-] as const;
-const modules = [
-  ['Мессенджеры', 'Нужен WhatsApp Business API токен.', MessageCircle, 'Блокировано'],
-  ['Реклама', 'Нужны App ID и Secret рекламных площадок.', Megaphone, 'Блокировано'],
-  ['Облако', 'Нужно решение: R2, S3 или локальный диск.', Cloud, 'Блокировано'],
-  ['Видеовстречи', 'Нужен провайдер: LiveKit, Daily или Jitsi.', Video, 'Блокировано'],
-  ['Настройки', 'Большинство подразделов ещё не реализовано.', Settings, 'Не блокировано'],
-  ['Геймификация', 'Лидерборд, баллы и бонусные цели.', Trophy, 'Не блокировано'],
+const activeModules = [
+  { id: 'whatsapp' as ChannelView, title: 'WhatsApp', description: 'Диалоги, шаблоны, операторы и лиды из WhatsApp.', icon: channelNavigation[0].icon },
+  { id: 'instagram' as ChannelView, title: 'Instagram', description: 'Direct, комментарии и лиды из рекламы.', icon: channelNavigation[1].icon },
+  { id: 'email' as ChannelView, title: 'Email', description: 'Общие ящики, шаблоны и история писем.', icon: channelNavigation[2].icon },
+  { id: 'ads' as ChannelView, title: 'Реклама', description: 'Meta, TikTok и Google Ads с CPL и ROMI.', icon: channelNavigation[3].icon },
+  { id: 'cloud' as ChannelView, title: 'Облако', description: 'Документы, вложения, файлы и резервные копии.', icon: channelNavigation[4].icon },
+  { id: 'meetings' as ChannelView, title: 'Видеовстречи', description: 'Онлайн-консультации и напоминания.', icon: channelNavigation[5].icon },
+  { id: 'integrations' as ChannelView, title: 'Интеграции', description: 'Центр подключений и синхронизаций.', icon: channelNavigation[6].icon },
+  { id: 'integrations' as ChannelView, title: 'Геймификация', description: 'Баллы, цели, достижения и рейтинг команды.', icon: Trophy },
 ] as const;
 const taskFallback: TaskItem[] = [
   { id: 'fallback-1', title: 'Перезвонить Марату С. — уточнить дату МРТ', priority: 'urgent', status: 'todo', due_at: '2026-07-31T09:00:00+05:00' },
@@ -49,6 +52,8 @@ const taskFallback: TaskItem[] = [
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Almaty' });
+const channelIds = new Set<ChannelView>(channelNavigation.map(item => item.id));
+const isChannelView = (view: View): view is ChannelView => channelIds.has(view as ChannelView);
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -61,14 +66,14 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
-  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   useEffect(() => { const close = () => setOpenMenu(null); window.addEventListener('click', close); return () => window.removeEventListener('click', close); }, []);
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/dashboard', { signal: controller.signal })
-      .then(async (response) => { if (!response.ok) throw new Error(`Ошибка API: ${response.status}`); return response.json() as Promise<DashboardResponse>; })
+      .then(async response => { if (!response.ok) throw new Error(`Ошибка API: ${response.status}`); return response.json() as Promise<DashboardResponse>; })
       .then(setDashboard)
-      .catch((reason) => { if (reason instanceof DOMException && reason.name === 'AbortError') return; setError(reason instanceof Error ? reason.message : 'Нет соединения'); })
+      .catch(reason => { if (reason instanceof DOMException && reason.name === 'AbortError') return; setError(reason instanceof Error ? reason.message : 'Нет соединения'); })
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, []);
@@ -82,14 +87,14 @@ export default function App() {
 
   const time = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Almaty' }).format(now);
   const date = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Almaty' }).format(now);
-  const toggleMenu = (menu: Exclude<OpenMenu, null>) => (event: React.MouseEvent) => { event.stopPropagation(); setOpenMenu((current) => current === menu ? null : menu); };
+  const toggleMenu = (menu: Exclude<OpenMenu, null>) => (event: React.MouseEvent) => { event.stopPropagation(); setOpenMenu(current => current === menu ? null : menu); };
 
   return <div className="satu-shell">
     <aside className="sidebar">
       <div className="brand-dot"><span /></div>
       <nav className="nav-primary">{primaryNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => setView(id)}><Icon size={18} /></button>)}</nav>
-      <nav className="nav-secondary">{secondaryNavigation.map(([label, Icon]) => <button key={label} title={`${label} — скоро`}><Icon size={18} /></button>)}</nav>
-      <button className="settings-button" title="Настройки"><Settings size={18} /></button>
+      <nav className="nav-secondary">{channelNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => setView(id)}><Icon size={18} /></button>)}</nav>
+      <button className="settings-button" title="Настройки" onClick={() => setView('integrations')}><Settings size={18} /></button>
     </aside>
     <main className="main-column">
       {bannerVisible && <section className="subscription-banner"><span>⚠️ <strong>Тариф скоро истекает</strong> — осталось 2 дня</span><div><button>Обновить тариф</button><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
@@ -98,26 +103,34 @@ export default function App() {
         <label className="search-box"><Search size={16} /><input placeholder="Поиск или вопрос .J.A.R.V.I.S..." /><span className="ai-badge">AI</span></label>
         <div className="top-actions">
           <span className="score-pill">₸ <strong>1 280</strong></span><span className="phone-pill">☎ <strong>42 мин</strong></span>
-          <button className="icon-button" onClick={() => setDark(v => !v)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button><button className="icon-button"><Headphones size={17} /></button>
-          <div className="dropdown-wrap"><button className="icon-button notification-button" onClick={toggleMenu('notifications')}><Bell size={17} /><i /></button>{openMenu === 'notifications' && <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}><div className="dropdown-head">Уведомления</div><button>⏰ 3 просроченные задачи</button><button>💬 Новое сообщение в WhatsApp</button><button>💰 Сделка перешла в «Оплата»</button></div>}</div>
-          <div className="dropdown-wrap"><button className="avatar-button" onClick={toggleMenu('profile')}>АО</button>{openMenu === 'profile' && <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}><div className="dropdown-head"><strong>Айдос Оунер</strong><span>OWNER</span></div><button>Профиль</button><button>Настройки</button><button>Выйти</button></div>}</div>
+          <button className="icon-button" onClick={() => setDark(value => !value)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button><button className="icon-button"><Headphones size={17} /></button>
+          <div className="dropdown-wrap"><button className="icon-button notification-button" onClick={toggleMenu('notifications')}><Bell size={17} /><i /></button>{openMenu === 'notifications' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head">Уведомления</div><button>⏰ 3 просроченные задачи</button><button onClick={() => setView('whatsapp')}>💬 Новое сообщение в WhatsApp</button><button>💰 Сделка перешла в «Оплата»</button></div>}</div>
+          <div className="dropdown-wrap"><button className="avatar-button" onClick={toggleMenu('profile')}>АО</button>{openMenu === 'profile' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head"><strong>Айдос Оунер</strong><span>OWNER</span></div><button>Профиль</button><button onClick={() => setView('integrations')}>Настройки</button><button>Выйти</button></div>}</div>
         </div>
       </header>
       <section className="content">
-        {view === 'dashboard' && <Dashboard metrics={metrics} dashboard={dashboard} loading={loading} error={error} />}
+        {view === 'dashboard' && <Dashboard metrics={metrics} dashboard={dashboard} loading={loading} error={error} onOpenModule={setView} />}
         {view === 'deals' && <KanbanBoard />}
         {view === 'tasks' && <TasksView />}
         {view === 'projects' && <ProjectsView />}
         {view === 'team' && <TeamView />}
         {view === 'accounting' && <AccountingView />}
+        {isChannelView(view) && <ChannelsView view={view} />}
       </section>
     </main>
   </div>;
 }
 
-function Dashboard({ metrics, dashboard, loading, error }: { metrics: string[][]; dashboard: DashboardResponse | null; loading: boolean; error: string }) {
+function Dashboard({ metrics, dashboard, loading, error, onOpenModule }: { metrics: string[][]; dashboard: DashboardResponse | null; loading: boolean; error: string; onOpenModule: (view: View) => void }) {
   const stages = dashboard?.stages.length ? dashboard.stages : [{ id: '1', name: 'Новый лид', position: 0 }, { id: '2', name: 'В работе', position: 1 }, { id: '3', name: 'Консультация назначена', position: 2 }, { id: '4', name: 'Оплата', position: 3 }, { id: '5', name: 'Отказ', position: 4 }];
-  return <div className="view-page"><div className="welcome-row"><div><h1>Добро пожаловать, Айдос!</h1></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Демо-режим' : 'Supabase подключён'}</span></div><div className="kpi-grid">{metrics.map(([label, value, delta, tone]) => <article key={label} className="kpi-card"><span>{label}</span><strong>{loading ? '—' : value}</strong><small className={tone}>{delta}</small></article>)}</div><p className="dashboard-caption">Воронка продаж</p><section className="panel funnel-panel"><div className="funnel-list">{stages.map((stage, index) => <div key={stage.id}><span>{stage.name}</span><i><b style={{ width: `${Math.max(18, 100-index*18)}%` }} /></i><strong>{[9,6,3,2,1][index] ?? 0}</strong></div>)}</div></section><p className="dashboard-caption modules-caption">Модули без backend в этом превью:</p><div className="modules-grid">{modules.map(([title, description, Icon, status]) => <article className="module-card" key={title}><span className="module-icon"><Icon size={16} /></span><h3>{title}</h3><p>{description}</p><b>{status}</b></article>)}</div></div>;
+  return <div className="view-page">
+    <div className="welcome-row"><div><h1>Добро пожаловать, Айдос!</h1></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Демо-режим' : 'Backend подключён'}</span></div>
+    <div className="kpi-grid">{metrics.map(([label, value, delta, tone]) => <article key={label} className="kpi-card"><span>{label}</span><strong>{loading ? '—' : value}</strong><small className={tone}>{delta}</small></article>)}</div>
+    <p className="dashboard-caption">Воронка продаж</p>
+    <section className="panel funnel-panel"><div className="funnel-list">{stages.map((stage, index) => <div key={stage.id}><span>{stage.name}</span><i><b style={{ width: `${Math.max(18, 100-index*18)}%` }} /></i><strong>{[9,6,3,2,1][index] ?? 0}</strong></div>)}</div></section>
+    <p className="dashboard-caption modules-caption">Активные модули</p>
+    <div className="modules-grid">{activeModules.map(({ id, title, description, icon: Icon }) => <button className="module-card active-module-card" key={title} onClick={() => onOpenModule(id)}><span className="module-icon"><Icon size={16} /></span><h3>{title}</h3><p>{description}</p><b>Открыть модуль</b></button>)}</div>
+  </div>;
 }
 
 function TasksView() {
@@ -136,7 +149,7 @@ function TasksView() {
     return 'Сегодня';
   };
   const priorityLabel = { urgent: 'Срочно', high: 'Высокий', medium: 'Средний', low: 'Низкий' } as const;
-  return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>{query.isLoading ? 'Загрузка…' : `${items.length} задач`}</span></div>{groups.map(group => <section className="task-group" key={group}><h3 className="section-label">{group}</h3>{items.filter(task => groupFor(task) === group).map(task => <label className="task-row" key={task.id}><input type="checkbox" checked={task.status === 'done'} disabled={task.id.startsWith('fallback-') || toggleTask.isPending} onChange={(event) => toggleTask.mutate({ id: task.id, done: event.target.checked })} /><span>{task.title}</span><b className={`priority ${task.priority}`}>{priorityLabel[task.priority]}</b></label>)}</section>)}</div>;
+  return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>{query.isLoading ? 'Загрузка…' : `${items.length} задач`}</span></div>{groups.map(group => <section className="task-group" key={group}><h3 className="section-label">{group}</h3>{items.filter(task => groupFor(task) === group).map(task => <label className="task-row" key={task.id}><input type="checkbox" checked={task.status === 'done'} disabled={task.id.startsWith('fallback-') || toggleTask.isPending} onChange={event => toggleTask.mutate({ id: task.id, done: event.target.checked })} /><span>{task.title}</span><b className={`priority ${task.priority}`}>{priorityLabel[task.priority]}</b></label>)}</section>)}</div>;
 }
 
 function ProjectsView() {
