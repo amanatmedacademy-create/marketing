@@ -4,10 +4,15 @@ import { UserRole } from '@imds/database';
 import { CurrentTenant, type TenantPrincipal } from '../../common/auth/current-tenant.decorator.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
 import { RolesGuard } from '../../common/auth/roles.guard.js';
-import { CreateWhatsAppChannelDto, SendMessageDto, UpdateConversationDto } from './dto/whatsapp.dto.js';
+import {
+  ConfigureWhatsAppChannelDto,
+  CreateWhatsAppChannelDto,
+  SendMessageDto,
+  UpdateConversationDto,
+} from './dto/whatsapp.dto.js';
 import { WhatsAppService } from './whatsapp.service.js';
 
-@Controller('api/v1/whatsapp')
+@Controller('whatsapp')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class WhatsAppController {
   constructor(private readonly whatsappService: WhatsAppService) {}
@@ -24,6 +29,16 @@ export class WhatsAppController {
     @Body() dto: CreateWhatsAppChannelDto,
   ) {
     return this.whatsappService.createChannel(principal.companyId, dto);
+  }
+
+  @Patch('channels/:channelId')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  configureChannel(
+    @CurrentTenant() principal: TenantPrincipal,
+    @Param('channelId') channelId: string,
+    @Body() dto: ConfigureWhatsAppChannelDto,
+  ) {
+    return this.whatsappService.configureChannel(principal.companyId, channelId, dto);
   }
 
   @Get('conversations')
