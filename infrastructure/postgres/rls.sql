@@ -1,16 +1,21 @@
--- Run after Prisma migrations. The application sets app.current_company_id inside each tenant transaction.
+-- Application requests must set app.current_company_id inside a transaction.
 
 ALTER TABLE "CompanyMember" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "RefreshToken" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Pipeline" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PipelineStage" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Contact" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Deal" ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS company_member_tenant_isolation ON "CompanyMember";
-CREATE POLICY company_member_tenant_isolation ON "CompanyMember"
-  USING ("companyId" = current_setting('app.current_company_id', true))
-  WITH CHECK ("companyId" = current_setting('app.current_company_id', true));
+DO $$
+DECLARE table_name text;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY['CompanyMember','Pipeline','PipelineStage','Contact','Deal'] LOOP
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', table_name);
+    EXECUTE format(
+      'CREATE POLICY tenant_isolation ON %I USING ("companyId" = current_setting(''app.current_company_id'', true)) WITH CHECK ("companyId" = current_setting(''app.current_company_id'', true))',
+      table_name
+    );
+  END LOOP;
+END $$;
 
-DROP POLICY IF EXISTS refresh_token_tenant_isolation ON "RefreshToken";
-CREATE POLICY refresh_token_tenant_isolation ON "RefreshToken"
-  USING ("companyId" IS NULL OR "companyId" = current_setting('app.current_company_id', true))
-  WITH CHECK ("companyId" IS NULL OR "companyId" = current_setting('app.current_company_id', true));
-
--- The API database role must not have BYPASSRLS. Migration/admin roles may remain privileged.
+-- Runtime DB role must not have BYPASSRLS.

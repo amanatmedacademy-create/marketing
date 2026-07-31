@@ -7,31 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  OWNER
-  ADMIN
-  MANAGER
-}
-
-enum MembershipStatus {
-  INVITED
-  ACTIVE
-  SUSPENDED
-}
-
-enum Locale {
-  KK
-  RU
-  EN
-}
-
-enum SubscriptionStatus {
-  TRIAL
-  ACTIVE
-  PAST_DUE
-  CANCELLED
-  EXPIRED
-}
+enum UserRole { OWNER ADMIN MANAGER }
+enum MembershipStatus { INVITED ACTIVE SUSPENDED }
+enum Locale { KK RU EN }
+enum SubscriptionStatus { TRIAL ACTIVE PAST_DUE CANCELLED EXPIRED }
+enum DealStatus { OPEN WON LOST ARCHIVED }
 
 model User {
   id              String   @id @default(cuid())
@@ -48,6 +28,7 @@ model User {
   updatedAt       DateTime @updatedAt
 
   memberships CompanyMember[]
+  assignedDeals Deal[] @relation("DealAssignee")
 
   @@index([email])
 }
@@ -72,7 +53,10 @@ model Company {
   updatedAt             DateTime           @updatedAt
   deletedAt             DateTime?
 
-  members CompanyMember[]
+  members   CompanyMember[]
+  pipelines Pipeline[]
+  contacts  Contact[]
+  deals     Deal[]
 
   @@index([slug])
   @@index([subscriptionStatus])
@@ -100,4 +84,96 @@ model CompanyMember {
   @@unique([companyId, userId])
   @@index([companyId, role])
   @@index([companyId, status])
+}
+
+model Pipeline {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  isDefault Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stages  PipelineStage[]
+  deals   Deal[]
+
+  @@index([companyId, position])
+}
+
+model PipelineStage {
+  id           String   @id @default(cuid())
+  companyId    String
+  pipelineId   String
+  name         String
+  color        String
+  position     Int
+  probability  Int      @default(0)
+  isWon        Boolean  @default(false)
+  isLost       Boolean  @default(false)
+  countAsIncome Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@unique([pipelineId, position])
+  @@index([companyId, pipelineId])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  companyId   String
+  firstName   String
+  lastName    String?
+  phone       String?
+  email       String?
+  companyName String?
+  source      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deals   Deal[]
+
+  @@index([companyId, phone])
+  @@index([companyId, email])
+}
+
+model Deal {
+  id              String     @id @default(cuid())
+  companyId       String
+  pipelineId      String
+  stageId         String
+  contactId       String?
+  assigneeId      String?
+  title           String
+  phone           String?
+  email           String?
+  status          DealStatus @default(OPEN)
+  source          String?
+  oneTimeAmount   Decimal    @default(0) @db.Decimal(18,2)
+  recurringAmount Decimal    @default(0) @db.Decimal(18,2)
+  currency        String     @default("KZT")
+  position        Decimal    @default(0) @db.Decimal(30,15)
+  lastActivityAt  DateTime?
+  wonAt           DateTime?
+  lostAt          DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pipeline Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage    PipelineStage @relation(fields: [stageId], references: [id])
+  contact  Contact?      @relation(fields: [contactId], references: [id])
+  assignee User?         @relation("DealAssignee", fields: [assigneeId], references: [id])
+
+  @@index([companyId, pipelineId, stageId, position])
+  @@index([companyId, assigneeId, status])
+  @@index([companyId, createdAt])
 }
