@@ -1,43 +1,26 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { loginSchema, registerSchema } from './auth.schemas.js';
-import { login, register, revokeRefreshToken, rotateRefreshToken } from './auth.service.js';
-
-const REFRESH_COOKIE = 'crm_refresh';
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/api/v1/auth',
-  maxAge: 30 * 24 * 60 * 60,
-};
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/register', async (request, reply) => {
-    const session = await register(app, registerSchema.parse(request.body));
-    reply.setCookie(REFRESH_COOKIE, session.refreshToken, cookieOptions);
-    return reply.code(201).send({ data: { accessToken: session.accessToken, expiresIn: session.expiresIn } });
-  });
+  app.get('/session', { preHandler: app.authenticate }, async (request) => ({
+    data: request.auth,
+  }));
 
-  app.post('/login', async (request, reply) => {
-    const session = await login(app, loginSchema.parse(request.body));
-    reply.setCookie(REFRESH_COOKIE, session.refreshToken, cookieOptions);
-    return { data: { accessToken: session.accessToken, expiresIn: session.expiresIn } };
-  });
+  app.get('/companies', { preHandler: app.authenticate }, async (request) => {
+    const memberships = await app.prisma.companyMember.findMany({
+      where: { userId: request.auth.userId, status: 'ACTIVE' },
+      include: { company: true },
+      orderBy: { createdAt: 'asc' },
+    });
 
-  app.post('/refresh', async (request, reply) => {
-    const rawToken = request.cookies[REFRESH_COOKIE];
-    if (!rawToken) throw app.httpErrors.unauthorized('REFRESH_TOKEN_REQUIRED');
-    const session = await rotateRefreshToken(app, rawToken);
-    reply.setCookie(REFRESH_COOKIE, session.refreshToken, cookieOptions);
-    return { data: { accessToken: session.accessToken, expiresIn: session.expiresIn } };
+    return {
+      data: memberships.map((membership) => ({
+        id: membership.company.id,
+        name: membership.company.name,
+        slug: membership.company.slug,
+        timezone: membership.company.timezone,
+        locale: membership.company.locale,
+        role: membership.role,
+      })),
+    };
   });
-
-  app.post('/logout', async (request, reply) => {
-    const rawToken = request.cookies[REFRESH_COOKIE];
-    if (rawToken) await revokeRefreshToken(app, rawToken);
-    reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
-    return reply.code(204).send();
-  });
-
-  app.get('/session', { preHandler: app.authenticate }, async (request) => ({ data: request.auth }));
 };

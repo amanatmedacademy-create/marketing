@@ -1,26 +1,57 @@
-import argon2 from 'argon2';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await argon2.hash('Demo12345!', { type: argon2.argon2id });
+  const supabaseUserId = process.env.DEMO_SUPABASE_USER_ID;
+  const email = process.env.DEMO_USER_EMAIL ?? 'owner@demo.kz';
+
+  if (!supabaseUserId) {
+    console.warn('Seed skipped: set DEMO_SUPABASE_USER_ID to an existing Supabase Auth user UUID.');
+    return;
+  }
+
   const user = await prisma.user.upsert({
-    where: { email: 'owner@demo.kz' },
-    update: {},
-    create: { email: 'owner@demo.kz', passwordHash, firstName: 'Demo', lastName: 'Owner', locale: 'RU' },
+    where: { supabaseUserId },
+    update: { email },
+    create: {
+      supabaseUserId,
+      email,
+      firstName: 'Demo',
+      lastName: 'Owner',
+      locale: 'RU',
+    },
   });
+
   const company = await prisma.company.upsert({
     where: { slug: 'demo-company-kz' },
     update: {},
-    create: { name: 'Demo Company KZ', slug: 'demo-company-kz', timezone: 'Asia/Almaty', locale: 'RU' },
+    create: {
+      name: 'Demo Company KZ',
+      slug: 'demo-company-kz',
+      timezone: 'Asia/Almaty',
+      locale: 'RU',
+    },
   });
+
   await prisma.companyMember.upsert({
     where: { companyId_userId: { companyId: company.id, userId: user.id } },
     update: { role: 'OWNER', status: 'ACTIVE' },
-    create: { companyId: company.id, userId: user.id, role: 'OWNER', status: 'ACTIVE', joinedAt: new Date() },
+    create: {
+      companyId: company.id,
+      userId: user.id,
+      role: 'OWNER',
+      status: 'ACTIVE',
+      joinedAt: new Date(),
+    },
   });
-  console.log('Seed complete: owner@demo.kz / Demo12345!');
+
+  console.log(`Seed complete for ${email}`);
 }
 
-main().finally(() => prisma.$disconnect());
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

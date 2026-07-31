@@ -25,10 +25,18 @@ enum Locale {
   EN
 }
 
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
 model User {
   id              String   @id @default(cuid())
+  supabaseUserId  String   @unique
   email           String   @unique
-  passwordHash    String
   firstName       String
   lastName        String?
   avatarUrl       String?
@@ -39,41 +47,52 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  memberships   CompanyMember[]
-  refreshTokens RefreshToken[]
+  memberships CompanyMember[]
 
   @@index([email])
 }
 
 model Company {
-  id                 String   @id @default(cuid())
-  name               String
-  slug               String   @unique
-  timezone           String   @default("Asia/Almaty")
-  locale             Locale   @default(RU)
-  currency           String   @default("KZT")
-  accentColor        String   @default("#2563EB")
-  backgroundPreset   String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  deletedAt          DateTime?
+  id                    String             @id @default(cuid())
+  name                  String
+  slug                  String             @unique
+  logoUrl               String?
+  timezone              String             @default("Asia/Almaty")
+  locale                Locale             @default(RU)
+  currency              String             @default("KZT")
+  accentColor           String             @default("#2563EB")
+  backgroundPreset      String?
+  emailNotifications    Boolean            @default(true)
+  subscriptionStatus    SubscriptionStatus @default(TRIAL)
+  subscriptionPlan      String?
+  subscriptionExpiresAt DateTime?
+  storageQuotaBytes     BigInt             @default(5368709120)
+  storageUsedBytes      BigInt             @default(0)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  deletedAt             DateTime?
 
   members CompanyMember[]
 
   @@index([slug])
+  @@index([subscriptionStatus])
 }
 
 model CompanyMember {
-  id           String           @id @default(cuid())
-  companyId    String
-  userId       String
-  role         UserRole
-  jobTitle     String?
-  status       MembershipStatus @default(INVITED)
-  lastActiveAt DateTime?
-  joinedAt     DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id              String           @id @default(cuid())
+  companyId       String
+  userId          String
+  role            UserRole
+  jobTitle        String?
+  status          MembershipStatus @default(INVITED)
+  externalPhoneId String?
+  points          Int              @default(0)
+  coins           Int              @default(0)
+  phoneMinutes    Int              @default(0)
+  lastActiveAt    DateTime?
+  joinedAt        DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -81,23 +100,4 @@ model CompanyMember {
   @@unique([companyId, userId])
   @@index([companyId, role])
   @@index([companyId, status])
-}
-
-model RefreshToken {
-  id           String   @id @default(cuid())
-  userId       String
-  companyId    String?
-  tokenHash    String   @unique
-  familyId     String
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  replacedById String?
-  ipAddress    String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, familyId])
-  @@index([expiresAt])
 }
