@@ -26,6 +26,46 @@ export class CreateWhatsAppChannelDto {
   @IsString()
   @MaxLength(120)
   configId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
+  accessToken?: string;
+}
+
+export class ConfigureWhatsAppChannelDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phoneNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  phoneNumberId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  businessAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  configId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
+  accessToken?: string;
 }
 
 export class UpdateConversationDto {
