@@ -4,6 +4,7 @@ import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
+import { handleCrmRequest } from './crm';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
@@ -27,20 +28,7 @@ const TIKTOK_VERIFICATION_BODY = 'tiktok-developers-site-verification=6AQJh4oppa
 type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & WabaReviewEnv & TikTokOAuthEnv & TikTokLoginKitEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
-  return pathname === '/api/integrations/sync'
-    || pathname.startsWith('/api/integrations/config')
-    || pathname.startsWith('/api/integrations/test/')
-    || pathname === '/api/integrations/tiktok/oauth/start'
-    || pathname === '/api/integrations/tiktok/login/start'
-    || pathname === '/api/integrations/meta/start'
-    || pathname === '/api/integrations/meta/connect'
-    || pathname === '/api/integrations/meta/oauth-config'
-    || pathname === '/api/integrations/meta/sdk-config'
-    || pathname === '/api/integrations/meta/sdk-connect'
-    || pathname === '/api/integrations/meta/reach-sync'
-    || pathname === '/api/integrations/meta/status-sync'
-    || pathname === '/api/integrations/meta/adsets/sync'
-    || pathname.startsWith('/api/integrations/waba/');
+  return pathname === '/api/integrations/sync' || pathname.startsWith('/api/integrations/config') || pathname.startsWith('/api/integrations/test/') || pathname === '/api/integrations/tiktok/oauth/start' || pathname === '/api/integrations/tiktok/login/start' || pathname === '/api/integrations/meta/start' || pathname === '/api/integrations/meta/connect' || pathname === '/api/integrations/meta/oauth-config' || pathname === '/api/integrations/meta/sdk-config' || pathname === '/api/integrations/meta/sdk-connect' || pathname === '/api/integrations/meta/reach-sync' || pathname === '/api/integrations/meta/status-sync' || pathname === '/api/integrations/meta/adsets/sync' || pathname.startsWith('/api/integrations/waba/');
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -56,28 +44,13 @@ export default {
   async fetch(request: Request, env: MainEnv): Promise<Response> {
     const url = new URL(request.url);
     let forwardedRequest = request;
-
     try {
-      if (url.pathname === TIKTOK_VERIFICATION_PATH) {
-        return new Response(TIKTOK_VERIFICATION_BODY, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
-      }
-
-      const tiktokWebhookResponse = await handleTikTokWebhook(request, url);
-      if (tiktokWebhookResponse) return tiktokWebhookResponse;
-      const tiktokLoginResponse = await handleTikTokLoginKit(request, env, url);
-      if (tiktokLoginResponse) return tiktokLoginResponse;
-      if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
-        const callbackResponse = await handleTikTokOAuth(request, env, url);
-        if (callbackResponse) return callbackResponse;
-      }
-      if (url.pathname === '/api/integrations/meta/callback') {
-        const callbackResponse = await handleMetaOAuthRequest(request, env, url);
-        if (callbackResponse) return callbackResponse;
-      }
-
-      const authResponse = await handleAuthRequest(request, env, url);
-      if (authResponse) return authResponse;
-
+      if (url.pathname === TIKTOK_VERIFICATION_PATH) return new Response(TIKTOK_VERIFICATION_BODY, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+      const tiktokWebhookResponse = await handleTikTokWebhook(request, url); if (tiktokWebhookResponse) return tiktokWebhookResponse;
+      const tiktokLoginResponse = await handleTikTokLoginKit(request, env, url); if (tiktokLoginResponse) return tiktokLoginResponse;
+      if (url.pathname === '/api/integrations/tiktok/oauth/callback') { const response = await handleTikTokOAuth(request, env, url); if (response) return response; }
+      if (url.pathname === '/api/integrations/meta/callback') { const response = await handleMetaOAuthRequest(request, env, url); if (response) return response; }
+      const authResponse = await handleAuthRequest(request, env, url); if (authResponse) return authResponse;
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
         const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
         if (legacyAdmin) forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
@@ -90,45 +63,28 @@ export default {
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
-
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
-
-      const tiktokOAuthResponse = await handleTikTokOAuth(forwardedRequest, runtimeEnv, url);
-      if (tiktokOAuthResponse) return tiktokOAuthResponse;
-      const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
-      if (chatResponse) return chatResponse;
-      const wabaReviewResponse = await handleWabaReviewRequest(forwardedRequest, runtimeEnv, url);
-      if (wabaReviewResponse) return wabaReviewResponse;
-      const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
-      if (wabaResponse) return wabaResponse;
-      const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url);
-      if (metaSdkResponse) return metaSdkResponse;
-      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
-      if (metaOAuthStartResponse) return metaOAuthStartResponse;
-      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url);
-      if (metaOAuthResponse) return metaOAuthResponse;
-      const metaStatus = await handleMetaStatusSync(forwardedRequest, runtimeEnv, url);
-      if (metaStatus) return metaStatus;
-      const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url);
-      if (metaReach) return metaReach;
-      const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url);
-      if (metaAdsets) return metaAdsets;
-      const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url);
-      if (adManager) return adManager;
-      const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
-      if (conversionMatrix) return conversionMatrix;
-      const analytics = await handleAnalytics(forwardedRequest, runtimeEnv, url);
-      if (analytics) return analytics;
-      const operations = await handleOperationsRequest(forwardedRequest, runtimeEnv, url);
-      if (operations) return operations;
+      const crm = await handleCrmRequest(forwardedRequest, runtimeEnv, url); if (crm) return crm;
+      const tiktokOAuthResponse = await handleTikTokOAuth(forwardedRequest, runtimeEnv, url); if (tiktokOAuthResponse) return tiktokOAuthResponse;
+      const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url); if (chatResponse) return chatResponse;
+      const wabaReviewResponse = await handleWabaReviewRequest(forwardedRequest, runtimeEnv, url); if (wabaReviewResponse) return wabaReviewResponse;
+      const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url); if (wabaResponse) return wabaResponse;
+      const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url); if (metaSdkResponse) return metaSdkResponse;
+      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url); if (metaOAuthStartResponse) return metaOAuthStartResponse;
+      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url); if (metaOAuthResponse) return metaOAuthResponse;
+      const metaStatus = await handleMetaStatusSync(forwardedRequest, runtimeEnv, url); if (metaStatus) return metaStatus;
+      const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url); if (metaReach) return metaReach;
+      const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url); if (metaAdsets) return metaAdsets;
+      const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url); if (adManager) return adManager;
+      const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url); if (conversionMatrix) return conversionMatrix;
+      const analytics = await handleAnalytics(forwardedRequest, runtimeEnv, url); if (analytics) return analytics;
+      const operations = await handleOperationsRequest(forwardedRequest, runtimeEnv, url); if (operations) return operations;
       return app.fetch(forwardedRequest, runtimeEnv);
     } catch (error) {
       console.error(error);
       return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
     }
   },
-  async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
-    await app.scheduled(controller, env, ctx);
-  },
+  async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> { await app.scheduled(controller, env, ctx); },
 };
