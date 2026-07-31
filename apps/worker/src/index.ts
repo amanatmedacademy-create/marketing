@@ -2,8 +2,8 @@ interface Env {
   ASSETS: Fetcher;
   APP_ENV: string;
   SUPABASE_URL: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
-  API_ORIGIN?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  DEFAULT_COMPANY_ID?: string;
 }
 
 const json = (body: unknown, init: ResponseInit = {}) =>
@@ -23,63 +23,138 @@ const securityHeaders = {
   'permissions-policy': 'camera=(), microphone=(), geolocation=()',
 };
 
-async function proxyApi(request: Request, env: Env): Promise<Response> {
-  if (!env.API_ORIGIN) {
-    return json(
-      {
-        error: {
-          code: 'API_NOT_CONFIGURED',
-          message: 'API_ORIGIN is not configured for this environment.',
-        },
-      },
-      { status: 503 },
-    );
+function withSecurityHeaders(response: Response): Response {
+  const secured = new Response(response.body, response);
+  Object.entries(securityHeaders).forEach(([key, value]) => secured.headers.set(key, value));
+  return secured;
+}
+
+function assertSupabase(env: Env): asserts env is Env & {
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  DEFAULT_COMPANY_ID: string;
+} {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !env.DEFAULT_COMPANY_ID) {
+    throw new Error('Supabase environment is not configured');
+  }
+}
+
+async function supabaseRest<T>(
+  env: Env,
+  table: string,
+  query: string,
+  init: RequestInit = {},
+): Promise<T> {
+  assertSupabase(env);
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    ...init,
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase request failed: ${response.status} ${await response.text()}`);
   }
 
-  const incoming = new URL(request.url);
-  const target = new URL(`${incoming.pathname}${incoming.search}`, env.API_ORIGIN);
-  const headers = new Headers(request.headers);
-  headers.set('x-forwarded-host', incoming.host);
-  headers.set('x-forwarded-proto', incoming.protocol.replace(':', ''));
+  return response.json() as Promise<T>;
+}
 
-  return fetch(target, {
-    method: request.method,
-    headers,
-    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
-    redirect: 'manual',
-  });
+async function getDashboard(env: Env) {
+  assertSupabase(env);
+  const companyFilter = `company_id=eq.${env.DEFAULT_COMPANY_ID}`;
+  const [deals, tasks, stages] = await Promise.all([
+    supabaseRest<Array<{ amount: number | string; status: string }>>(
+      env,
+      'deals',
+      `select=amount,status&${companyFilter}`,
+    ),
+    supabaseRest<Array<{ status: string }>>(env, 'tasks', `select=status&${companyFilter}`),
+    supabaseRest<Array<{ id: string; name: string; position: number }>>(
+      env,
+      'pipeline_stages',
+      `select=id,name,position&${companyFilter}&order=position.asc`,
+    ),
+  ]);
+
+  const openDeals = deals.filter((deal) => deal.status === 'open');
+  const amountInWork = openDeals.reduce((sum, deal) => sum + Number(deal.amount || 0), 0);
+  const openTasks = tasks.filter((task) => task.status !== 'done' && task.status !== 'cancelled').length;
+
+  return {
+    metrics: {
+      amountInWork,
+      newDeals: openDeals.length,
+      openTasks,
+      unansweredConversations: 0,
+    },
+    stages,
+  };
+}
+
+async function getDeals(env: Env) {
+  assertSupabase(env);
+  return supabaseRest(
+    env,
+    'deals',
+    `select=id,title,contact_name,phone,amount,status,stage_id,source,created_at&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=created_at.desc`,
+  );
+}
+
+async function routeApi(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
+  if (request.method === 'GET' && url.pathname === '/api/config') {
+    return json({ environment: env.APP_ENV, supabaseConfigured: Boolean(env.SUPABASE_URL) });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/dashboard') {
+    return json(await getDashboard(env));
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/deals') {
+    return json(await getDeals(env));
+  }
+
+  return json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }, { status: 404 });
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === '/health') {
-      return json({
-        status: 'ok',
-        service: 'imds-crm-edge',
-        environment: env.APP_ENV,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    try {
+      if (url.pathname === '/health') {
+        return withSecurityHeaders(
+          json({
+            status: 'ok',
+            service: 'imds-crm-edge',
+            environment: env.APP_ENV,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+      }
 
-    if (url.pathname === '/api/config') {
-      return json({
-        supabaseUrl: env.SUPABASE_URL,
-        supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY ?? '',
-      });
-    }
+      if (url.pathname.startsWith('/api/')) {
+        return withSecurityHeaders(await routeApi(request, env));
+      }
 
-    if (url.pathname.startsWith('/api/')) {
-      const response = await proxyApi(request, env);
-      const proxied = new Response(response.body, response);
-      Object.entries(securityHeaders).forEach(([key, value]) => proxied.headers.set(key, value));
-      return proxied;
+      return withSecurityHeaders(await env.ASSETS.fetch(request));
+    } catch (error) {
+      return withSecurityHeaders(
+        json(
+          {
+            error: {
+              code: 'INTERNAL_ERROR',
+              message: error instanceof Error ? error.message : 'Unknown error',
+            },
+          },
+          { status: 500 },
+        ),
+      );
     }
-
-    const assetResponse = await env.ASSETS.fetch(request);
-    const response = new Response(assetResponse.body, assetResponse);
-    Object.entries(securityHeaders).forEach(([key, value]) => response.headers.set(key, value));
-    return response;
   },
 } satisfies ExportedHandler<Env>;
