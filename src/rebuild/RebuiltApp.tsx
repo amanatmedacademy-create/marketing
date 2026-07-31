@@ -1,14 +1,16 @@
 import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { BarChart3, Bell, Blocks, ChevronRight, CircleDollarSign, Cloud, LayoutDashboard, LoaderCircle, Moon, RefreshCw, Settings, Sun, Users } from 'lucide-react';
+import { AddressBook, BarChart3, Bell, Blocks, ChevronRight, CircleDollarSign, Cloud, LayoutDashboard, LoaderCircle, Moon, RefreshCw, Settings, Sun, Users } from 'lucide-react';
 import { loadDeals, loadPipelines, type Deal, type Pipeline } from '../services/crm';
 
 const CrmBoard = lazy(() => import('../pages/CrmBoard'));
+const ContactsPage = lazy(() => import('../pages/ContactsPage'));
 
-type RouteKey = 'home' | 'crm' | 'operations' | 'integrations' | 'not-found';
+type RouteKey = 'home' | 'crm' | 'contacts' | 'operations' | 'integrations' | 'not-found';
 
 function resolveRoute(pathname: string): RouteKey {
   if (pathname === '/' || pathname === '') return 'home';
   if (pathname === '/crm') return 'crm';
+  if (pathname === '/contacts') return 'contacts';
   if (pathname === '/operations') return 'operations';
   if (pathname === '/integrations') return 'integrations';
   return 'not-found';
@@ -23,16 +25,16 @@ export default function RebuiltApp() {
     localStorage.setItem('imds_theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  if (route === 'crm') {
-    return <Suspense fallback={<LoadingScreen label="Загрузка CRM" />}><CrmBoard /></Suspense>;
-  }
+  if (route === 'crm') return <Suspense fallback={<LoadingScreen label="Загрузка CRM" />}><CrmBoard /></Suspense>;
+  if (route === 'contacts') return <Suspense fallback={<LoadingScreen label="Загрузка контактов" />}><ContactsPage /></Suspense>;
 
   return <div className="rebuild-shell">
     <aside className="rebuild-sidebar">
       <a className="rebuild-logo" href="/" aria-label="IMDS Marketing"><span>IM</span></a>
       <nav>
         <a className={route === 'home' ? 'active' : ''} href="/" title="Главная"><LayoutDashboard /></a>
-        <a href="/crm" title="CRM"><Users /></a>
+        <a href="/crm" title="Сделки"><Users /></a>
+        <a href="/contacts" title="Контакты"><AddressBook /></a>
         <a className={route === 'operations' ? 'active' : ''} href="/operations" title="Управление маркетингом"><BarChart3 /></a>
         <a className={route === 'integrations' ? 'active' : ''} href="/integrations" title="Интеграции"><Blocks /></a>
       </nav>
@@ -90,7 +92,8 @@ function HomePage() {
   const money = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 0 });
 
   const modules = [
-    { href: '/crm', icon: <Users />, title: 'CRM', text: 'Воронки, контакты и сделки из Supabase.' },
+    { href: '/crm', icon: <Users />, title: 'Сделки', text: 'Воронки и сделки из Supabase.' },
+    { href: '/contacts', icon: <AddressBook />, title: 'Контакты', text: 'Клиенты и лиды текущей компании.' },
     { href: '/operations', icon: <BarChart3 />, title: 'Маркетинг', text: 'Управление рекламой и аналитикой.' },
     { href: '/integrations', icon: <Blocks />, title: 'Интеграции', text: 'Meta, WhatsApp, TikTok, Google и сервисы.' },
   ];
