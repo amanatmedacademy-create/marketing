@@ -5,6 +5,7 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthController } from './modules/health/health.controller.js';
 import { PipelinesModule } from './modules/pipelines/pipelines.module.js';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PipelinesModule } from './modules/pipelines/pipelines.module.js';
     PrismaModule,
     AuthModule,
     PipelinesModule,
+    WhatsAppModule,
   ],
   controllers: [HealthController],
 })
