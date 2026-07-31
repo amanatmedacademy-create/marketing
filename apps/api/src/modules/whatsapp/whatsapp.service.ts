@@ -1,11 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { MessageDirection, MessageStatus, MessageType } from '@imds/database';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
-import { CreateWhatsAppChannelDto, SendMessageDto, UpdateConversationDto } from './dto/whatsapp.dto.js';
+import {
+  ConfigureWhatsAppChannelDto,
+  CreateWhatsAppChannelDto,
+  SendMessageDto,
+  UpdateConversationDto,
+} from './dto/whatsapp.dto.js';
+import { MetaGraphService } from './meta-graph.service.js';
+import { TokenCryptoService } from './token-crypto.service.js';
 
 @Injectable()
 export class WhatsAppService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: TokenCryptoService,
+    private readonly graph: MetaGraphService,
+  ) {}
 
   listChannels(companyId: string) {
     return this.prisma.whatsAppChannel.findMany({
@@ -26,6 +37,7 @@ export class WhatsAppService {
   }
 
   createChannel(companyId: string, dto: CreateWhatsAppChannelDto) {
+    const hasCredentials = Boolean(dto.phoneNumberId && dto.accessToken);
     return this.prisma.whatsAppChannel.create({
       data: {
         companyId,
@@ -34,7 +46,8 @@ export class WhatsAppService {
         phoneNumberId: dto.phoneNumberId?.trim(),
         businessAccountId: dto.businessAccountId?.trim(),
         configId: dto.configId?.trim(),
-        status: dto.phoneNumberId ? 'PENDING' : 'DISCONNECTED',
+        accessTokenEncrypted: dto.accessToken ? this.crypto.encrypt(dto.accessToken.trim()) : null,
+        status: hasCredentials ? 'CONNECTED' : dto.phoneNumberId ? 'PENDING' : 'DISCONNECTED',
       },
       select: {
         id: true,
@@ -45,6 +58,41 @@ export class WhatsAppService {
         configId: true,
         status: true,
         createdAt: true,
+      },
+    });
+  }
+
+  async configureChannel(companyId: string, channelId: string, dto: ConfigureWhatsAppChannelDto) {
+    const channel = await this.prisma.whatsAppChannel.findFirst({
+      where: { id: channelId, companyId, deletedAt: null },
+    });
+    if (!channel) throw new NotFoundException('WhatsApp channel not found');
+
+    const phoneNumberId = dto.phoneNumberId?.trim() ?? channel.phoneNumberId;
+    const encryptedToken = dto.accessToken
+      ? this.crypto.encrypt(dto.accessToken.trim())
+      : channel.accessTokenEncrypted;
+
+    return this.prisma.whatsAppChannel.update({
+      where: { id: channelId },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.phoneNumber !== undefined ? { phoneNumber: dto.phoneNumber.trim() } : {}),
+        ...(dto.phoneNumberId !== undefined ? { phoneNumberId: dto.phoneNumberId.trim() } : {}),
+        ...(dto.businessAccountId !== undefined ? { businessAccountId: dto.businessAccountId.trim() } : {}),
+        ...(dto.configId !== undefined ? { configId: dto.configId.trim() } : {}),
+        ...(dto.accessToken !== undefined ? { accessTokenEncrypted: encryptedToken } : {}),
+        status: phoneNumberId && encryptedToken ? 'CONNECTED' : phoneNumberId ? 'PENDING' : 'DISCONNECTED',
+      },
+      select: {
+        id: true,
+        name: true,
+        phoneNumber: true,
+        phoneNumberId: true,
+        businessAccountId: true,
+        configId: true,
+        status: true,
+        updatedAt: true,
       },
     });
   }
@@ -113,32 +161,77 @@ export class WhatsAppService {
   async sendMessage(companyId: string, userId: string, conversationId: string, dto: SendMessageDto) {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, companyId },
-      include: { channel: { select: { id: true, status: true } } },
+      include: {
+        channel: {
+          select: {
+            id: true,
+            status: true,
+            phoneNumberId: true,
+            accessTokenEncrypted: true,
+          },
+        },
+      },
     });
     if (!conversation) throw new NotFoundException('Conversation not found');
     if (!dto.text && !dto.mediaUrl) throw new BadRequestException('Message text or mediaUrl is required');
+    if (
+      conversation.channel.status !== 'CONNECTED'
+      || !conversation.channel.phoneNumberId
+      || !conversation.channel.accessTokenEncrypted
+    ) {
+      throw new BadRequestException('WhatsApp channel is not fully connected');
+    }
 
-    const message = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.message.create({
-        data: {
-          companyId,
-          conversationId,
-          senderUserId: userId,
-          direction: MessageDirection.OUTBOUND,
-          status: conversation.channel.status === 'CONNECTED' ? MessageStatus.QUEUED : MessageStatus.FAILED,
-          type: dto.type ?? MessageType.TEXT,
-          text: dto.text?.trim(),
-          mediaUrl: dto.mediaUrl?.trim(),
-          metadata: conversation.channel.status === 'CONNECTED' ? {} : { error: 'WhatsApp channel is not connected' },
-        },
-      });
-      await tx.conversation.update({
-        where: { id: conversationId },
-        data: { lastMessageAt: created.createdAt },
-      });
-      return created;
+    const type = dto.type ?? MessageType.TEXT;
+    const created = await this.prisma.message.create({
+      data: {
+        companyId,
+        conversationId,
+        senderUserId: userId,
+        direction: MessageDirection.OUTBOUND,
+        status: MessageStatus.QUEUED,
+        type,
+        text: dto.text?.trim(),
+        mediaUrl: dto.mediaUrl?.trim(),
+      },
     });
 
-    return message;
+    try {
+      const result = await this.graph.sendMessage({
+        phoneNumberId: conversation.channel.phoneNumberId,
+        accessToken: this.crypto.decrypt(conversation.channel.accessTokenEncrypted),
+        recipient: conversation.contactPhone,
+        type,
+        text: dto.text?.trim(),
+        mediaUrl: dto.mediaUrl?.trim(),
+      });
+
+      const sentAt = new Date();
+      const message = await this.prisma.message.update({
+        where: { id: created.id },
+        data: {
+          externalMessageId: result.externalMessageId,
+          status: MessageStatus.SENT,
+          sentAt,
+          metadata: result.raw,
+        },
+      });
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { lastMessageAt: sentAt },
+      });
+      return message;
+    } catch (error) {
+      await this.prisma.message.update({
+        where: { id: created.id },
+        data: {
+          status: MessageStatus.FAILED,
+          metadata: {
+            error: error instanceof Error ? error.message : 'Unknown Meta Graph API error',
+          },
+        },
+      });
+      throw error;
+    }
   }
 }
