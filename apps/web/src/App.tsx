@@ -47,7 +47,9 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [bannerVisible, setBannerVisible] = useState(true);
 
-  useEffect(() => document.documentElement.classList.toggle('dark', dark), [dark]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+  }, [dark]);
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     const controller = new AbortController();
