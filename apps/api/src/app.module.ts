@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { PrismaModule } from './infrastructure/prisma/prisma.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthController } from './modules/health/health.controller.js';
 
 @Module({
@@ -12,6 +14,8 @@ import { HealthController } from './modules/health/health.controller.js';
         limit: 120,
       },
     ]),
+    PrismaModule,
+    AuthModule,
   ],
   controllers: [HealthController],
 })
