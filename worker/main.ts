@@ -16,6 +16,7 @@ import { handleTikTokLoginKit, type TikTokLoginKitEnv } from './tiktokLoginKit';
 import { handleTikTokOAuth, type TikTokOAuthEnv } from './tiktokOAuth';
 import { handleTikTokWebhook } from './tiktokWebhook';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
+import { handleWabaReviewRequest, type WabaReviewEnv } from './wabaReview';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -23,7 +24,7 @@ const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 const TIKTOK_VERIFICATION_PATH = '/tiktok6AQJh4oppaU12M1PXnEw5CkEu9zCofPk.txt';
 const TIKTOK_VERIFICATION_BODY = 'tiktok-developers-site-verification=6AQJh4oppaU12M1PXnEw5CkEu9zCofPk';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & TikTokOAuthEnv & TikTokLoginKitEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv & WabaReviewEnv & TikTokOAuthEnv & TikTokLoginKitEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -39,8 +40,7 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/reach-sync'
     || pathname === '/api/integrations/meta/status-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
-    || pathname === '/api/integrations/waba/config'
-    || pathname === '/api/integrations/waba/connect';
+    || pathname.startsWith('/api/integrations/waba/');
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -59,26 +59,17 @@ export default {
 
     try {
       if (url.pathname === TIKTOK_VERIFICATION_PATH) {
-        return new Response(TIKTOK_VERIFICATION_BODY, {
-          status: 200,
-          headers: {
-            'content-type': 'text/plain; charset=utf-8',
-            'cache-control': 'public, max-age=300',
-          },
-        });
+        return new Response(TIKTOK_VERIFICATION_BODY, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
       }
 
       const tiktokWebhookResponse = await handleTikTokWebhook(request, url);
       if (tiktokWebhookResponse) return tiktokWebhookResponse;
-
       const tiktokLoginResponse = await handleTikTokLoginKit(request, env, url);
       if (tiktokLoginResponse) return tiktokLoginResponse;
-
       if (url.pathname === '/api/integrations/tiktok/oauth/callback') {
         const callbackResponse = await handleTikTokOAuth(request, env, url);
         if (callbackResponse) return callbackResponse;
       }
-
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url);
         if (callbackResponse) return callbackResponse;
@@ -89,9 +80,8 @@ export default {
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
         const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
-        if (legacyAdmin) {
-          forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
-        } else {
+        if (legacyAdmin) forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
+        else {
           const user = await authenticateRequest(request, env);
           if (!user) return authError();
           if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
@@ -108,6 +98,8 @@ export default {
       if (tiktokOAuthResponse) return tiktokOAuthResponse;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
+      const wabaReviewResponse = await handleWabaReviewRequest(forwardedRequest, runtimeEnv, url);
+      if (wabaReviewResponse) return wabaReviewResponse;
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
       if (wabaResponse) return wabaResponse;
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url);
@@ -130,17 +122,12 @@ export default {
       if (analytics) return analytics;
       const operations = await handleOperationsRequest(forwardedRequest, runtimeEnv, url);
       if (operations) return operations;
-
       return app.fetch(forwardedRequest, runtimeEnv);
     } catch (error) {
       console.error(error);
-      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), {
-        status: 500,
-        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-      });
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
     }
   },
-
   async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
     await app.scheduled(controller, env, ctx);
   },
