@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BarChart3, Bell, Blocks, ChevronRight, CircleDollarSign, Cloud, Database, LayoutDashboard, Megaphone, MessageCircle, Moon, Settings, ShieldCheck, Sun, Users } from 'lucide-react';
 
 const CrmBoard = lazy(() => import('../pages/CrmBoard'));
@@ -31,7 +31,7 @@ export default function RebuiltApp() {
       <a className="rebuild-logo" href="/" aria-label="IMDS Marketing"><span>IM</span></a>
       <nav>
         <a className={route === 'home' ? 'active' : ''} href="/" title="Главная"><LayoutDashboard /></a>
-        <a className={route === 'crm' ? 'active' : ''} href="/crm" title="CRM"><Users /></a>
+        <a href="/crm" title="CRM"><Users /></a>
         <a className={route === 'operations' ? 'active' : ''} href="/operations" title="Управление маркетингом"><BarChart3 /></a>
         <a className={route === 'integrations' ? 'active' : ''} href="/integrations" title="Интеграции"><Blocks /></a>
       </nav>
@@ -84,7 +84,7 @@ function HomePage() {
   </main>;
 }
 
-function ModulePage({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+function ModulePage({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return <main className="rebuild-content"><section className="rebuild-module-page"><span>{icon}</span><h1>{title}</h1><p>{description}</p><div><a href="/">На главную</a><a className="primary" href="/crm">Открыть CRM</a></div></section></main>;
 }
 
