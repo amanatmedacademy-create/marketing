@@ -5,12 +5,16 @@ import {
   Cable,
   CalendarDays,
   Cloud,
+  Headphones,
+  Instagram,
   LayoutDashboard,
+  Mail,
   Megaphone,
-  Menu,
   MessageCircle,
+  Moon,
   Search,
   Settings,
+  Sun,
   UsersRound,
   Video,
   WalletCards,
@@ -24,6 +28,8 @@ const navigation = [
   { label: 'Команда', icon: UsersRound },
   { label: 'Бухгалтерия', icon: WalletCards },
   { label: 'WhatsApp', icon: MessageCircle },
+  { label: 'Instagram', icon: Instagram },
+  { label: 'Email', icon: Mail },
   { label: 'Реклама', icon: Megaphone },
   { label: 'Облако', icon: Cloud },
   { label: 'Видеовстречи', icon: Video },
@@ -51,10 +57,21 @@ export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dark, setDark] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const [bannerVisible, setBannerVisible] = useState(true);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+  }, [dark]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-
     fetch('/api/dashboard', { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
@@ -69,86 +86,118 @@ export default function App() {
         setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные');
       })
       .finally(() => setLoading(false));
-
     return () => controller.abort();
   }, []);
 
   const metrics = useMemo(() => [
-    ['Сумма в работе', moneyFormatter.format(dashboard?.metrics.amountInWork ?? 0)],
-    ['Новые сделки', numberFormatter.format(dashboard?.metrics.newDeals ?? 0)],
-    ['Открытые задачи', numberFormatter.format(dashboard?.metrics.openTasks ?? 0)],
-    ['Неотвеченные беседы', numberFormatter.format(dashboard?.metrics.unansweredConversations ?? 0)],
+    ['Сумма в работе', moneyFormatter.format(dashboard?.metrics.amountInWork ?? 0), '▲ 12% за неделю', 'up'],
+    ['Новые сделки', numberFormatter.format(dashboard?.metrics.newDeals ?? 0), 'За текущий период', 'neutral'],
+    ['Открытые задачи', numberFormatter.format(dashboard?.metrics.openTasks ?? 0), 'Требуют внимания', 'down'],
+    ['Неотвеченные беседы', numberFormatter.format(dashboard?.metrics.unansweredConversations ?? 0), 'WhatsApp / Instagram', 'down'],
   ], [dashboard]);
 
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Almaty',
+  }).format(now);
+  const date = new Intl.DateTimeFormat('ru-RU', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Almaty',
+  }).format(now);
+
   return (
-    <div className="crm-shell">
+    <div className="satu-shell">
       <aside className="sidebar">
-        <div className="brand">IM</div>
+        <div className="brand-dot" title="Satu CRM"><span /></div>
         <nav>
           {navigation.map(({ label, icon: Icon, active }) => (
             <button key={label} className={active ? 'active' : ''} title={label} aria-label={label}>
-              <Icon size={20} />
+              <Icon size={18} />
             </button>
           ))}
         </nav>
-        <button className="settings-button" title="Настройки" aria-label="Настройки"><Settings size={20} /></button>
+        <button className="settings-button" title="Настройки" aria-label="Настройки"><Settings size={18} /></button>
       </aside>
 
-      <main className="workspace">
+      <main className="main-column">
+        {bannerVisible && (
+          <section className="subscription-banner">
+            <span><strong>Тариф скоро истекает</strong> — осталось 2 дня</span>
+            <div>
+              <button>Обновить тариф</button>
+              <button className="close-banner" onClick={() => setBannerVisible(false)}>×</button>
+            </div>
+          </section>
+        )}
+
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Меню"><Menu size={20} /></button>
+          <div className="clock-block">
+            <strong>{time}</strong>
+            <span>{date}</span>
+          </div>
+
           <label className="search-box">
-            <Search size={18} />
-            <input placeholder="Поиск или вопрос AI-ассистенту" />
+            <Search size={16} />
+            <input placeholder="Поиск или вопрос J.A.R.V.I.S..." />
+            <span className="ai-badge">AI</span>
           </label>
-          <div className="topbar-actions">
-            <span className="clock">Asia/Almaty</span>
-            <button aria-label="Уведомления"><Bell size={19} /></button>
-            <button className="avatar">AD</button>
+
+          <div className="top-actions">
+            <span className="score-pill">₸ <strong>1 280</strong></span>
+            <span className="phone-pill">☎ <strong>42 мин</strong></span>
+            <button className="icon-button" onClick={() => setDark((value) => !value)} aria-label="Сменить тему">
+              {dark ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <button className="icon-button" aria-label="Поддержка"><Headphones size={17} /></button>
+            <button className="icon-button notification-button" aria-label="Уведомления"><Bell size={17} /><i /></button>
+            <button className="avatar-button">АО</button>
           </div>
         </header>
 
-        <section className="subscription-banner">
-          <div>
-            <strong>IMDS CRM</strong>
-            <span>{error ? `Supabase не подключён: ${error}` : 'Cloudflare Worker и Supabase API подключены.'}</span>
-          </div>
-          <button>{loading ? 'Подключение…' : 'Настроить проект'}</button>
-        </section>
-
-        <div className="content">
-          <div className="page-heading">
-            <div><span>ОБЗОР</span><h1>Дашборд</h1><p>Рабочая область открывается без экрана входа.</p></div>
-            <button className="period-button">Сегодня</button>
+        <section className="content">
+          <div className="welcome-row">
+            <div>
+              <h1>Добро пожаловать, Айдос!</h1>
+              <p>Компания: <code>demo-company</code> · роль: <code>OWNER</code></p>
+            </div>
+            <span className={`connection-status ${error ? 'error' : ''}`}>
+              {loading ? 'Подключение…' : error ? 'Supabase не подключён' : 'Supabase подключён'}
+            </span>
           </div>
 
-          <div className="metrics-grid">
-            {metrics.map(([label, value]) => (
-              <article key={label}>
+          <div className="kpi-grid">
+            {metrics.map(([label, value, delta, tone]) => (
+              <article key={label} className="kpi-card">
                 <span>{label}</span>
                 <strong>{loading ? '—' : value}</strong>
-                <small>{error ? 'Нет соединения с базой' : 'Данные Supabase'}</small>
+                <small className={tone}>{error ? 'Нет соединения с базой' : delta}</small>
               </article>
             ))}
           </div>
 
           <div className="dashboard-grid">
             <section className="panel chart-panel">
-              <div className="panel-heading"><div><span>АНАЛИТИКА</span><h2>Динамика сделок</h2></div><BarChart3 size={22} /></div>
-              <div className="empty-chart"><BarChart3 size={44} /><p>График появится после добавления истории изменений сделок.</p></div>
+              <div className="panel-heading">
+                <div><span>АНАЛИТИКА</span><h2>Динамика сделок</h2></div>
+                <BarChart3 size={22} />
+              </div>
+              <div className="empty-state">
+                <BarChart3 size={42} />
+                <p>График появится после накопления истории сделок.</p>
+              </div>
             </section>
+
             <section className="panel">
-              <div className="panel-heading"><div><span>ВОРОНКА</span><h2>Стадии продаж</h2></div><Workflow size={22} /></div>
-              <div className="empty-list">
-                {dashboard?.stages.length ? (
-                  dashboard.stages.map((stage) => <p key={stage.id}>{stage.position + 1}. {stage.name}</p>)
-                ) : (
-                  <><p>Воронка ещё не создана.</p><button>Создать первую воронку</button></>
-                )}
+              <div className="panel-heading">
+                <div><span>ВОРОНКА</span><h2>Стадии продаж</h2></div>
+                <Workflow size={22} />
+              </div>
+              <div className="stage-list">
+                {dashboard?.stages.length ? dashboard.stages.map((stage) => (
+                  <div key={stage.id}><span>{stage.position + 1}</span><strong>{stage.name}</strong></div>
+                )) : <p>Воронка ещё не создана.</p>}
               </div>
             </section>
           </div>
-        </div>
+        </section>
       </main>
     </div>
   );
