@@ -49,12 +49,19 @@ function Root() {
   </>;
 }
 
+function AppEntry() {
+  const authEnabled = import.meta.env.VITE_AUTH_ENABLED === 'true';
+  const crmEnabled = import.meta.env.VITE_CRM_API_ENABLED === 'true';
+
+  let app = <Root />;
+  if (crmEnabled) app = <CrmGate>{app}</CrmGate>;
+  if (authEnabled) app = <AuthGate>{app}</AuthGate>;
+
+  return app;
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthGate>
-      <CrmGate>
-        <Root />
-      </CrmGate>
-    </AuthGate>
+    <AppEntry />
   </React.StrictMode>,
 );
