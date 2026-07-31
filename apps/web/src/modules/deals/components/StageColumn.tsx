@@ -7,10 +7,11 @@ interface Props {
   stage: PipelineStage;
   deals: Deal[];
   onCreateDeal: (title: string, stageId: string) => void;
+  onOpenDeal: (deal: Deal) => void;
   isCreating: boolean;
 }
 
-export function StageColumn({ stage, deals, onCreateDeal, isCreating }: Props) {
+export function StageColumn({ stage, deals, onCreateDeal, onOpenDeal, isCreating }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -33,7 +34,7 @@ export function StageColumn({ stage, deals, onCreateDeal, isCreating }: Props) {
       </header>
       {total > 0 && <small>{new Intl.NumberFormat('ru-RU').format(total)} ₸</small>}
       <div ref={setNodeRef} className="stage-dropzone">
-        {deals.map((deal) => <DealCard key={deal.id} deal={deal} />)}
+        {deals.map((deal) => <DealCard key={deal.id} deal={deal} onOpen={onOpenDeal} />)}
       </div>
       {adding ? (
         <form onSubmit={submit} className="quick-deal-form">
