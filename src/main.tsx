@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
+import CrmGate from './components/CrmGate';
 import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
 import WabaCatalogActivation from './components/WabaCatalogActivation';
@@ -51,7 +52,9 @@ function Root() {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthGate>
-      <Root />
+      <CrmGate>
+        <Root />
+      </CrmGate>
     </AuthGate>
   </React.StrictMode>,
 );
