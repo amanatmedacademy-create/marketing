@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Bell, Cable, CalendarDays, Cloud, FolderKanban, Headphones, Instagram,
   LayoutDashboard, Mail, Megaphone, MessageCircle, Moon, Search, Settings,
-  Sun, UsersRound, Video, WalletCards, Workflow,
+  Sun, Trophy, UsersRound, Video, WalletCards, Workflow,
 } from 'lucide-react';
 import { KanbanBoard } from './modules/deals/components/KanbanBoard';
 
 type View = 'dashboard' | 'deals' | 'tasks' | 'projects' | 'team' | 'accounting';
+type OpenMenu = 'notifications' | 'profile' | null;
 type DashboardResponse = {
   metrics: { amountInWork: number; newDeals: number; openTasks: number; unansweredConversations: number };
   stages: Array<{ id: string; name: string; position: number }>;
@@ -24,19 +25,29 @@ const secondaryNavigation = [
   ['WhatsApp', MessageCircle], ['Instagram', Instagram], ['Email', Mail],
   ['Реклама', Megaphone], ['Облако', Cloud], ['Видеовстречи', Video], ['Интеграции', Cable],
 ] as const;
+const modules = [
+  ['Мессенджеры', 'Нужен WhatsApp Business API токен.', MessageCircle, 'Блокировано'],
+  ['Реклама', 'Нужны App ID и Secret рекламных площадок.', Megaphone, 'Блокировано'],
+  ['Облако', 'Нужно решение: R2, S3 или локальный диск.', Cloud, 'Блокировано'],
+  ['Видеовстречи', 'Нужен провайдер: LiveKit, Daily или Jitsi.', Video, 'Блокировано'],
+  ['Настройки', 'Большинство подразделов ещё не реализовано.', Settings, 'Не блокировано'],
+  ['Геймификация', 'Лидерборд, баллы и бонусные цели.', Trophy, 'Не блокировано'],
+] as const;
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
 const tasks = [
-  ['Перезвонить Марату С. — уточнить дату МРТ', 'Срочно', 'urgent'],
-  ['Отправить смету Бекзату Н.', 'Высокий', 'high'],
-  ['Консультация — Ольга В., 15:00', 'Средний', 'medium'],
-  ['Согласовать абонемент с Гульмирой А.', 'Средний', 'medium'],
-];
+  ['Просрочено', 'Перезвонить Марату С. — уточнить дату МРТ', 'Срочно', 'urgent', false],
+  ['Просрочено', 'Отправить смету Бекзату Н.', 'Высокий', 'high', false],
+  ['Сегодня', 'Консультация — Ольга В., 15:00', 'Средний', 'medium', false],
+  ['Сегодня', 'Согласовать абонемент с Гульмирой А.', 'Средний', 'medium', false],
+  ['Сегодня', 'Загрузить результаты МРТ Данияра Т.', 'Высокий', 'high', true],
+  ['Завтра', 'Повторный звонок — Айгерим К.', 'Средний', 'medium', false],
+] as const;
 const team = [
-  ['АО', 'Айдос Оунер', 'OWNER', 'Руководство', 'Онлайн', '#4F6EF7'],
-  ['ГА', 'Гульнара Админова', 'ADMIN', 'Продажи', 'Онлайн', '#16A34A'],
-  ['ЕМ', 'Ерлан Менеджеров', 'MANAGER', 'Продажи', 'Офлайн', '#F0A63B'],
-];
+  ['АО', 'Айдос Оунер', 'OWNER', 'Руководство', 'Онлайн', 'сейчас', '#4F6EF7'],
+  ['ГА', 'Гульнара Админова', 'ADMIN', 'Продажи', 'Онлайн', '2 мин назад', '#16A34A'],
+  ['ЕМ', 'Ерлан Менеджеров', 'MANAGER', 'Продажи', 'Офлайн', 'вчера, 18:40', '#F0A63B'],
+] as const;
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -46,11 +57,20 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [now, setNow] = useState(new Date());
   const [bannerVisible, setBannerVisible] = useState(true);
+  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
-  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const close = () => setOpenMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/dashboard', { signal: controller.signal })
@@ -76,6 +96,10 @@ export default function App() {
 
   const time = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Almaty' }).format(now);
   const date = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Almaty' }).format(now);
+  const toggleMenu = (menu: Exclude<OpenMenu, null>) => (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setOpenMenu((current) => current === menu ? null : menu);
+  };
 
   return <div className="satu-shell">
     <aside className="sidebar">
@@ -90,14 +114,30 @@ export default function App() {
     </aside>
 
     <main className="main-column">
-      {bannerVisible && <section className="subscription-banner"><span><strong>Тариф скоро истекает</strong> — осталось 2 дня</span><div><button>Обновить тариф</button><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
+      {bannerVisible && <section className="subscription-banner"><span>⚠️ <strong>Тариф скоро истекает</strong> — осталось 2 дня</span><div><button>Обновить тариф</button><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
       <header className="topbar">
         <div className="clock-block"><strong>{time}</strong><span>{date}</span></div>
-        <label className="search-box"><Search size={16} /><input placeholder="Поиск или вопрос J.A.R.V.I.S..." /><span className="ai-badge">AI</span></label>
+        <label className="search-box"><Search size={16} /><input placeholder="Поиск или вопрос .J.A.R.V.I.S..." /><span className="ai-badge">AI</span></label>
         <div className="top-actions">
           <span className="score-pill">₸ <strong>1 280</strong></span><span className="phone-pill">☎ <strong>42 мин</strong></span>
           <button className="icon-button" onClick={() => setDark(v => !v)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
-          <button className="icon-button"><Headphones size={17} /></button><button className="icon-button notification-button"><Bell size={17} /><i /></button><button className="avatar-button">АО</button>
+          <button className="icon-button"><Headphones size={17} /></button>
+          <div className="dropdown-wrap">
+            <button className="icon-button notification-button" onClick={toggleMenu('notifications')}><Bell size={17} /><i /></button>
+            {openMenu === 'notifications' && <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
+              <div className="dropdown-head">Уведомления</div>
+              <button>⏰ 3 просроченные задачи</button>
+              <button>💬 Новое сообщение в WhatsApp</button>
+              <button>💰 Сделка перешла в «Оплата»</button>
+            </div>}
+          </div>
+          <div className="dropdown-wrap">
+            <button className="avatar-button" onClick={toggleMenu('profile')}>АО</button>
+            {openMenu === 'profile' && <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
+              <div className="dropdown-head"><strong>Айдос Оунер</strong><span>OWNER</span></div>
+              <button>Профиль</button><button>Настройки</button><button>Выйти</button>
+            </div>}
+          </div>
         </div>
       </header>
 
@@ -114,16 +154,23 @@ export default function App() {
 }
 
 function Dashboard({ metrics, dashboard, loading, error }: { metrics: string[][]; dashboard: DashboardResponse | null; loading: boolean; error: string }) {
+  const stages = dashboard?.stages.length ? dashboard.stages : [
+    { id: '1', name: 'Новый лид', position: 0 }, { id: '2', name: 'В работе', position: 1 },
+    { id: '3', name: 'Консультация назначена', position: 2 }, { id: '4', name: 'Оплата', position: 3 },
+    { id: '5', name: 'Отказ', position: 4 },
+  ];
   return <div className="view-page">
-    <div className="welcome-row"><div><h1>Добро пожаловать, Айдос!</h1><p>Компания: <code>demo-company</code> · роль: <code>OWNER</code></p></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Демо-режим' : 'Supabase подключён'}</span></div>
+    <div className="welcome-row"><div><h1>Добро пожаловать, Айдос!</h1></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Демо-режим' : 'Supabase подключён'}</span></div>
     <div className="kpi-grid">{metrics.map(([label, value, delta, tone]) => <article key={label} className="kpi-card"><span>{label}</span><strong>{loading ? '—' : value}</strong><small className={tone}>{delta}</small></article>)}</div>
-    <div className="dashboard-grid">
-      <section className="panel"><div className="panel-heading"><div><span>ВОРОНКА</span><h2>Продажи по стадиям</h2></div><Workflow size={22} /></div><div className="funnel-list">{(dashboard?.stages.length ? dashboard.stages : [{id:'1',name:'Новый лид',position:0},{id:'2',name:'В работе',position:1},{id:'3',name:'Консультация',position:2},{id:'4',name:'Оплата',position:3}]).map((stage, index) => <div key={stage.id}><span>{stage.name}</span><i><b style={{width: `${100-index*18}%`}} /></i><strong>{[9,6,3,2][index] ?? 0}</strong></div>)}</div></section>
-      <section className="panel blocked-panel"><h2>Интеграции</h2><p>WhatsApp, Instagram, реклама, облако и видеовстречи будут подключаться после выдачи API-ключей.</p></section>
-    </div>
+    <p className="dashboard-caption">Воронка продаж</p>
+    <section className="panel funnel-panel"><div className="funnel-list">{stages.map((stage, index) => <div key={stage.id}><span>{stage.name}</span><i><b style={{width: `${Math.max(18, 100-index*18)}%`}} /></i><strong>{[9,6,3,2,1][index] ?? 0}</strong></div>)}</div></section>
+    <p className="dashboard-caption modules-caption">Модули без backend в этом превью:</p>
+    <div className="modules-grid">{modules.map(([title, description, Icon, status]) => <article className="module-card" key={title}><span className="module-icon"><Icon size={16} /></span><h3>{title}</h3><p>{description}</p><b>{status}</b></article>)}</div>
   </div>;
 }
-function TasksView() { return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>{tasks.length} активных</span></div><h3 className="section-label">Сегодня и просрочено</h3>{tasks.map(([title, priority, tone], index) => <label className="task-row" key={title}><input type="checkbox" defaultChecked={index === 3} /><span>{title}</span><b className={`priority ${tone}`}>{priority}</b></label>)}</div>; }
-function ProjectsView() { return <div className="view-page"><div className="view-title"><h1>Проекты</h1><span>Запуск нового направления</span></div><div className="project-board">{[['To do','Согласовать прайс','Снять видео-отзывы'],['In progress','Настроить лендинг','Обучить менеджеров'],['Done','Утвердить бюджет']].map(([title,...cards]) => <section key={title}><h3>{title}</h3>{cards.map(card => <article key={card}>{card}</article>)}</section>)}</div></div>; }
-function TeamView() { return <div className="view-page"><div className="view-title"><h1>Команда</h1><span>3 сотрудника</span></div><div className="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Отдел</th><th>Статус</th></tr></thead><tbody>{team.map(([initials,name,role,department,status,color]) => <tr key={name}><td><span className="member-avatar" style={{background:color}}>{initials}</span>{name}</td><td><b className="role-chip">{role}</b></td><td>{department}</td><td><i className={status === 'Онлайн' ? 'online' : ''} />{status}</td></tr>)}</tbody></table></div></div>; }
-function AccountingView() { return <div className="view-page"><div className="view-title"><h1>Бухгалтерия</h1></div><div className="kpi-grid"><article className="kpi-card"><span>Доход</span><strong className="income">₸ 2 840 000</strong></article><article className="kpi-card"><span>Расход</span><strong className="expense">₸ 640 000</strong></article><article className="kpi-card"><span>Прибыль</span><strong>₸ 2 200 000</strong></article><article className="kpi-card"><span>НДС</span><strong>₸ 340 800</strong></article></div><div className="table-wrap"><table><thead><tr><th>Дата</th><th>Описание</th><th>Счёт</th><th>Сумма</th></tr></thead><tbody><tr><td>01.08</td><td>Оплата — курс лечения</td><td>Касса</td><td className="income">+420 000 ₸</td></tr><tr><td>31.07</td><td>Аренда кабинета</td><td>Расч. счёт</td><td className="expense">−150 000 ₸</td></tr></tbody></table></div></div>; }
+function TasksView() {
+  return <div className="view-page"><div className="view-title"><h1>Задачи</h1></div>{['Просрочено','Сегодня','Завтра'].map(group => <section className="task-group" key={group}><h3 className="section-label">{group}</h3>{tasks.filter(([taskGroup]) => taskGroup === group).map(([,title,priority,tone,done]) => <label className="task-row" key={title}><input type="checkbox" defaultChecked={done} /><span>{title}</span><b className={`priority ${tone}`}>{priority}</b></label>)}</section>)}</div>;
+}
+function ProjectsView() { return <div className="view-page"><div className="view-title"><h1>Проекты</h1><span>Пример: «Запуск нового направления»</span></div><div className="project-board">{[['To do','Согласовать прайс на курс реабилитации','Снять видео-отзывы пациентов'],['In progress','Настроить лендинг под направление','Обучить менеджеров скрипту'],['Done','Утвердить бюджет на запуск']].map(([title,...cards]) => <section key={title}><h3>{title}</h3>{cards.map(card => <article key={card}>{card}</article>)}</section>)}</div></div>; }
+function TeamView() { return <div className="view-page"><div className="view-title"><h1>Команда</h1><span>3 сотрудника</span></div><div className="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Отдел</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{team.map(([initials,name,role,department,status,activity,color]) => <tr key={name}><td><span className="member-avatar" style={{background:color}}>{initials}</span>{name}</td><td><b className="role-chip">{role}</b></td><td>{department}</td><td><i className={status === 'Онлайн' ? 'online' : ''} />{status}</td><td>{activity}</td></tr>)}</tbody></table></div></div>; }
+function AccountingView() { return <div className="view-page"><div className="view-title"><h1>Бухгалтерия</h1></div><div className="kpi-grid"><article className="kpi-card"><span>Доход</span><strong className="income">₸ 2 840 000</strong></article><article className="kpi-card"><span>Расход</span><strong className="expense">₸ 640 000</strong></article><article className="kpi-card"><span>Прибыль</span><strong>₸ 2 200 000</strong></article><article className="kpi-card"><span>НДС</span><strong>₸ 340 800</strong></article></div><div className="table-wrap"><table><thead><tr><th>Дата</th><th>Описание</th><th>Счёт</th><th>Сумма</th></tr></thead><tbody><tr><td>01.08</td><td>Оплата — курс лечения, Бекзат Н.</td><td>Касса</td><td className="income">+420 000 ₸</td></tr><tr><td>31.07</td><td>Оплата — абонемент, Гульмира А.</td><td>Kaspi</td><td className="income">+180 000 ₸</td></tr><tr><td>31.07</td><td>Аренда кабинета вертебролога</td><td>Расч. счёт</td><td className="expense">−150 000 ₸</td></tr><tr><td>30.07</td><td>Закупка расходников</td><td>Касса</td><td className="expense">−48 000 ₸</td></tr></tbody></table></div></div>; }
