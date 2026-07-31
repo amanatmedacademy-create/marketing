@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { BarChart3, Bell, Blocks, ChevronRight, CircleDollarSign, Cloud, Database, LayoutDashboard, Megaphone, MessageCircle, Moon, Settings, ShieldCheck, Sun, Users } from 'lucide-react';
+import { BarChart3, Bell, Blocks, ChevronRight, CircleDollarSign, Cloud, LayoutDashboard, LoaderCircle, Moon, RefreshCw, Settings, Sun, Users } from 'lucide-react';
+import { loadDeals, loadPipelines, type Deal, type Pipeline } from '../services/crm';
 
 const CrmBoard = lazy(() => import('../pages/CrmBoard'));
 
@@ -49,14 +50,45 @@ export default function RebuiltApp() {
       </header>
 
       {route === 'home' && <HomePage />}
-      {route === 'operations' && <ModulePage icon={<BarChart3 />} title="Управление маркетингом" description="Модуль сохранён в backup и будет подключён к новому shell после отдельной проверки сборки." />}
-      {route === 'integrations' && <ModulePage icon={<Blocks />} title="Интеграции" description="Meta Ads, WhatsApp, TikTok, Google и другие интеграции сохранены. Подключение выполняется поэтапно без риска для главной страницы." />}
-      {route === 'not-found' && <ModulePage icon={<Cloud />} title="Страница не найдена" description="Маршрут отсутствует в новой стабильной точке входа." />}
+      {route === 'operations' && <ModulePage icon={<BarChart3 />} title="Управление маркетингом" description="Открывается существующий модуль управления рекламой и аналитикой." />}
+      {route === 'integrations' && <ModulePage icon={<Blocks />} title="Интеграции" description="Открывается существующий каталог Meta Ads, WABA, TikTok и других подключений." />}
+      {route === 'not-found' && <ModulePage icon={<Cloud />} title="Страница не найдена" description="Маршрут отсутствует." />}
     </section>
   </div>;
 }
 
 function HomePage() {
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const nextPipelines = await loadPipelines();
+      const nextDeals = await Promise.all(nextPipelines.map((pipeline) => loadDeals(pipeline.id)));
+      setPipelines(nextPipelines);
+      setDeals(nextDeals.flat());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setPipelines([]);
+      setDeals([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void refresh(); }, []);
+
+  const totalAmount = deals.reduce((sum, deal) => sum + Number(deal.amount || 0), 0);
+  const wonDeals = deals.filter((deal) => deal.status === 'won');
+  const wonAmount = wonDeals.reduce((sum, deal) => sum + Number(deal.amount || 0), 0);
+  const conversion = deals.length ? Math.round((wonDeals.length / deals.length) * 100) : 0;
+  const averageDeal = wonDeals.length ? wonAmount / wonDeals.length : 0;
+  const money = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 0 });
+
   const modules = [
     { href: '/crm', icon: <Users />, title: 'CRM', text: 'Воронки, контакты и сделки из Supabase.' },
     { href: '/operations', icon: <BarChart3 />, title: 'Маркетинг', text: 'Управление рекламой и аналитикой.' },
@@ -65,22 +97,33 @@ function HomePage() {
 
   return <main className="rebuild-content">
     <section className="rebuild-hero">
-      <div><span className="rebuild-kicker"><ShieldCheck /> Новый стабильный frontend</span><h1>Система пересобрана без старой точки отказа.</h1><p>Backend, Cloudflare Worker, Supabase и интеграционные модули сохранены из backup. Новый интерфейс загружается независимо и показывает ошибку вместо чёрного экрана.</p></div>
-      <div className="rebuild-health"><span>Frontend</span><strong>ONLINE</strong><small>Safe entry + Error Boundary</small></div>
+      <div><span className="rebuild-kicker"><LayoutDashboard /> Рабочий обзор</span><h1>CRM и маркетинг в одном интерфейсе.</h1><p>Показатели ниже рассчитываются из текущих воронок и сделок компании. Демо-данные не используются.</p></div>
+      <button className="rebuild-health" onClick={() => void refresh()} disabled={loading}><span>Обновить данные</span><strong>{loading ? 'ЗАГРУЗКА' : 'ОБНОВИТЬ'}</strong><small><RefreshCw /> CRM API</small></button>
     </section>
 
-    <section className="rebuild-kpis">
-      <article><span><CircleDollarSign /> CRM API</span><strong>Подключён</strong><small>Worker + Supabase</small></article>
-      <article><span><Database /> База данных</span><strong>Сохранена</strong><small>CRM-таблицы и RLS</small></article>
-      <article><span><Cloud /> Cloudflare</span><strong>Готов</strong><small>Worker не изменён</small></article>
-      <article><span><MessageCircle /> Каналы</span><strong>Сохранены</strong><small>Поэтапное подключение</small></article>
-    </section>
+    {loading && <section className="rebuild-note"><LoaderCircle className="spin" /><div><strong>Загрузка данных</strong><p>Получаем воронки и сделки из CRM API.</p></div></section>}
+    {!loading && error && <section className="rebuild-note"><Cloud /><div><strong>Данные недоступны</strong><p>{error}</p></div></section>}
+
+    {!loading && !error && <>
+      <section className="rebuild-kpis">
+        <article><span><CircleDollarSign /> Сумма в работе</span><strong>{money.format(totalAmount)} ₸</strong><small>{deals.length} сделок</small></article>
+        <article><span><Users /> Успешные сделки</span><strong>{wonDeals.length}</strong><small>{money.format(wonAmount)} ₸</small></article>
+        <article><span><BarChart3 /> Конверсия</span><strong>{conversion}%</strong><small>Успешные / все сделки</small></article>
+        <article><span><CircleDollarSign /> Средний чек</span><strong>{money.format(averageDeal)} ₸</strong><small>По успешным сделкам</small></article>
+      </section>
+
+      <section className="rebuild-module-grid">
+        {pipelines.length ? pipelines.map((pipeline) => {
+          const pipelineDeals = deals.filter((deal) => deal.pipeline_id === pipeline.id);
+          const pipelineAmount = pipelineDeals.reduce((sum, deal) => sum + Number(deal.amount || 0), 0);
+          return <a key={pipeline.id} href="/crm"><span><BarChart3 /></span><div><h2>{pipeline.name}</h2><p>{pipelineDeals.length} сделок · {money.format(pipelineAmount)} ₸ · {pipeline.stages.length} стадий</p></div><ChevronRight /></a>;
+        }) : <div className="rebuild-note"><Users /><div><strong>Воронок пока нет</strong><p>Создайте компанию и первую воронку в CRM.</p></div></div>}
+      </section>
+    </>}
 
     <section className="rebuild-module-grid">
       {modules.map((module) => <a key={module.href} href={module.href}><span>{module.icon}</span><div><h2>{module.title}</h2><p>{module.text}</p></div><ChevronRight /></a>)}
     </section>
-
-    <section className="rebuild-note"><Megaphone /><div><strong>Режим безопасной пересборки</strong><p>Старые frontend-компоненты остаются в репозитории, но больше не загружаются автоматически. Это исключает каскадные runtime-ошибки на главной странице.</p></div></section>
   </main>;
 }
 
