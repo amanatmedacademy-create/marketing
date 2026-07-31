@@ -20,6 +20,12 @@ enum UserStatus {
   ARCHIVED
 }
 
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
 model Company {
   id          String          @id @default(uuid()) @db.Uuid
   name        String
@@ -34,6 +40,9 @@ model Company {
 
   memberships CompanyMember[]
   auditLogs   AuditLog[]
+  pipelines   Pipeline[]
+  stages      PipelineStage[]
+  deals       Deal[]
 }
 
 model User {
@@ -53,6 +62,7 @@ model User {
   memberships  CompanyMember[]
   sessions     AuthSession[]
   auditLogs    AuditLog[]
+  ownedDeals   Deal[]           @relation("DealOwner")
 }
 
 model CompanyMember {
@@ -109,4 +119,72 @@ model AuditLog {
 
   @@index([companyId, createdAt])
   @@index([companyId, entityType, entityId])
+}
+
+model Pipeline {
+  id        String          @id @default(uuid()) @db.Uuid
+  companyId String          @db.Uuid
+  name      String
+  isDefault Boolean         @default(false)
+  position  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stages    PipelineStage[]
+  deals     Deal[]
+
+  @@unique([companyId, name])
+  @@index([companyId, position])
+}
+
+model PipelineStage {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @db.Uuid
+  pipelineId String   @db.Uuid
+  name      String
+  color     String    @default("#4F6EF7")
+  position  Int       @default(0)
+  isWon     Boolean   @default(false)
+  isLost    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pipeline  Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals     Deal[]
+
+  @@unique([pipelineId, name])
+  @@index([companyId, pipelineId, position])
+}
+
+model Deal {
+  id          String      @id @default(uuid()) @db.Uuid
+  companyId   String      @db.Uuid
+  pipelineId  String      @db.Uuid
+  stageId     String      @db.Uuid
+  ownerId     String?     @db.Uuid
+  title       String
+  contactName String?
+  phone       String?
+  email       String?
+  amount      Decimal     @default(0) @db.Decimal(14, 2)
+  status      DealStatus  @default(OPEN)
+  source      String?
+  position    Int         @default(0)
+  metadata    Json        @default("{}")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
+  stage       PipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  owner       User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, pipelineId, stageId, position])
+  @@index([companyId, ownerId])
+  @@index([companyId, status, createdAt])
 }
