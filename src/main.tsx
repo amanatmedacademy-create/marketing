@@ -13,8 +13,19 @@ import './contacts.css';
 const root = document.getElementById('root');
 
 function AppEntry() {
-  const app = <CrmGate><RebuiltApp /></CrmGate>;
-  return isSupabaseConfigured ? <AuthGate>{app}</AuthGate> : app;
+  if (!isSupabaseConfigured) {
+    return <main className="rebuild-fatal">
+      <section className="rebuild-fatal-card">
+        <span className="rebuild-status-dot" />
+        <h1>Frontend не подключён к Supabase Auth</h1>
+        <p>Для загрузки реальных данных добавьте переменные сборки Cloudflare:</p>
+        <pre>VITE_SUPABASE_URL\nVITE_SUPABASE_ANON_KEY</pre>
+        <p>Runtime secrets <code>SUPABASE_URL</code> и <code>SUPABASE_SERVICE_ROLE_KEY</code> используются Worker и не заменяют browser-переменные Vite.</p>
+      </section>
+    </main>;
+  }
+
+  return <AuthGate><CrmGate><RebuiltApp /></CrmGate></AuthGate>;
 }
 
 if (!root) {
