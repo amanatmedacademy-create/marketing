@@ -1,64 +1,225 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #111827;
-  background: #f8fafc;
+  color: #172033;
+  background: #f4f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
 
-html,
-body,
-#root {
-  min-width: 320px;
-  min-height: 100%;
-  margin: 0;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-.app-shell {
+.crm-shell {
   min-height: 100vh;
   display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.crm-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 24px 18px;
+  background: #0f172a;
+  color: #fff;
+  z-index: 30;
+}
+
+.crm-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 24px;
+}
+
+.crm-brand__mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
   place-items: center;
-  padding: 24px;
+  border-radius: 12px;
+  background: #2563eb;
+  font-weight: 800;
 }
 
-.empty-state {
-  width: min(100%, 560px);
-  padding: 48px;
-  border: 1px solid #e5e7eb;
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+.crm-brand strong,
+.crm-brand span { display: block; }
+.crm-brand strong { font-size: 17px; }
+.crm-brand span { color: #94a3b8; font-size: 12px; }
+.crm-nav-label { padding: 8px 12px; color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+
+.crm-nav { display: grid; gap: 4px; }
+.crm-nav a {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  color: #cbd5e1;
+  text-decoration: none;
+  transition: .18s ease;
+}
+.crm-nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.crm-nav a.active { background: #1d4ed8; color: #fff; }
+
+.crm-main { min-width: 0; }
+.crm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 28px;
+  border-bottom: 1px solid #e2e8f0;
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(12px);
 }
 
-.eyebrow {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.menu-button,
+.topbar-actions > button:not(.profile-button) {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+}
+.menu-button { display: none; }
+
+.global-search {
+  flex: 1;
+  max-width: 620px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #f8fafc;
   color: #64748b;
 }
-
-h1 {
-  margin: 0;
-  font-size: clamp(40px, 8vw, 72px);
-  line-height: 1;
+.global-search input {
+  width: 100%;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
 }
 
-p {
-  margin: 20px 0 0;
-  color: #475569;
-  line-height: 1.6;
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.profile-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  text-align: left;
+}
+.profile-button > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+.profile-button strong,
+.profile-button small { display: block; }
+.profile-button small { color: #64748b; }
+
+.crm-content { padding: 32px; }
+.page-stack { display: grid; gap: 24px; }
+.page-heading span,
+.section-label {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.page-heading h1 { margin: 7px 0 8px; font-size: clamp(30px, 4vw, 46px); line-height: 1.08; }
+.page-heading p { max-width: 760px; margin: 0; color: #64748b; line-height: 1.6; }
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.metric-card,
+.content-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .05);
+}
+.metric-card { padding: 20px; }
+.metric-card span, .metric-card small { display: block; color: #64748b; }
+.metric-card strong { display: block; margin: 10px 0 7px; font-size: 28px; }
+
+.content-card { padding: 26px; }
+.dashboard-placeholder { min-height: 260px; display: flex; align-items: flex-end; }
+.dashboard-placeholder h2,
+.empty-module h2 { margin: 8px 0 8px; }
+.dashboard-placeholder p,
+.empty-module p { margin: 0; color: #64748b; line-height: 1.6; }
+
+.empty-module { display: flex; gap: 16px; align-items: flex-start; }
+.empty-module__icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 1100px) {
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 860px) {
+  .crm-shell { display: block; }
+  .crm-sidebar {
+    position: fixed;
+    left: 0;
+    transform: translateX(-100%);
+    width: 270px;
+    transition: transform .2s ease;
+  }
+  .crm-sidebar--open { transform: translateX(0); }
+  .menu-button { display: grid; }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    border: 0;
+    background: rgba(15,23,42,.45);
+  }
+  .crm-content { padding: 24px; }
+  .profile-button div { display: none; }
+}
+
+@media (max-width: 640px) {
+  .crm-topbar { padding: 12px 16px; }
+  .global-search { max-width: none; }
+  .global-search input::placeholder { color: transparent; }
+  .crm-content { padding: 20px 16px; }
+  .metric-grid { grid-template-columns: 1fr; }
+  .topbar-actions > button:not(.profile-button) { display: none; }
+  .page-heading h1 { font-size: 32px; }
 }
