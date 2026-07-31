@@ -11,6 +11,7 @@ import {
 import {
   currentSession,
   loadAppUser,
+  onAuthStateChange,
   signOutSession,
   startGoogleSignIn,
   type AppUser,
@@ -59,7 +60,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const isOwnApi = url.startsWith('/api/') || url.startsWith(`${window.location.origin}/api/`);
-      if (!isOwnApi || url.includes('/api/auth/')) return nativeFetch(input, init);
+      if (!isOwnApi) return nativeFetch(input, init);
 
       const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
       if (!headers.has('authorization')) {
@@ -69,26 +70,57 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return nativeFetch(input, { ...init, headers });
     };
 
-    currentSession()
-      .then(async (session) => {
+    const resolveUser = async () => {
+      try {
+        const session = await currentSession();
         if (!active) return;
         setHasSession(Boolean(session));
-        if (!session) return;
+        if (!session) {
+          setUser(null);
+          return;
+        }
         const appUser = await loadAppUser();
         if (active) {
           setUser(appUser);
           setError(null);
         }
-      })
-      .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
-      })
-      .finally(() => {
+      } catch (reason) {
+        if (active) {
+          setUser(null);
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    };
+
+    void resolveUser();
+
+    const subscription = onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setHasSession(Boolean(session));
+      if (!session) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      void loadAppUser()
+        .then((appUser) => {
+          if (!active) return;
+          setUser(appUser);
+          setError(null);
+        })
+        .catch((reason) => {
+          if (active) setError(reason instanceof Error ? reason.message : String(reason));
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    });
 
     return () => {
       active = false;
+      subscription.unsubscribe();
       window.fetch = nativeFetch;
     };
   }, []);
@@ -137,8 +169,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           <p>Контролируйте расходы, качество лидов, приходы, продажи и ROAS по каждому источнику и рекламной кампании.</p>
         </div>
         <div className="auth-benefits">
-          <div><CheckCircle2 size={17}/><span>Рекламные кабинеты и Bitrix24</span></div>
-          <div><CheckCircle2 size={17}/><span>Полная CRM-воронка до покупки</span></div>
+          <div><CheckCircle2 size={17}/><span>Рекламные кабинеты и CRM</span></div>
+          <div><CheckCircle2 size={17}/><span>Полная воронка до покупки</span></div>
           <div><CheckCircle2 size={17}/><span>Автоматические рекомендации по кампаниям</span></div>
         </div>
         <div className="auth-preview" aria-hidden="true">
@@ -158,7 +190,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           <div className="auth-login-icon"><ShieldCheck size={28}/></div>
           <span className="auth-login-product">AMANAT MED</span>
           <h2>Вход в систему</h2>
-          <p>Используйте рабочий Google-аккаунт. При первом входе профиль будет зарегистрирован автоматически.</p>
+          <p>Используйте рабочий Google-аккаунт. Авторизация и защищённая сессия работают через Supabase Auth.</p>
           {error && <div className="auth-error" role="alert">{error}</div>}
           <button className="google-login" onClick={() => void signIn()} disabled={signingIn}>
             {signingIn ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
@@ -166,7 +198,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             {!signingIn && <ArrowRight size={17}/>} 
           </button>
           {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
-          <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся AMANAT MED.</span></div>
+          <div className="auth-security-note"><LockKeyhole size={15}/><span>Пароль Google не передаётся AMANAT MED. Сессия управляется Supabase Auth.</span></div>
           <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
         </div>
         <p className="auth-support">Проблемы со входом? Обратитесь к администратору системы.</p>
