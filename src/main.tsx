@@ -11,6 +11,7 @@ import ThemeToggle from './components/ThemeToggle';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
 import CrmBoard from './pages/CrmBoard';
+import { isSupabaseConfigured } from './services/supabase';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
@@ -54,9 +55,17 @@ function AppEntry() {
   const authEnabled = import.meta.env.VITE_AUTH_ENABLED === 'true';
   const crmEnabled = import.meta.env.VITE_CRM_API_ENABLED === 'true';
   const isCrmRoute = window.location.pathname === '/crm';
+
   let app = <Root />;
   if (crmEnabled && isCrmRoute) app = <CrmGate>{app}</CrmGate>;
-  if (authEnabled || isCrmRoute) app = <AuthGate>{app}</AuthGate>;
+
+  // Never mount AuthGate without a valid Supabase browser configuration.
+  // Its auth subscription requires a configured client and would otherwise
+  // throw during the first effect, leaving the application with a blank screen.
+  if ((authEnabled || isCrmRoute) && isSupabaseConfigured) {
+    app = <AuthGate>{app}</AuthGate>;
+  }
+
   return app;
 }
 
