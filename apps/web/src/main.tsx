@@ -6,6 +6,7 @@ import App from './App';
 import './styles.css';
 import './modules.css';
 import './preview-fidelity.css';
+import './modules/channels/channels.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
