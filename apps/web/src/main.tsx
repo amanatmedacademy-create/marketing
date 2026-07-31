@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 import './modules.css';
+import './preview-fidelity.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
