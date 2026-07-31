@@ -35,6 +35,17 @@ export interface Deal {
   updated_at: string;
 }
 
+export interface Contact {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await authFetch(path, init);
   const payload = await response.json().catch(() => ({}));
@@ -66,3 +77,18 @@ export const moveDeal = (dealId: string, targetStageId: string) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ targetStageId }),
   });
+
+export const loadContacts = (search = '') =>
+  api<Contact[]>(`/api/crm/contacts${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`);
+
+export const createContact = (input: {
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  source?: string;
+}) => api<Contact>('/api/crm/contacts', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(input),
+});
