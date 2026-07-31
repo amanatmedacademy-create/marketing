@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.12.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
+    "build": "bun run --cwd apps/web build",
+    "build:all": "turbo build",
+    "build:web": "bun run --cwd apps/web build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
@@ -16,7 +22,7 @@
     "docker:down": "docker compose down"
   },
   "devDependencies": {
-    "turbo": "^2.5.4",
-    "typescript": "^5.8.3"
+    "turbo": "^2.10.8",
+    "typescript": "^5.9.3"
   }
 }
