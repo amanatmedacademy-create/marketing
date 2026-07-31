@@ -12,6 +12,7 @@ import {
   Settings,
   Video,
 } from 'lucide-react';
+import { OmnichannelInbox, type InboxChannel } from '../inbox/OmnichannelInbox';
 
 export type ChannelView =
   | 'whatsapp'
@@ -29,6 +30,8 @@ type ChannelDefinition = {
   metrics: Array<[string, string]>;
   connections: Array<{ name: string; detail: string; connected: boolean }>;
 };
+
+const inboxViews = new Set<ChannelView>(['whatsapp', 'instagram', 'email']);
 
 const definitions: Record<ChannelView, ChannelDefinition> = {
   whatsapp: {
@@ -114,6 +117,10 @@ export const channelNavigation = [
 ];
 
 export function ChannelsView({ view }: { view: ChannelView }) {
+  if (inboxViews.has(view)) {
+    return <OmnichannelInbox initialChannel={view as InboxChannel} />;
+  }
+
   const definition = definitions[view];
   const Icon = definition.icon;
 
