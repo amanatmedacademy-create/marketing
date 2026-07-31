@@ -7,7 +7,7 @@ import { RolesGuard } from '../../common/auth/roles.guard.js';
 import { CreatePipelineDto, CreatePipelineStageDto } from './dto/create-pipeline.dto.js';
 import { PipelinesService } from './pipelines.service.js';
 
-@Controller('api/v1/pipelines')
+@Controller('pipelines')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class PipelinesController {
   constructor(private readonly pipelinesService: PipelinesService) {}
