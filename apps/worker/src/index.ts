@@ -130,6 +130,69 @@ async function moveDeal(request: Request, env: Env, dealId: string) {
   return json(mapDeal(rows[0]));
 }
 
+async function listTasks(env: Env) {
+  assertSupabase(env);
+  return supabaseRest(env, 'tasks', `select=id,title,status,priority,due_at,deal_id,assignee_user_id&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=due_at.asc.nullslast,created_at.desc`);
+}
+async function updateTask(request: Request, env: Env, taskId: string) {
+  assertSupabase(env);
+  const body = await request.json() as { status?: string; priority?: string; title?: string; dueAt?: string | null };
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (body.status !== undefined) patch.status = body.status;
+  if (body.priority !== undefined) patch.priority = body.priority;
+  if (body.title !== undefined) patch.title = body.title;
+  if (body.dueAt !== undefined) patch.due_at = body.dueAt;
+  const rows = await supabaseRest<unknown[]>(env, 'tasks', `id=eq.${taskId}&company_id=eq.${env.DEFAULT_COMPANY_ID}&select=id,title,status,priority,due_at,deal_id,assignee_user_id`, {
+    method: 'PATCH', body: JSON.stringify(patch),
+  });
+  if (!rows.length) return json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, { status: 404 });
+  return json(rows[0]);
+}
+async function listTeam(env: Env) {
+  assertSupabase(env);
+  const members = await supabaseRest<Array<{ user_id: string; role: string; department: string | null; is_online: boolean; last_seen_at: string | null }>>(
+    env, 'company_members', `select=user_id,role,department,is_online,last_seen_at&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=created_at.asc`,
+  );
+  const ids = members.map((member) => member.user_id);
+  const profiles = ids.length
+    ? await supabaseRest<Array<{ user_id: string; first_name: string; last_name: string; avatar_color: string }>>(env, 'user_profiles', `select=user_id,first_name,last_name,avatar_color&user_id=in.(${ids.join(',')})`)
+    : [];
+  return members.map((member) => {
+    const profile = profiles.find((item) => item.user_id === member.user_id);
+    return {
+      userId: member.user_id,
+      firstName: profile?.first_name ?? '',
+      lastName: profile?.last_name ?? '',
+      avatarColor: profile?.avatar_color ?? '#4F6EF7',
+      role: member.role,
+      department: member.department,
+      isOnline: member.is_online,
+      lastSeenAt: member.last_seen_at,
+    };
+  });
+}
+async function listProjects(env: Env) {
+  assertSupabase(env);
+  const [projects, items] = await Promise.all([
+    supabaseRest<Array<{ id: string; name: string; description: string | null }>>(env, 'projects', `select=id,name,description&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=created_at.desc`),
+    supabaseRest<Array<{ id: string; project_id: string; title: string; status: string; position: number }>>(env, 'project_items', `select=id,project_id,title,status,position&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=position.asc`),
+  ]);
+  return projects.map((project) => ({ ...project, items: items.filter((item) => item.project_id === project.id) }));
+}
+async function getAccounting(env: Env) {
+  assertSupabase(env);
+  const transactions = await supabaseRest<Array<{ id: string; account_id: string | null; type: string; amount: number | string; description: string; occurred_at: string }>>(
+    env, 'finance_transactions', `select=id,account_id,type,amount,description,occurred_at&company_id=eq.${env.DEFAULT_COMPANY_ID}&order=occurred_at.desc`,
+  );
+  const accounts = await supabaseRest<Array<{ id: string; name: string }>>(env, 'finance_accounts', `select=id,name&company_id=eq.${env.DEFAULT_COMPANY_ID}`);
+  const income = transactions.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0);
+  const expense = transactions.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0);
+  return {
+    summary: { income, expense, profit: income - expense, vat: income * 0.12 },
+    transactions: transactions.map((item) => ({ ...item, amount: Number(item.amount), accountName: accounts.find((account) => account.id === item.account_id)?.name ?? 'Без счёта' })),
+  };
+}
+
 async function routeApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === 'GET' && url.pathname === '/api/config') return json({ environment: env.APP_ENV, supabaseConfigured: Boolean(env.SUPABASE_URL) });
@@ -137,8 +200,14 @@ async function routeApi(request: Request, env: Env): Promise<Response> {
   if (request.method === 'GET' && url.pathname === '/api/pipelines') return json(await getPipelines(env));
   if (request.method === 'GET' && url.pathname === '/api/deals') return json(await listDeals(env, url.searchParams.get('pipelineId') ?? undefined));
   if (request.method === 'POST' && url.pathname === '/api/deals') return createDeal(request, env);
+  if (request.method === 'GET' && url.pathname === '/api/tasks') return json(await listTasks(env));
+  if (request.method === 'GET' && url.pathname === '/api/team') return json(await listTeam(env));
+  if (request.method === 'GET' && url.pathname === '/api/projects') return json(await listProjects(env));
+  if (request.method === 'GET' && url.pathname === '/api/accounting') return json(await getAccounting(env));
   const moveMatch = url.pathname.match(/^\/api\/deals\/([^/]+)\/move$/);
   if (request.method === 'PATCH' && moveMatch) return moveDeal(request, env, moveMatch[1]);
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+  if (request.method === 'PATCH' && taskMatch) return updateTask(request, env, taskMatch[1]);
   return json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }, { status: 404 });
 }
 
