@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import RebuiltApp from './rebuild/RebuiltApp';
 import AppErrorBoundary from './rebuild/AppErrorBoundary';
 import './rebuild/rebuild.css';
+import './contacts.css';
 
 const root = document.getElementById('root');
 
