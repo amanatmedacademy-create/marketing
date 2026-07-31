@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AddressBook, ArrowLeft, Bell, LayoutDashboard, LoaderCircle, Mail, Megaphone, MessageCircle, Moon, Phone, Plus, RefreshCw, Search, Settings, Sun, UserRound, Users, WalletCards, X } from 'lucide-react';
+import { ArrowLeft, Bell, LayoutDashboard, LoaderCircle, Mail, Megaphone, MessageCircle, Moon, Phone, Plus, RefreshCw, Search, Settings, Sun, UserRound, Users, WalletCards, X } from 'lucide-react';
 import { createContact, loadContacts, type Contact } from '../services/crm';
 
 export default function ContactsPage() {
@@ -43,7 +43,7 @@ export default function ContactsPage() {
       <nav>
         <a href="/" title="Дашборд"><LayoutDashboard /></a>
         <a href="/crm" title="Сделки"><WalletCards /></a>
-        <a className="active" href="/contacts" title="Контакты"><AddressBook /></a>
+        <a className="active" href="/contacts" title="Контакты"><UserRound /></a>
         <button title="Команда"><Users /></button>
         <button title="Чаты"><MessageCircle /></button>
         <button title="Реклама"><Megaphone /></button>
