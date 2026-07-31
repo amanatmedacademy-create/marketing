@@ -77,6 +77,7 @@ export async function startGoogleSignIn(): Promise<void> {
 
 export async function signOutSession(): Promise<void> {
   const client = requireSupabase();
+  localStorage.removeItem('imds_active_company_id');
   const { error } = await client.auth.signOut({ scope: 'local' });
   if (error) throw error;
 }
@@ -85,6 +86,12 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   const session = await currentSession();
   const headers = new Headers(init.headers ?? {});
   if (session?.access_token) headers.set('authorization', `Bearer ${session.access_token}`);
+
+  const activeCompanyId = localStorage.getItem('imds_active_company_id');
+  if (activeCompanyId && !headers.has('x-company-id')) {
+    headers.set('x-company-id', activeCompanyId);
+  }
+
   return fetch(input, { ...init, headers });
 }
 
