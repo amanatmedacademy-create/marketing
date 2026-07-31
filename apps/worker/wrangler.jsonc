@@ -12,7 +12,8 @@
   },
   "vars": {
     "APP_ENV": "production",
-    "SUPABASE_URL": ""
+    "SUPABASE_URL": "",
+    "DEFAULT_COMPANY_ID": ""
   },
   "observability": {
     "enabled": true
