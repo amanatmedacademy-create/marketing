@@ -2,26 +2,21 @@
   "name": "imds-crm",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --pretty false"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.53.0",
-    "lucide-react": "^0.468.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^7.6.3",
-    "recharts": "^2.15.4"
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter @imds/database generate",
+    "db:migrate": "pnpm --filter @imds/database migrate:dev",
+    "db:seed": "pnpm --filter @imds/database seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   },
   "devDependencies": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.5.2",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
   }
 }
