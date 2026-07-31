@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum Locale {
+  KK
+  RU
+  EN
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String
+  firstName       String
+  lastName        String?
+  avatarUrl       String?
+  locale          Locale   @default(RU)
+  isActive        Boolean  @default(true)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships   CompanyMember[]
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+}
+
+model Company {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  timezone           String   @default("Asia/Almaty")
+  locale             Locale   @default(RU)
+  currency           String   @default("KZT")
+  accentColor        String   @default("#2563EB")
+  backgroundPreset   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  members CompanyMember[]
+
+  @@index([slug])
+}
+
+model CompanyMember {
+  id           String           @id @default(cuid())
+  companyId    String
+  userId       String
+  role         UserRole
+  jobTitle     String?
+  status       MembershipStatus @default(INVITED)
+  lastActiveAt DateTime?
+  joinedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId, role])
+  @@index([companyId, status])
+}
+
+model RefreshToken {
+  id           String   @id @default(cuid())
+  userId       String
+  companyId    String?
+  tokenHash    String   @unique
+  familyId     String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+}
