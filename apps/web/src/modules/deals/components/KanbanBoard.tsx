@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { useCreateDealMutation, useDealsQuery, useMoveDealMutation, usePipelinesQuery } from '../api/useDeals';
+import type { Deal } from '../types';
+import { DealDetailsPanel } from './DealDetailsPanel';
 import { StageColumn } from './StageColumn';
 
 export function KanbanBoard() {
   const { data: pipelines, isLoading: pipelinesLoading } = usePipelinesQuery();
   const [pipelineId, setPipelineId] = useState<string>();
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
   useEffect(() => {
     if (!pipelineId && pipelines?.length) setPipelineId(pipelines.find((pipeline) => pipeline.isDefault)?.id ?? pipelines[0].id);
@@ -35,11 +38,13 @@ export function KanbanBoard() {
   if (pipelinesLoading) return <div className="kanban-message">Загрузка воронок…</div>;
   if (!pipelines?.length) return <div className="kanban-message">Пока нет ни одной воронки.</div>;
 
+  const selectedStage = selectedDeal ? pipeline?.stages.find((stage) => stage.id === selectedDeal.stageId) : undefined;
+
   return (
     <section className="kanban-module">
       <header className="kanban-toolbar">
         <div><span>CRM</span><h1>Сделки</h1></div>
-        <select value={pipelineId} onChange={(event) => setPipelineId(event.target.value)}>
+        <select value={pipelineId} onChange={(event) => { setPipelineId(event.target.value); setSelectedDeal(null); }}>
           {pipelines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
         <b>{dealsData?.total ?? 0} сделок</b>
@@ -55,10 +60,20 @@ export function KanbanBoard() {
                 deals={dealsByStage.get(stage.id) ?? []}
                 isCreating={createDeal.isPending}
                 onCreateDeal={(title, stageId) => createDeal.mutate({ title, stageId })}
+                onOpenDeal={setSelectedDeal}
               />
             ))}
           </div>
         </DndContext>
+      )}
+
+      {selectedDeal && pipeline && selectedStage && (
+        <DealDetailsPanel
+          deal={selectedDeal}
+          pipeline={pipeline}
+          stage={selectedStage}
+          onClose={() => setSelectedDeal(null)}
+        />
       )}
     </section>
   );
