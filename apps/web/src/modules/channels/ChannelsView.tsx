@@ -6,13 +6,13 @@ import {
   Mail,
   Megaphone,
   MessageCircle,
-  Phone,
   Plus,
   RefreshCw,
   Settings,
   Video,
 } from 'lucide-react';
-import { OmnichannelInbox, type InboxChannel } from '../inbox/OmnichannelInbox';
+import { EmailWorkspace } from '../inbox/EmailWorkspace';
+import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
 
 export type ChannelView =
@@ -31,8 +31,6 @@ type ChannelDefinition = {
   metrics: Array<[string, string]>;
   connections: Array<{ name: string; detail: string; connected: boolean }>;
 };
-
-const inboxViews = new Set<ChannelView>(['instagram', 'email']);
 
 const definitions: Record<ChannelView, ChannelDefinition> = {
   whatsapp: {
@@ -119,10 +117,8 @@ export const channelNavigation = [
 
 export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'whatsapp') return <WhatsAppWorkspace />;
-
-  if (inboxViews.has(view)) {
-    return <OmnichannelInbox initialChannel={view as InboxChannel} />;
-  }
+  if (view === 'instagram') return <InstagramWorkspace />;
+  if (view === 'email') return <EmailWorkspace />;
 
   const definition = definitions[view];
   const Icon = definition.icon;
@@ -131,10 +127,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
     <div className="view-page channel-page">
       <div className="channel-heading">
         <div className="channel-title-icon"><Icon size={20} /></div>
-        <div>
-          <h1>{definition.title}</h1>
-          <p>{definition.description}</p>
-        </div>
+        <div><h1>{definition.title}</h1><p>{definition.description}</p></div>
         <button className="channel-primary-button"><Plus size={15} /> Подключить</button>
       </div>
 
@@ -156,9 +149,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
                 {connection.connected ? <CheckCircle2 size={18} /> : <Icon size={18} />}
               </div>
               <div className="connection-copy"><strong>{connection.name}</strong><span>{connection.detail}</span></div>
-              <span className={`connection-chip ${connection.connected ? 'connected' : ''}`}>
-                {connection.connected ? 'Подключено' : 'Не подключено'}
-              </span>
+              <span className={`connection-chip ${connection.connected ? 'connected' : ''}`}>{connection.connected ? 'Подключено' : 'Не подключено'}</span>
               <button className="connection-action">{connection.connected ? <Settings size={15} /> : 'Подключить'}</button>
             </article>
           ))}
