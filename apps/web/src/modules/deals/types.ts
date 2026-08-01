@@ -22,6 +22,7 @@ export interface Contact {
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
+  email?: string | null;
 }
 
 export interface Manager {
@@ -38,6 +39,11 @@ export interface Deal {
   oneTimeAmount: string | null;
   recurringAmount: string | null;
   order: number;
+  phone?: string | null;
+  email?: string | null;
+  source?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   contact: Contact | null;
   manager: Manager | null;
   tags: { tag: { id: string; name: string; color: string } }[];
