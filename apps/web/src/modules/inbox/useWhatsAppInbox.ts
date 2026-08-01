@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '../../lib/api-client';
+import { backendApiFetch } from '../../lib/api-client';
 
 export type WhatsAppMessage = {
   id: string;
@@ -32,15 +32,17 @@ export type WhatsAppConversationDetails = Omit<WhatsAppConversation, 'messages'>
 export function useWhatsAppConversations() {
   return useQuery({
     queryKey: ['whatsapp', 'conversations'],
-    queryFn: () => apiFetch<WhatsAppConversation[]>('/v1/whatsapp/conversations'),
+    queryFn: () => backendApiFetch<WhatsAppConversation[]>('/api/v1/whatsapp/conversations'),
+    retry: false,
   });
 }
 
 export function useWhatsAppConversation(conversationId: string | null) {
   return useQuery({
     queryKey: ['whatsapp', 'conversation', conversationId],
-    queryFn: () => apiFetch<WhatsAppConversationDetails>(`/v1/whatsapp/conversations/${conversationId}`),
+    queryFn: () => backendApiFetch<WhatsAppConversationDetails>(`/api/v1/whatsapp/conversations/${conversationId}`),
     enabled: Boolean(conversationId),
+    retry: false,
   });
 }
 
@@ -48,7 +50,7 @@ export function useSendWhatsAppMessage() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ conversationId, text }: { conversationId: string; text: string }) =>
-      apiFetch<WhatsAppMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, {
+      backendApiFetch<WhatsAppMessage>(`/api/v1/whatsapp/conversations/${conversationId}/messages`, {
         method: 'POST',
         body: { type: 'TEXT', text },
       }),
@@ -65,7 +67,7 @@ export function useUpdateWhatsAppConversation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ conversationId, status }: { conversationId: string; status: 'OPEN' | 'PENDING' | 'CLOSED' }) =>
-      apiFetch<WhatsAppConversationDetails>(`/v1/whatsapp/conversations/${conversationId}`, {
+      backendApiFetch<WhatsAppConversationDetails>(`/api/v1/whatsapp/conversations/${conversationId}`, {
         method: 'PATCH',
         body: { status },
       }),
