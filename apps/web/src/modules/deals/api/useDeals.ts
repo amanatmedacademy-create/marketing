@@ -6,6 +6,14 @@ export function usePipelinesQuery() {
   return useQuery({ queryKey: ['pipelines'], queryFn: () => apiFetch<Pipeline[]>('/pipelines') });
 }
 
+export function useBootstrapPipelineMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<Pipeline>('/pipelines/bootstrap', { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pipelines'] }),
+  });
+}
+
 export function useDealsQuery(pipelineId: string | undefined) {
   return useQuery({
     queryKey: ['deals', pipelineId],
