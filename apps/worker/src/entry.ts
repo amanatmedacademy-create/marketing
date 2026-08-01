@@ -1,5 +1,6 @@
 import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
+import { handleGoogleAuthRequest } from './google-auth';
 
 interface Env extends AuthEnv {
   ASSETS: Fetcher;
@@ -34,6 +35,12 @@ function canWrite(session: AuthSession, pathname: string) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith('/api/auth/google/')) {
+      if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
+      const googleResponse = await handleGoogleAuthRequest(request, env);
+      if (googleResponse) return googleResponse;
+    }
 
     if (url.pathname.startsWith('/api/auth/')) {
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
