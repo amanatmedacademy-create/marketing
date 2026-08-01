@@ -22,6 +22,27 @@ export function useDealsQuery(pipelineId: string | undefined) {
   });
 }
 
+export function useDealQuery(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ['deal', dealId],
+    queryFn: () => apiFetch<Deal>(`/deals/${dealId}`),
+    enabled: Boolean(dealId),
+  });
+}
+
+export function useUpdateDealMutation(pipelineId: string | undefined, dealId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { title: string; phone?: string | null; email?: string | null; source?: string | null; amount?: number; stageId?: string }) =>
+      apiFetch<Deal>(`/deals/${dealId}`, { method: 'PATCH', body: input }),
+    onSuccess: (deal) => {
+      queryClient.setQueryData(['deal', dealId], deal);
+      queryClient.invalidateQueries({ queryKey: ['deals', pipelineId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useMoveDealMutation(pipelineId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -48,7 +69,7 @@ export function useMoveDealMutation(pipelineId: string | undefined) {
 export function useCreateDealMutation(pipelineId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; stageId: string }) =>
+    mutationFn: (input: { title: string; stageId: string; phone?: string; email?: string; source?: string; amount?: number }) =>
       apiFetch<Deal>('/deals', { method: 'POST', body: { ...input, pipelineId } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['deals', pipelineId] }),
   });
