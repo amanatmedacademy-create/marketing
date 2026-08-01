@@ -3,13 +3,14 @@ import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } fro
 import { requireBearerSession } from './bearer-auth';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
+import { handleTeamRequest } from './team';
 
 interface Env extends AuthEnv {
   ASSETS: Fetcher;
   APP_ENV: string;
 }
 
-const RELEASE = 'crm-real-data-v1';
+const RELEASE = 'real-user-tenant-v1';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
@@ -68,8 +69,9 @@ export default {
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
-      const dealDetailsResponse = await handleDealDetails(request, tenantEnv);
-      const response = dealDetailsResponse ?? await app.fetch(request, tenantEnv);
+      const specializedResponse = await handleDealDetails(request, tenantEnv)
+        ?? await handleTeamRequest(request, tenantEnv);
+      const response = specializedResponse ?? await app.fetch(request, tenantEnv);
       const decorated = new Response(response.body, response);
       decorated.headers.set('x-imds-release', RELEASE);
       return decorated;
