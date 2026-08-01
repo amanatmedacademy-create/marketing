@@ -1,8 +1,12 @@
 type ApiInit = Omit<RequestInit, 'body'> & { body?: unknown };
 
-export async function apiFetch<T>(path: string, init: ApiInit = {}): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+const workerApiBase = '/api';
+const backendApiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || workerApiBase;
+
+async function request<T>(baseUrl: string, path: string, init: ApiInit = {}): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       'content-type': 'application/json',
       ...init.headers,
@@ -16,4 +20,12 @@ export async function apiFetch<T>(path: string, init: ApiInit = {}): Promise<T> 
   }
 
   return response.json() as Promise<T>;
+}
+
+export function apiFetch<T>(path: string, init: ApiInit = {}): Promise<T> {
+  return request<T>(workerApiBase, path, init);
+}
+
+export function backendApiFetch<T>(path: string, init: ApiInit = {}): Promise<T> {
+  return request<T>(backendApiBase, path, init);
 }
