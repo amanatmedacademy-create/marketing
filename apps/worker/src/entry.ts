@@ -7,6 +7,8 @@ interface Env extends AuthEnv {
   APP_ENV: string;
 }
 
+const RELEASE = 'supabase-auth-v2';
+
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({
   error: { code, message },
 }), {
@@ -14,6 +16,15 @@ const apiError = (status: number, code: string, message: string) => new Response
   headers: {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
+  },
+});
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-imds-release': RELEASE,
   },
 });
 
@@ -36,6 +47,26 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/health') {
+      return json({
+        status: 'ok',
+        service: 'imds-crm-edge',
+        environment: env.APP_ENV,
+        release: RELEASE,
+        auth: 'supabase',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/config') {
+      return json({
+        environment: env.APP_ENV,
+        release: RELEASE,
+        auth: 'supabase',
+        supabaseConfigured: Boolean(env.SUPABASE_URL),
+      });
+    }
+
     if (url.pathname.startsWith('/api/auth/google/')) {
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
       const googleResponse = await handleGoogleAuthRequest(request, env);
@@ -48,7 +79,7 @@ export default {
       if (authResponse) return authResponse;
     }
 
-    if (url.pathname.startsWith('/api/') && url.pathname !== '/api/config') {
+    if (url.pathname.startsWith('/api/')) {
       const session = await requireSession(request, env);
       if (!session) return apiError(401, 'UNAUTHORIZED', 'Не авторизован');
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
@@ -57,9 +88,15 @@ export default {
       }
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
-      return app.fetch(request, tenantEnv);
+      const response = await app.fetch(request, tenantEnv);
+      const decorated = new Response(response.body, response);
+      decorated.headers.set('x-imds-release', RELEASE);
+      return decorated;
     }
 
-    return app.fetch(request, env);
+    const response = await app.fetch(request, env);
+    const decorated = new Response(response.body, response);
+    decorated.headers.set('x-imds-release', RELEASE);
+    return decorated;
   },
 } satisfies ExportedHandler<Env>;
