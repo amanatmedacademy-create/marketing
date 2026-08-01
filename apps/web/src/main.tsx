@@ -15,6 +15,7 @@ import './modules/deals/deal-details.css';
 import './modules/deals/lead-modal.css';
 import './modules/ads/ads-workspace.css';
 import './modules/auth/auth.css';
+import './modules/auth/user-profile.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
