@@ -11,6 +11,7 @@ import {
   Settings,
   Video,
 } from 'lucide-react';
+import { AdsWorkspace } from '../ads/AdsWorkspace';
 import { EmailWorkspace } from '../inbox/EmailWorkspace';
 import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
@@ -119,6 +120,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'whatsapp') return <WhatsAppWorkspace />;
   if (view === 'instagram') return <InstagramWorkspace />;
   if (view === 'email') return <EmailWorkspace />;
+  if (view === 'ads') return <AdsWorkspace />;
 
   const definition = definitions[view];
   const Icon = definition.icon;
