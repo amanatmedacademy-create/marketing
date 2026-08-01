@@ -50,6 +50,8 @@ export function WhatsAppWorkspace() {
     );
   };
 
+  const showEmptyState = !conversations.isLoading && items.length === 0;
+
   return (
     <div className="wa-workspace">
       <aside className="wa-sidebar">
@@ -68,8 +70,7 @@ export function WhatsAppWorkspace() {
 
         <div className="wa-conversation-list">
           {conversations.isLoading && <div className="wa-list-state">Загрузка диалогов…</div>}
-          {conversations.isError && <div className="wa-list-state error">Не удалось загрузить WhatsApp</div>}
-          {!conversations.isLoading && !conversations.isError && !items.length && (
+          {showEmptyState && (
             <div className="wa-empty-list">
               <MessageCircle size={40} strokeWidth={1.7} />
               <strong>Нет чатов WhatsApp</strong>
