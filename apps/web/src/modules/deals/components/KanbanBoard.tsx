@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { Filter, Plus, Search } from 'lucide-react';
-import { useCreateDealMutation, useDealsQuery, useMoveDealMutation, usePipelinesQuery } from '../api/useDeals';
+import { Filter, Plus, Search, Workflow } from 'lucide-react';
+import { useBootstrapPipelineMutation, useCreateDealMutation, useDealsQuery, useMoveDealMutation, usePipelinesQuery } from '../api/useDeals';
 import type { Deal } from '../types';
 import { CreateLeadModal } from './CreateLeadModal';
 import { DealDetailsPanel } from './DealDetailsPanel';
@@ -9,6 +9,7 @@ import { StageColumn } from './StageColumn';
 
 export function KanbanBoard() {
   const { data: pipelines, isLoading: pipelinesLoading } = usePipelinesQuery();
+  const bootstrapPipeline = useBootstrapPipelineMutation();
   const [pipelineId, setPipelineId] = useState<string>();
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [showCreateLead, setShowCreateLead] = useState(false);
@@ -43,7 +44,17 @@ export function KanbanBoard() {
   }
 
   if (pipelinesLoading) return <div className="kanban-message">Загрузка воронок…</div>;
-  if (!pipelines?.length) return <div className="kanban-message">Пока нет ни одной воронки.</div>;
+  if (!pipelines?.length) {
+    return <section className="pipeline-onboarding">
+      <span><Workflow size={28} /></span>
+      <h2>Настройте первую воронку</h2>
+      <p>Будут созданы этапы: Новый лид, В работе, Назначена консультация, Продажа и Отказ.</p>
+      <button disabled={bootstrapPipeline.isPending} onClick={() => bootstrapPipeline.mutate()}>
+        <Plus size={16} /> {bootstrapPipeline.isPending ? 'Создание…' : 'Создать стартовую воронку'}
+      </button>
+      {bootstrapPipeline.isError && <small>Не удалось создать воронку. Проверьте подключение API и права администратора.</small>}
+    </section>;
+  }
 
   const selectedStage = selectedDeal ? pipeline?.stages.find((stage) => stage.id === selectedDeal.stageId) : undefined;
 
