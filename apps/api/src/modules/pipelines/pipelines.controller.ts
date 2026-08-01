@@ -17,6 +17,12 @@ export class PipelinesController {
     return this.pipelinesService.list(principal.companyId);
   }
 
+  @Post('bootstrap')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  bootstrap(@CurrentTenant() principal: TenantPrincipal) {
+    return this.pipelinesService.bootstrap(principal.companyId);
+  }
+
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   create(
