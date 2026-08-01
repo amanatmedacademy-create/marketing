@@ -13,7 +13,9 @@ export type TeamMember = {
   userId: string;
   firstName: string;
   lastName: string;
-  avatarColor: string;
+  fullName: string;
+  email: string;
+  avatarUrl: string | null;
   role: string;
   department: string | null;
   isOnline: boolean;
