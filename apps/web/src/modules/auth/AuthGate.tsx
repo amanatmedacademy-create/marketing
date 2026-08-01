@@ -55,11 +55,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const logout = async () => {
       try { await authRequest<{ ok: true }>('logout', {}); } finally { setSession(null); }
     };
+    const delegateLogout = (event: MouseEvent) => {
+      const button = (event.target as HTMLElement | null)?.closest('button');
+      if (button?.textContent?.trim() === 'Выйти') {
+        event.preventDefault();
+        void logout();
+      }
+    };
     window.addEventListener('imds:session-expired', expire);
     window.addEventListener('imds:logout-request', logout);
+    document.addEventListener('click', delegateLogout);
     return () => {
       window.removeEventListener('imds:session-expired', expire);
       window.removeEventListener('imds:logout-request', logout);
+      document.removeEventListener('click', delegateLogout);
     };
   }, []);
 
