@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import { AuthGate } from './modules/auth/AuthGate';
 import './styles.css';
 import './modules.css';
 import './preview-fidelity.css';
@@ -13,6 +14,7 @@ import './modules/inbox/social-mail-workspaces.css';
 import './modules/deals/deal-details.css';
 import './modules/deals/lead-modal.css';
 import './modules/ads/ads-workspace.css';
+import './modules/auth/auth.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,7 +30,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <AuthGate>
+          <App />
+        </AuthGate>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,
