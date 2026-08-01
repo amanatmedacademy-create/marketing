@@ -3,6 +3,8 @@ import {
   Bell, CalendarDays, FolderKanban, Headphones, LayoutDashboard, Moon, Search,
   Settings, Sun, Trophy, UsersRound, WalletCards, Workflow,
 } from 'lucide-react';
+import { apiFetch } from './lib/api-client';
+import { useAuth } from './modules/auth/AuthContext';
 import { KanbanBoard } from './modules/deals/components/KanbanBoard';
 import {
   useAccountingQuery,
@@ -44,11 +46,6 @@ const activeModules = [
   { id: 'integrations' as ChannelView, title: 'Интеграции', description: 'Центр подключений и синхронизаций.', icon: channelNavigation[6].icon },
   { id: 'integrations' as ChannelView, title: 'Геймификация', description: 'Баллы, цели, достижения и рейтинг команды.', icon: Trophy },
 ] as const;
-const taskFallback: TaskItem[] = [
-  { id: 'fallback-1', title: 'Перезвонить Марату С. — уточнить дату МРТ', priority: 'urgent', status: 'todo', due_at: '2026-07-31T09:00:00+05:00' },
-  { id: 'fallback-2', title: 'Отправить смету Бекзату Н.', priority: 'high', status: 'todo', due_at: '2026-07-31T12:00:00+05:00' },
-  { id: 'fallback-3', title: 'Консультация — Ольга В., 15:00', priority: 'medium', status: 'todo', due_at: '2026-08-01T15:00:00+05:00' },
-];
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Almaty' });
@@ -56,6 +53,7 @@ const channelIds = new Set<ChannelView>(channelNavigation.map(item => item.id));
 const isChannelView = (view: View): view is ChannelView => channelIds.has(view as ChannelView);
 
 export default function App() {
+  const { currentUser, initials, logout } = useAuth();
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,20 +67,20 @@ export default function App() {
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   useEffect(() => { const close = () => setOpenMenu(null); window.addEventListener('click', close); return () => window.removeEventListener('click', close); }, []);
   useEffect(() => {
-    const controller = new AbortController();
-    fetch('/api/dashboard', { signal: controller.signal })
-      .then(async response => { if (!response.ok) throw new Error(`Ошибка API: ${response.status}`); return response.json() as Promise<DashboardResponse>; })
-      .then(setDashboard)
-      .catch(reason => { if (reason instanceof DOMException && reason.name === 'AbortError') return; setError(reason instanceof Error ? reason.message : 'Нет соединения'); })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
-  }, []);
+    let active = true;
+    setLoading(true);
+    void apiFetch<DashboardResponse>('/dashboard')
+      .then((data) => { if (active) { setDashboard(data); setError(''); } })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : 'Нет соединения'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [currentUser.companyId]);
 
   const metrics = useMemo(() => [
-    ['Сумма в работе', money.format(dashboard?.metrics.amountInWork ?? 4_280_000), '▲ 12% за неделю', 'up'],
-    ['Открытых задач', String(dashboard?.metrics.openTasks ?? 11), '4 просрочено', 'down'],
-    ['Сделок в работе', String(dashboard?.metrics.newDeals ?? 9), '▲ 2 за сегодня', 'up'],
-    ['Конверсия в оплату', '34%', '▲ 5% за месяц', 'up'],
+    ['Сумма в работе', money.format(dashboard?.metrics.amountInWork ?? 0), '', 'up'],
+    ['Открытых задач', String(dashboard?.metrics.openTasks ?? 0), '', 'up'],
+    ['Сделок в работе', String(dashboard?.metrics.newDeals ?? 0), '', 'up'],
+    ['Без ответа', String(dashboard?.metrics.unansweredConversations ?? 0), '', 'up'],
   ], [dashboard]);
 
   const time = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Almaty' }).format(now);
@@ -97,19 +95,23 @@ export default function App() {
       <button className="settings-button" title="Настройки" onClick={() => setView('integrations')}><Settings size={18} /></button>
     </aside>
     <main className="main-column">
-      {bannerVisible && <section className="subscription-banner"><span>⚠️ <strong>Тариф скоро истекает</strong> — осталось 2 дня</span><div><button>Обновить тариф</button><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
+      {bannerVisible && <section className="subscription-banner"><span><strong>{currentUser.companyName}</strong></span><div><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
       <header className="topbar">
         <div className="clock-block"><strong>{time}</strong><span>{date}</span></div>
         <label className="search-box"><Search size={16} /><input placeholder="Поиск или вопрос .J.A.R.V.I.S..." /><span className="ai-badge">AI</span></label>
         <div className="top-actions">
-          <span className="score-pill">₸ <strong>1 280</strong></span><span className="phone-pill">☎ <strong>42 мин</strong></span>
           <button className="icon-button" onClick={() => setDark(value => !value)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button><button className="icon-button"><Headphones size={17} /></button>
-          <div className="dropdown-wrap"><button className="icon-button notification-button" onClick={toggleMenu('notifications')}><Bell size={17} /><i /></button>{openMenu === 'notifications' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head">Уведомления</div><button>⏰ 3 просроченные задачи</button><button onClick={() => setView('whatsapp')}>💬 Новое сообщение в WhatsApp</button><button>💰 Сделка перешла в «Оплата»</button></div>}</div>
-          <div className="dropdown-wrap"><button className="avatar-button" onClick={toggleMenu('profile')}>АО</button>{openMenu === 'profile' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head"><strong>Айдос Оунер</strong><span>OWNER</span></div><button>Профиль</button><button onClick={() => setView('integrations')}>Настройки</button><button>Выйти</button></div>}</div>
+          <div className="dropdown-wrap"><button className="icon-button notification-button" onClick={toggleMenu('notifications')}><Bell size={17} /></button>{openMenu === 'notifications' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head">Уведомления</div><span>Новых уведомлений нет</span></div>}</div>
+          <div className="dropdown-wrap">
+            <button className="avatar-button" onClick={toggleMenu('profile')} aria-label={currentUser.fullName}>
+              {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt={currentUser.fullName} referrerPolicy="no-referrer" /> : initials}
+            </button>
+            {openMenu === 'profile' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head"><strong>{currentUser.fullName}</strong><span>{currentUser.role.toUpperCase()}</span><small>{currentUser.email}</small><small>{currentUser.companyName}</small></div><button onClick={() => setView('integrations')}>Настройки</button><button onClick={() => void logout()}>Выйти</button></div>}
+          </div>
         </div>
       </header>
       <section className="content">
-        {view === 'dashboard' && <Dashboard metrics={metrics} dashboard={dashboard} loading={loading} error={error} onOpenModule={setView} />}
+        {view === 'dashboard' && <Dashboard userName={currentUser.firstName} metrics={metrics} dashboard={dashboard} loading={loading} error={error} onOpenModule={setView} />}
         {view === 'deals' && <KanbanBoard />}
         {view === 'tasks' && <TasksView />}
         {view === 'projects' && <ProjectsView />}
@@ -121,13 +123,13 @@ export default function App() {
   </div>;
 }
 
-function Dashboard({ metrics, dashboard, loading, error, onOpenModule }: { metrics: string[][]; dashboard: DashboardResponse | null; loading: boolean; error: string; onOpenModule: (view: View) => void }) {
-  const stages = dashboard?.stages.length ? dashboard.stages : [{ id: '1', name: 'Новый лид', position: 0 }, { id: '2', name: 'В работе', position: 1 }, { id: '3', name: 'Консультация назначена', position: 2 }, { id: '4', name: 'Оплата', position: 3 }, { id: '5', name: 'Отказ', position: 4 }];
+function Dashboard({ userName, metrics, dashboard, loading, error, onOpenModule }: { userName: string; metrics: string[][]; dashboard: DashboardResponse | null; loading: boolean; error: string; onOpenModule: (view: View) => void }) {
+  const stages = dashboard?.stages ?? [];
   return <div className="view-page">
-    <div className="welcome-row"><div><h1>Добро пожаловать, Айдос!</h1></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Демо-режим' : 'Backend подключён'}</span></div>
-    <div className="kpi-grid">{metrics.map(([label, value, delta, tone]) => <article key={label} className="kpi-card"><span>{label}</span><strong>{loading ? '—' : value}</strong><small className={tone}>{delta}</small></article>)}</div>
+    <div className="welcome-row"><div><h1>Добро пожаловать, {userName}!</h1></div><span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Ошибка подключения' : 'Backend подключён'}</span></div>
+    <div className="kpi-grid">{metrics.map(([label, value, delta, tone]) => <article key={label} className="kpi-card"><span>{label}</span><strong>{loading ? '—' : value}</strong>{delta && <small className={tone}>{delta}</small>}</article>)}</div>
     <p className="dashboard-caption">Воронка продаж</p>
-    <section className="panel funnel-panel"><div className="funnel-list">{stages.map((stage, index) => <div key={stage.id}><span>{stage.name}</span><i><b style={{ width: `${Math.max(18, 100-index*18)}%` }} /></i><strong>{[9,6,3,2,1][index] ?? 0}</strong></div>)}</div></section>
+    <section className="panel funnel-panel">{stages.length ? <div className="funnel-list">{stages.map((stage) => <div key={stage.id}><span>{stage.name}</span><i><b style={{ width: '0%' }} /></i><strong>0</strong></div>)}</div> : <div className="empty-state">Воронка пока не создана</div>}</section>
     <p className="dashboard-caption modules-caption">Активные модули</p>
     <div className="modules-grid">{activeModules.map(({ id, title, description, icon: Icon }) => <button className="module-card active-module-card" key={title} onClick={() => onOpenModule(id)}><span className="module-icon"><Icon size={16} /></span><h3>{title}</h3><p>{description}</p><b>Открыть модуль</b></button>)}</div>
   </div>;
@@ -136,7 +138,7 @@ function Dashboard({ metrics, dashboard, loading, error, onOpenModule }: { metri
 function TasksView() {
   const query = useTasksQuery();
   const toggleTask = useToggleTaskMutation();
-  const items = query.data?.length ? query.data : taskFallback;
+  const items = query.data ?? [];
   const now = new Date();
   const groups = ['Просрочено', 'Сегодня', 'Завтра'] as const;
   const groupFor = (task: TaskItem) => {
@@ -149,40 +151,34 @@ function TasksView() {
     return 'Сегодня';
   };
   const priorityLabel = { urgent: 'Срочно', high: 'Высокий', medium: 'Средний', low: 'Низкий' } as const;
-  return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>{query.isLoading ? 'Загрузка…' : `${items.length} задач`}</span></div>{groups.map(group => <section className="task-group" key={group}><h3 className="section-label">{group}</h3>{items.filter(task => groupFor(task) === group).map(task => <label className="task-row" key={task.id}><input type="checkbox" checked={task.status === 'done'} disabled={task.id.startsWith('fallback-') || toggleTask.isPending} onChange={event => toggleTask.mutate({ id: task.id, done: event.target.checked })} /><span>{task.title}</span><b className={`priority ${task.priority}`}>{priorityLabel[task.priority]}</b></label>)}</section>)}</div>;
+  if (!query.isLoading && !items.length) return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>0 задач</span></div><div className="empty-state">Задач пока нет</div></div>;
+  return <div className="view-page"><div className="view-title"><h1>Задачи</h1><span>{query.isLoading ? 'Загрузка…' : `${items.length} задач`}</span></div>{groups.map(group => <section className="task-group" key={group}><h3 className="section-label">{group}</h3>{items.filter(task => groupFor(task) === group).map(task => <label className="task-row" key={task.id}><input type="checkbox" checked={task.status === 'done'} disabled={toggleTask.isPending} onChange={event => toggleTask.mutate({ id: task.id, done: event.target.checked })} /><span>{task.title}</span><b className={`priority ${task.priority}`}>{priorityLabel[task.priority]}</b></label>)}</section>)}</div>;
 }
 
 function ProjectsView() {
   const query = useProjectsQuery();
   const project = query.data?.[0];
-  const fallback = [['To do','Согласовать прайс на курс реабилитации','Снять видео-отзывы пациентов'],['In progress','Настроить лендинг под направление','Обучить менеджеров скрипту'],['Done','Утвердить бюджет на запуск']];
+  if (!query.isLoading && !project) return <div className="view-page"><div className="view-title"><h1>Проекты</h1><span>0 проектов</span></div><div className="empty-state">Проектов пока нет</div></div>;
   const columns = project ? [
     ['To do', ...project.items.filter(item => item.status === 'todo').map(item => item.title)],
     ['In progress', ...project.items.filter(item => item.status === 'in_progress').map(item => item.title)],
     ['Done', ...project.items.filter(item => item.status === 'done').map(item => item.title)],
-  ] : fallback;
-  return <div className="view-page"><div className="view-title"><h1>Проекты</h1><span>{project?.name ?? 'Пример: «Запуск нового направления»'}</span></div><div className="project-board">{columns.map(([title,...cards]) => <section key={title}><h3>{title}</h3>{cards.map(card => <article key={card}>{card}</article>)}</section>)}</div></div>;
+  ] : [];
+  return <div className="view-page"><div className="view-title"><h1>Проекты</h1><span>{project?.name ?? 'Загрузка…'}</span></div><div className="project-board">{columns.map(([title,...cards]) => <section key={title}><h3>{title}</h3>{cards.map(card => <article key={card}>{card}</article>)}</section>)}</div></div>;
 }
 
 function TeamView() {
   const query = useTeamQuery();
-  const fallback = [
-    { userId: '1', firstName: 'Айдос', lastName: 'Оунер', role: 'OWNER', department: 'Руководство', isOnline: true, lastSeenAt: new Date().toISOString(), avatarColor: '#4F6EF7' },
-    { userId: '2', firstName: 'Гульнара', lastName: 'Админова', role: 'ADMIN', department: 'Продажи', isOnline: true, lastSeenAt: new Date(Date.now()-120000).toISOString(), avatarColor: '#16A34A' },
-  ];
-  const members = query.data?.length ? query.data : fallback;
+  const members = query.data ?? [];
   const initials = (first: string, last: string) => `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
   const activity = (value: string | null, online: boolean) => online ? 'сейчас' : value ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' }).format(new Date(value)) : 'нет данных';
-  return <div className="view-page"><div className="view-title"><h1>Команда</h1><span>{members.length} сотрудника</span></div><div className="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Отдел</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{members.map(member => <tr key={member.userId}><td><span className="member-avatar" style={{ background: member.avatarColor }}>{initials(member.firstName, member.lastName)}</span>{member.firstName} {member.lastName}</td><td><b className="role-chip">{member.role.toUpperCase()}</b></td><td>{member.department ?? 'Без отдела'}</td><td><i className={member.isOnline ? 'online' : ''} />{member.isOnline ? 'Онлайн' : 'Офлайн'}</td><td>{activity(member.lastSeenAt, member.isOnline)}</td></tr>)}</tbody></table></div></div>;
+  return <div className="view-page"><div className="view-title"><h1>Команда</h1><span>{query.isLoading ? 'Загрузка…' : `${members.length} сотрудников`}</span></div>{!query.isLoading && !members.length ? <div className="empty-state">Участников компании пока нет</div> : <div className="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Email</th><th>Роль</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{members.map(member => <tr key={member.userId}><td>{member.avatarUrl ? <img className="member-avatar" src={member.avatarUrl} alt={member.fullName} referrerPolicy="no-referrer" /> : <span className="member-avatar">{initials(member.firstName, member.lastName)}</span>}{member.fullName}</td><td>{member.email}</td><td><b className="role-chip">{member.role.toUpperCase()}</b></td><td><i className={member.isOnline ? 'online' : ''} />{member.isOnline ? 'Онлайн' : 'Офлайн'}</td><td>{activity(member.lastSeenAt, member.isOnline)}</td></tr>)}</tbody></table></div>}</div>;
 }
 
 function AccountingView() {
   const query = useAccountingQuery();
   const data = query.data;
-  const summary = data?.summary ?? { income: 2_840_000, expense: 640_000, profit: 2_200_000, vat: 340_800 };
-  const transactions = data?.transactions.length ? data.transactions : [
-    { id: '1', type: 'income' as const, amount: 420000, description: 'Оплата — курс лечения, Бекзат Н.', occurred_at: '2026-08-01T09:00:00+05:00', accountName: 'Касса' },
-    { id: '2', type: 'expense' as const, amount: 150000, description: 'Аренда кабинета вертебролога', occurred_at: '2026-07-31T09:00:00+05:00', accountName: 'Расч. счёт' },
-  ];
-  return <div className="view-page"><div className="view-title"><h1>Бухгалтерия</h1></div><div className="kpi-grid"><article className="kpi-card"><span>Доход</span><strong className="income">{money.format(summary.income)}</strong></article><article className="kpi-card"><span>Расход</span><strong className="expense">{money.format(summary.expense)}</strong></article><article className="kpi-card"><span>Прибыль</span><strong>{money.format(summary.profit)}</strong></article><article className="kpi-card"><span>НДС</span><strong>{money.format(summary.vat)}</strong></article></div><div className="table-wrap"><table><thead><tr><th>Дата</th><th>Описание</th><th>Счёт</th><th>Сумма</th></tr></thead><tbody>{transactions.map(item => <tr key={item.id}><td>{dateFormatter.format(new Date(item.occurred_at))}</td><td>{item.description}</td><td>{item.accountName}</td><td className={item.type === 'income' ? 'income' : item.type === 'expense' ? 'expense' : ''}>{item.type === 'income' ? '+' : item.type === 'expense' ? '−' : ''}{money.format(item.amount)}</td></tr>)}</tbody></table></div></div>;
+  const summary = data?.summary ?? { income: 0, expense: 0, profit: 0, vat: 0 };
+  const transactions = data?.transactions ?? [];
+  return <div className="view-page"><div className="view-title"><h1>Бухгалтерия</h1></div><div className="kpi-grid"><article className="kpi-card"><span>Доход</span><strong className="income">{money.format(summary.income)}</strong></article><article className="kpi-card"><span>Расход</span><strong className="expense">{money.format(summary.expense)}</strong></article><article className="kpi-card"><span>Прибыль</span><strong>{money.format(summary.profit)}</strong></article><article className="kpi-card"><span>НДС</span><strong>{money.format(summary.vat)}</strong></article></div>{transactions.length ? <div className="table-wrap"><table><thead><tr><th>Дата</th><th>Описание</th><th>Счёт</th><th>Сумма</th></tr></thead><tbody>{transactions.map(item => <tr key={item.id}><td>{dateFormatter.format(new Date(item.occurred_at))}</td><td>{item.description}</td><td>{item.accountName}</td><td className={item.type === 'income' ? 'income' : item.type === 'expense' ? 'expense' : ''}>{item.type === 'income' ? '+' : item.type === 'expense' ? '−' : ''}{money.format(item.amount)}</td></tr>)}</tbody></table></div> : <div className="empty-state">Операций пока нет</div>}</div>;
 }
