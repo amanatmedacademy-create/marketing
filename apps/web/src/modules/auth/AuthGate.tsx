@@ -53,6 +53,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem('imds_oauth_company');
       setWorkspace(result);
       setPendingSession(null);
+      setError('');
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось загрузить рабочее пространство.';
       if (message.toLowerCase().includes('company_required')) {
@@ -93,27 +94,50 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setWorkspace(null);
     };
     const logout = async () => {
-      await supabase.auth.signOut({ scope: 'local' });
-      setSession(null);
-      setWorkspace(null);
-      setPendingSession(null);
+      setSubmitting(true);
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } finally {
+        window.sessionStorage.removeItem('imds_oauth_company');
+        setSession(null);
+        setWorkspace(null);
+        setPendingSession(null);
+        setPassword('');
+        setError('');
+        setMode('login');
+        setSubmitting(false);
+      }
     };
     const delegateLogout = (event: MouseEvent) => {
       const button = (event.target as HTMLElement | null)?.closest('button');
       if (button?.textContent?.trim() === 'Выйти') {
         event.preventDefault();
+        event.stopPropagation();
         void logout();
       }
     };
     window.addEventListener('imds:session-expired', expire);
     window.addEventListener('imds:logout-request', logout);
-    document.addEventListener('click', delegateLogout);
+    document.addEventListener('click', delegateLogout, true);
     return () => {
       window.removeEventListener('imds:session-expired', expire);
       window.removeEventListener('imds:logout-request', logout);
-      document.removeEventListener('click', delegateLogout);
+      document.removeEventListener('click', delegateLogout, true);
     };
   }, []);
+
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode);
+    setError('');
+    setPassword('');
+    setShowPassword(false);
+    if (nextMode === 'login') {
+      setName('');
+      setCompanyName('');
+      setPendingSession(null);
+      window.sessionStorage.removeItem('imds_oauth_company');
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -198,9 +222,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <header><span>{pendingSession ? 'Завершение регистрации' : mode === 'login' ? 'С возвращением' : 'Создание аккаунта'}</span><h2>{pendingSession ? 'Создайте компанию' : mode === 'login' ? 'Войти в систему' : 'Зарегистрироваться'}</h2><p>{pendingSession ? 'Аккаунт подтверждён. Осталось создать рабочее пространство.' : mode === 'login' ? 'Войдите через Supabase Auth.' : 'Создайте аккаунт и отдельное рабочее пространство.'}</p></header>
 
         {!pendingSession && <>
-          <button type="button" className="auth-google" onClick={() => void startGoogle()}><span className="google-mark">G</span>{mode === 'login' ? 'Войти через Google' : 'Зарегистрироваться через Google'}</button>
+          <button type="button" className="auth-google" onClick={() => void startGoogle()} disabled={submitting}><span className="google-mark">G</span>{mode === 'login' ? 'Войти через Google' : 'Зарегистрироваться через Google'}</button>
           <div className="auth-divider"><span>или</span></div>
-          <div className="auth-mode-tabs"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>Вход</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); }}>Регистрация</button></div>
+          <div className="auth-mode-tabs"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')} disabled={submitting}>Вход</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')} disabled={submitting}>Регистрация</button></div>
         </>}
 
         {(mode === 'register' || pendingSession) && <>
@@ -214,7 +238,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         </>}
 
         {error && <div className="auth-error">{error}</div>}
-        <button className="auth-submit" disabled={submitting}>{submitting ? <LoaderCircle size={18} className="auth-spinner" /> : <ArrowRight size={18} />}{pendingSession ? 'Создать компанию и войти' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}</button>
+        <button type="submit" className="auth-submit" disabled={submitting}>{submitting ? <LoaderCircle size={18} className="auth-spinner" /> : <ArrowRight size={18} />}{pendingSession ? 'Создать компанию и войти' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}</button>
         <p className="auth-legal">Авторизация выполняется напрямую через Supabase Auth.</p>
       </form>
     </section>
