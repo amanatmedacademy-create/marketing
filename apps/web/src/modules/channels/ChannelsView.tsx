@@ -13,6 +13,7 @@ import {
   Video,
 } from 'lucide-react';
 import { OmnichannelInbox, type InboxChannel } from '../inbox/OmnichannelInbox';
+import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
 
 export type ChannelView =
   | 'whatsapp'
@@ -31,7 +32,7 @@ type ChannelDefinition = {
   connections: Array<{ name: string; detail: string; connected: boolean }>;
 };
 
-const inboxViews = new Set<ChannelView>(['whatsapp', 'instagram', 'email']);
+const inboxViews = new Set<ChannelView>(['instagram', 'email']);
 
 const definitions: Record<ChannelView, ChannelDefinition> = {
   whatsapp: {
@@ -117,6 +118,8 @@ export const channelNavigation = [
 ];
 
 export function ChannelsView({ view }: { view: ChannelView }) {
+  if (view === 'whatsapp') return <WhatsAppWorkspace />;
+
   if (inboxViews.has(view)) {
     return <OmnichannelInbox initialChannel={view as InboxChannel} />;
   }
@@ -150,7 +153,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
           {definition.connections.map((connection) => (
             <article className="connection-row" key={connection.name}>
               <div className={`connection-logo ${connection.connected ? 'connected' : ''}`}>
-                {connection.connected ? <CheckCircle2 size={18} /> : view === 'whatsapp' ? <Phone size={18} /> : <Icon size={18} />}
+                {connection.connected ? <CheckCircle2 size={18} /> : <Icon size={18} />}
               </div>
               <div className="connection-copy"><strong>{connection.name}</strong><span>{connection.detail}</span></div>
               <span className={`connection-chip ${connection.connected ? 'connected' : ''}`}>
