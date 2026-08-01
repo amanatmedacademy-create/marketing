@@ -19,6 +19,44 @@ export class PipelinesService {
     });
   }
 
+  async bootstrap(companyId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.pipeline.findFirst({
+        where: { companyId, deletedAt: null },
+        include: {
+          stages: {
+            where: { deletedAt: null },
+            orderBy: { position: 'asc' },
+          },
+        },
+        orderBy: [{ isDefault: 'desc' }, { position: 'asc' }, { createdAt: 'asc' }],
+      });
+
+      if (existing) return existing;
+
+      return tx.pipeline.create({
+        data: {
+          companyId,
+          name: 'Основная воронка',
+          isDefault: true,
+          position: 0,
+          stages: {
+            create: [
+              { companyId, name: 'Новый лид', color: '#3B82F6', position: 0 },
+              { companyId, name: 'В работе', color: '#F59E0B', position: 1 },
+              { companyId, name: 'Назначена консультация', color: '#8B5CF6', position: 2 },
+              { companyId, name: 'Продажа', color: '#22C55E', position: 3, isWon: true },
+              { companyId, name: 'Отказ', color: '#EF4444', position: 4, isLost: true },
+            ],
+          },
+        },
+        include: {
+          stages: { orderBy: { position: 'asc' } },
+        },
+      });
+    });
+  }
+
   async create(companyId: string, dto: CreatePipelineDto) {
     return this.prisma.$transaction(async (tx) => {
       if (dto.isDefault) {
