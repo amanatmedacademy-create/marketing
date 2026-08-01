@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
 import { requireBearerSession } from './bearer-auth';
+import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
 
 interface Env extends AuthEnv {
@@ -8,7 +9,7 @@ interface Env extends AuthEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'supabase-auth-v3';
+const RELEASE = 'crm-real-data-v1';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
@@ -29,9 +30,11 @@ function hasAllowedOrigin(request: Request) {
 }
 
 function canWrite(session: AuthSession, pathname: string) {
-  if (session.role === 'owner' || session.role === 'admin') return true;
+  if (session.role === 'owner' || session.role === 'admin' || session.role === 'administrator') return true;
   if (session.role !== 'manager') return false;
-  return pathname === '/api/deals' || /^\/api\/deals\/[^/]+\/move$/.test(pathname);
+  return pathname === '/api/deals'
+    || /^\/api\/deals\/[^/]+$/.test(pathname)
+    || /^\/api\/deals\/[^/]+\/move$/.test(pathname);
 }
 
 export default {
@@ -64,7 +67,9 @@ export default {
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
 
-      const response = await app.fetch(request, { ...env, DEFAULT_COMPANY_ID: session.companyId });
+      const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
+      const dealDetailsResponse = await handleDealDetails(request, tenantEnv);
+      const response = dealDetailsResponse ?? await app.fetch(request, tenantEnv);
       const decorated = new Response(response.body, response);
       decorated.headers.set('x-imds-release', RELEASE);
       return decorated;
