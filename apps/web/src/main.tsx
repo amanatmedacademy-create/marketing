@@ -9,6 +9,7 @@ import './preview-fidelity.css';
 import './channel-modules.css';
 import './modules/inbox/omnichannel-inbox.css';
 import './modules/inbox/whatsapp-workspace.css';
+import './modules/inbox/social-mail-workspaces.css';
 import './modules/deals/deal-details.css';
 
 const queryClient = new QueryClient({
