@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { Filter, LoaderCircle, Plus, Search, Workflow } from 'lucide-react';
+import { Filter, LoaderCircle, MoreVertical, Plus, Search, Workflow } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useBootstrapPipelineMutation, useCreateDealMutation, useDealsQuery, useMoveDealMutation, usePipelinesQuery } from '../api/useDeals';
 import type { Deal } from '../types';
 import { CreateLeadModal } from './CreateLeadModal';
 import { DealDetailsPanel } from './DealDetailsPanel';
+import { PipelineManagerModal } from './PipelineManagerModal';
 import { StageColumn } from './StageColumn';
 
 export function KanbanBoard() {
@@ -14,6 +15,7 @@ export function KanbanBoard() {
   const [pipelineId, setPipelineId] = useState<string>();
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [showCreateLead, setShowCreateLead] = useState(false);
+  const [showPipelineManager, setShowPipelineManager] = useState(false);
   const [seeding, setSeeding] = useState(true);
   const [seedError, setSeedError] = useState('');
 
@@ -81,11 +83,13 @@ export function KanbanBoard() {
       <button className="kanban-filter"><Filter size={15} /> Фильтр</button>
       <button className="kanban-add" onClick={() => setShowCreateLead(true)}><Plus size={16} /> Добавить</button>
       <span className="kanban-total">Всего лидов: {dealsData?.total ?? 0}</span>
+      <button className="kanban-more" title="Управление воронками" onClick={() => setShowPipelineManager(true)}><MoreVertical size={18} /></button>
     </header>
 
     {dealsLoading ? <div className="kanban-message">Загрузка сделок…</div> : <DndContext sensors={sensors} onDragEnd={handleDragEnd}><div className="kanban-board">{(pipeline?.stages ?? []).sort((a, b) => a.order - b.order).map((stage) => <StageColumn key={stage.id} stage={stage} deals={dealsByStage.get(stage.id) ?? []} isCreating={createDeal.isPending} onCreateDeal={(title, stageId) => createDeal.mutate({ title, stageId })} onOpenDeal={setSelectedDeal} />)}</div></DndContext>}
 
     {showCreateLead && pipeline && <CreateLeadModal pipeline={pipeline} isSubmitting={createDeal.isPending} onClose={() => setShowCreateLead(false)} onSubmit={(input) => createDeal.mutate(input, { onSuccess: () => setShowCreateLead(false) })} />}
     {selectedDeal && pipeline && selectedStage && <DealDetailsPanel deal={selectedDeal} pipeline={pipeline} stage={selectedStage} onClose={() => setSelectedDeal(null)} />}
+    {showPipelineManager && <PipelineManagerModal pipelines={pipelines} currentPipelineId={pipelineId} onClose={() => setShowPipelineManager(false)} onSelect={(id) => { setPipelineId(id); setSelectedDeal(null); }} />}
   </section>;
 }
