@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { Filter, Plus, Search } from 'lucide-react';
 import { useCreateDealMutation, useDealsQuery, useMoveDealMutation, usePipelinesQuery } from '../api/useDeals';
 import type { Deal } from '../types';
+import { CreateLeadModal } from './CreateLeadModal';
 import { DealDetailsPanel } from './DealDetailsPanel';
 import { StageColumn } from './StageColumn';
 
@@ -9,9 +11,12 @@ export function KanbanBoard() {
   const { data: pipelines, isLoading: pipelinesLoading } = usePipelinesQuery();
   const [pipelineId, setPipelineId] = useState<string>();
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [showCreateLead, setShowCreateLead] = useState(false);
 
   useEffect(() => {
-    if (!pipelineId && pipelines?.length) setPipelineId(pipelines.find((pipeline) => pipeline.isDefault)?.id ?? pipelines[0].id);
+    if (!pipelineId && pipelines?.length) {
+      setPipelineId(pipelines.find((pipeline) => pipeline.isDefault)?.id ?? pipelines[0].id);
+    }
   }, [pipelineId, pipelines]);
 
   const { data: dealsData, isLoading: dealsLoading } = useDealsQuery(pipelineId);
@@ -23,7 +28,9 @@ export function KanbanBoard() {
   const dealsByStage = useMemo(() => {
     const map = new Map<string, NonNullable<typeof dealsData>['items']>();
     for (const stage of pipeline?.stages ?? []) map.set(stage.id, []);
-    for (const deal of dealsData?.items ?? []) map.set(deal.stageId, [...(map.get(deal.stageId) ?? []), deal]);
+    for (const deal of dealsData?.items ?? []) {
+      map.set(deal.stageId, [...(map.get(deal.stageId) ?? []), deal]);
+    }
     return map;
   }, [dealsData, pipeline]);
 
@@ -42,12 +49,14 @@ export function KanbanBoard() {
 
   return (
     <section className="kanban-module">
-      <header className="kanban-toolbar">
-        <div><span>CRM</span><h1>Сделки</h1></div>
+      <header className="kanban-toolbar kanban-toolbar-reference">
         <select value={pipelineId} onChange={(event) => { setPipelineId(event.target.value); setSelectedDeal(null); }}>
           {pipelines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
-        <b>{dealsData?.total ?? 0} сделок</b>
+        <label className="kanban-search"><Search size={15} /><input placeholder="Поиск" /></label>
+        <button className="kanban-filter"><Filter size={15} /> Фильтр</button>
+        <button className="kanban-add" onClick={() => setShowCreateLead(true)}><Plus size={16} /> Добавить</button>
+        <span className="kanban-total">Всего лидов: {dealsData?.total ?? 0}</span>
       </header>
 
       {dealsLoading ? <div className="kanban-message">Загрузка сделок…</div> : (
@@ -65,6 +74,15 @@ export function KanbanBoard() {
             ))}
           </div>
         </DndContext>
+      )}
+
+      {showCreateLead && pipeline && (
+        <CreateLeadModal
+          pipeline={pipeline}
+          isSubmitting={createDeal.isPending}
+          onClose={() => setShowCreateLead(false)}
+          onSubmit={(input) => createDeal.mutate(input, { onSuccess: () => setShowCreateLead(false) })}
+        />
       )}
 
       {selectedDeal && pipeline && selectedStage && (
