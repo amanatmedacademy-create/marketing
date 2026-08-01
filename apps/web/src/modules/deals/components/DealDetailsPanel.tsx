@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { Archive, ChevronDown, CircleDollarSign, Clock3, FileText, Mail, MessageCircle, Phone, Plus, Send, StickyNote, UserRound, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CircleDollarSign, LoaderCircle, Mail, Phone, Save, UserRound, X } from 'lucide-react';
+import { useDealQuery, useUpdateDealMutation } from '../api/useDeals';
 import type { Deal, Pipeline, PipelineStage } from '../types';
 
 type Props = {
@@ -10,70 +11,77 @@ type Props = {
 };
 
 export function DealDetailsPanel({ deal, pipeline, stage, onClose }: Props) {
-  const [tab, setTab] = useState<'chat' | 'tasks' | 'notes'>('chat');
-  const [message, setMessage] = useState('');
-  const [note, setNote] = useState('');
-  const [notes, setNotes] = useState<string[]>([]);
-  const contactName = useMemo(() => {
-    const value = deal.contact ? [deal.contact.firstName, deal.contact.lastName].filter(Boolean).join(' ') : '';
-    return value || deal.title;
-  }, [deal]);
-  const oneTime = Number(deal.oneTimeAmount ?? 0);
-  const recurring = Number(deal.recurringAmount ?? 0);
-  const total = oneTime + recurring;
+  const query = useDealQuery(deal.id);
+  const current = query.data ?? deal;
+  const updateDeal = useUpdateDealMutation(pipeline.id, deal.id);
+  const [title, setTitle] = useState(current.title);
+  const [phone, setPhone] = useState(current.phone ?? current.contact?.phone ?? '');
+  const [email, setEmail] = useState(current.email ?? current.contact?.email ?? '');
+  const [source, setSource] = useState(current.source ?? '');
+  const [amount, setAmount] = useState(String(current.oneTimeAmount ?? '0'));
+  const [stageId, setStageId] = useState(current.stageId);
+  const [saved, setSaved] = useState(false);
 
-  const addNote = () => {
-    const value = note.trim();
-    if (!value) return;
-    setNotes((current) => [...current, value]);
-    setNote('');
+  useEffect(() => {
+    setTitle(current.title);
+    setPhone(current.phone ?? current.contact?.phone ?? '');
+    setEmail(current.email ?? current.contact?.email ?? '');
+    setSource(current.source ?? '');
+    setAmount(String(current.oneTimeAmount ?? '0'));
+    setStageId(current.stageId);
+  }, [current.id, current.title, current.phone, current.email, current.source, current.oneTimeAmount, current.stageId, current.contact]);
+
+  const selectedStage = useMemo(() => pipeline.stages.find((item) => item.id === stageId) ?? stage, [pipeline.stages, stage, stageId]);
+
+  const save = () => {
+    setSaved(false);
+    updateDeal.mutate({
+      title: title.trim(),
+      phone: phone.trim() || null,
+      email: email.trim() || null,
+      source: source.trim() || null,
+      amount: Number(amount || 0),
+      stageId,
+    }, { onSuccess: () => setSaved(true) });
   };
 
   return <div className="deal-panel-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="deal-details-panel" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
       <header className="deal-details-head">
-        <div><span>Сделка</span><h2>{deal.title}</h2></div>
+        <div><span>Сделка</span><h2>{current.title}</h2></div>
         <button onClick={onClose} aria-label="Закрыть"><X size={19} /></button>
       </header>
 
-      <div className="deal-details-grid">
-        <section className="deal-main-column">
-          <div className="deal-contact-summary">
-            <div className="deal-contact-avatar"><UserRound size={20} /></div>
-            <div><strong>{contactName}</strong><span>{deal.contact?.phone ?? 'Телефон не указан'}</span></div>
-            <button><Phone size={15} /> Позвонить</button>
-            <button><MessageCircle size={15} /> WhatsApp</button>
-          </div>
+      {query.isLoading ? <div className="kanban-message"><LoaderCircle className="auth-spinner" size={22} /> Загрузка карточки…</div> : (
+        <div className="deal-details-grid">
+          <section className="deal-main-column">
+            <div className="deal-contact-summary">
+              <div className="deal-contact-avatar"><UserRound size={20} /></div>
+              <div><strong>{title || current.title}</strong><span>{phone || 'Телефон не указан'}</span></div>
+              <a href={phone ? `tel:${phone}` : undefined}><Phone size={15} /> Позвонить</a>
+              <a href={phone ? `https://wa.me/${phone.replace(/\D/g, '')}` : undefined} target="_blank" rel="noreferrer">WhatsApp</a>
+            </div>
 
-          <div className="deal-work-tabs">
-            <button className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}><MessageCircle size={15} /> Чат</button>
-            <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><Clock3 size={15} /> Задачи</button>
-            <button className={tab === 'notes' ? 'active' : ''} onClick={() => setTab('notes')}><StickyNote size={15} /> Заметки</button>
-          </div>
+            <div className="deal-edit-form">
+              <label><span>Название сделки</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+              <label><span>Телефон</span><input value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+              <label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+              <label><span>Источник</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Instagram, WhatsApp, Meta Ads" /></label>
+              <label><span>Сумма, ₸</span><input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+              <label><span>Этап</span><select value={stageId} onChange={(event) => setStageId(event.target.value)}>{[...pipeline.stages].sort((a,b) => a.order-b.order).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              {updateDeal.isError && <div className="auth-error">{updateDeal.error instanceof Error ? updateDeal.error.message : 'Не удалось сохранить карточку'}</div>}
+              <button className="auth-submit" type="button" onClick={save} disabled={updateDeal.isPending || !title.trim()}>{updateDeal.isPending ? <LoaderCircle size={17} className="auth-spinner" /> : <Save size={17} />} Сохранить изменения</button>
+              {saved && <small>Изменения сохранены в Supabase.</small>}
+            </div>
+          </section>
 
-          {tab === 'chat' && <div className="deal-chat-area">
-            <div className="deal-chat-empty"><MessageCircle size={34} /><strong>Переписка по сделке</strong><span>После привязки WhatsApp-диалога сообщения появятся здесь.</span></div>
-            <footer><button><Archive size={17} /></button><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишите сообщение…" /><button disabled={!message.trim()} onClick={() => setMessage('')}><Send size={17} /></button></footer>
-          </div>}
-
-          {tab === 'tasks' && <div className="deal-task-area"><button><Plus size={15} /> Добавить задачу</button><div><Clock3 size={30} /><strong>Задач по сделке пока нет</strong><span>Создайте звонок, встречу или напоминание.</span></div></div>}
-
-          {tab === 'notes' && <div className="deal-notes-area"><div className="deal-note-form"><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Новая заметка" /><button onClick={addNote}><Plus size={15} /></button></div>{notes.length ? notes.map((item, index) => <article key={`${item}-${index}`}><p>{item}</p><time>только что</time></article>) : <div className="deal-notes-empty"><StickyNote size={30} /><strong>Нет заметок</strong></div>}</div>}
-        </section>
-
-        <aside className="deal-info-column">
-          <section><h3><UserRound size={16} /> Клиент</h3><dl><div><dt>Имя</dt><dd>{contactName}</dd></div><div><dt>Телефон</dt><dd>{deal.contact?.phone ?? '—'}</dd></div><div><dt>Email</dt><dd><Mail size={13} /> Не указан</dd></div><div><dt>Менеджер</dt><dd>{deal.manager ? `${deal.manager.firstName} ${deal.manager.lastName}` : 'Не назначен'}</dd></div></dl></section>
-
-          <section><h3><CircleDollarSign size={16} /> Финансы</h3><dl><div><dt>Единый платёж</dt><dd>{oneTime.toLocaleString('ru-RU')} ₸</dd></div><div><dt>Ежемесячный</dt><dd>{recurring.toLocaleString('ru-RU')} ₸</dd></div><div className="deal-total-row"><dt>Общая сумма</dt><dd>{total.toLocaleString('ru-RU')} ₸</dd></div></dl></section>
-
-          <section className="deal-stage-section"><label>Этап<button><span><i style={{ background: stage.color }} />{stage.name}</span><ChevronDown size={15} /></button></label><label>Воронка<button><span>{pipeline.name}</span><ChevronDown size={15} /></button></label></section>
-
-          <section><h3><FileText size={16} /> Теги</h3><div className="deal-detail-tags">{deal.tags.length ? deal.tags.map(({ tag }) => <span key={tag.id} style={{ background: tag.color }}>{tag.name}</span>) : <em>Нет тегов</em>}</div></section>
-
-          <button className="deal-files-button"><Archive size={15} /> Файлы сделки</button>
-          <div className="deal-autosave"><Clock3 size={14} /> Изменения сохраняются автоматически</div>
-        </aside>
-      </div>
+          <aside className="deal-info-column">
+            <section><h3><UserRound size={16} /> Клиент</h3><dl><div><dt>Название</dt><dd>{title || '—'}</dd></div><div><dt>Телефон</dt><dd>{phone || '—'}</dd></div><div><dt>Email</dt><dd><Mail size={13} /> {email || '—'}</dd></div><div><dt>Источник</dt><dd>{source || '—'}</dd></div></dl></section>
+            <section><h3><CircleDollarSign size={16} /> Финансы</h3><dl><div className="deal-total-row"><dt>Сумма</dt><dd>{Number(amount || 0).toLocaleString('ru-RU')} ₸</dd></div></dl></section>
+            <section><h3>Воронка</h3><dl><div><dt>Воронка</dt><dd>{pipeline.name}</dd></div><div><dt>Этап</dt><dd><i style={{ background: selectedStage.color }} /> {selectedStage.name}</dd></div></dl></section>
+          </aside>
+        </div>
+      )}
     </section>
   </div>;
 }
