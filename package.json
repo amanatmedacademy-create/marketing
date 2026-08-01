@@ -9,9 +9,10 @@
   ],
   "scripts": {
     "dev": "turbo dev",
-    "build": "bun run --cwd apps/web build",
+    "build": "bun run --cwd apps/web build && bun run --cwd apps/worker typecheck",
     "build:all": "turbo build",
     "build:web": "bun run --cwd apps/web build",
+    "build:worker": "bun run --cwd apps/worker typecheck",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
