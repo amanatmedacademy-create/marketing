@@ -1,10 +1,11 @@
 import type { AuthEnv } from './auth';
 
-type GoogleSessionBody = {
+type SupabaseSessionBody = {
   accessToken?: string;
   refreshToken?: string;
   expiresIn?: number;
   companyName?: string;
+  provider?: 'email' | 'google';
 };
 
 type SupabaseUser = {
@@ -37,7 +38,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 
 function assertEnv(env: AuthEnv): asserts env is AuthEnv & { SUPABASE_SERVICE_ROLE_KEY: string } {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Google OAuth environment is not configured');
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase Auth environment is not configured');
 }
 
 async function restFetch(env: AuthEnv, table: string, query: string, init: RequestInit = {}) {
@@ -54,7 +55,7 @@ async function restFetch(env: AuthEnv, table: string, query: string, init: Reque
   });
 }
 
-async function getGoogleUser(env: AuthEnv, accessToken: string) {
+async function getSupabaseUser(env: AuthEnv, accessToken: string) {
   assertEnv(env);
   const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: {
@@ -74,7 +75,7 @@ function slugify(value: string) {
 function displayName(user: SupabaseUser) {
   const metadata = user.user_metadata ?? {};
   const value = metadata.full_name ?? metadata.name ?? metadata.user_name;
-  return typeof value === 'string' && value.trim() ? value.trim() : user.email?.split('@')[0] ?? 'Google user';
+  return typeof value === 'string' && value.trim() ? value.trim() : user.email?.split('@')[0] ?? 'User';
 }
 
 async function findProfile(env: AuthEnv, authUserId: string) {
@@ -91,9 +92,9 @@ async function findMembership(env: AuthEnv, profileId: string) {
   return membership ?? null;
 }
 
-async function createWorkspace(env: AuthEnv, user: SupabaseUser, companyName: string) {
+async function createWorkspace(env: AuthEnv, user: SupabaseUser, companyName: string, provider: 'email' | 'google') {
   const email = user.email?.trim().toLowerCase();
-  if (!email) throw new Error('Google account does not provide an email');
+  if (!email) throw new Error('Supabase account does not provide an email');
 
   let profile = await findProfile(env, user.id);
   if (!profile) {
@@ -105,7 +106,7 @@ async function createWorkspace(env: AuthEnv, user: SupabaseUser, companyName: st
         email,
         role: 'owner',
         status: 'active',
-        provider: 'google',
+        provider,
         provider_metadata: user.user_metadata ?? {},
       }),
     });
@@ -147,14 +148,14 @@ async function startGoogle(request: Request, env: AuthEnv) {
   return Response.redirect(location, 302);
 }
 
-async function completeGoogle(request: Request, env: AuthEnv) {
-  const body = await request.json() as GoogleSessionBody;
+async function completeSupabaseSession(request: Request, env: AuthEnv) {
+  const body = await request.json() as SupabaseSessionBody;
   if (!body.accessToken || !body.refreshToken) {
-    return json({ error: { code: 'INVALID_GOOGLE_SESSION', message: 'Google session is incomplete' } }, 400);
+    return json({ error: { code: 'INVALID_SUPABASE_SESSION', message: 'Supabase session is incomplete' } }, 400);
   }
 
-  const user = await getGoogleUser(env, body.accessToken);
-  if (!user) return json({ error: { code: 'INVALID_GOOGLE_SESSION', message: 'Google session is invalid' } }, 401);
+  const user = await getSupabaseUser(env, body.accessToken);
+  if (!user) return json({ error: { code: 'INVALID_SUPABASE_SESSION', message: 'Supabase session is invalid' } }, 401);
 
   let profile = await findProfile(env, user.id);
   let membership = profile ? await findMembership(env, profile.id) : null;
@@ -164,12 +165,12 @@ async function completeGoogle(request: Request, env: AuthEnv) {
     if (!companyName) {
       return json({
         error: {
-          code: 'GOOGLE_COMPANY_REQUIRED',
-          message: 'Для первой регистрации через Google укажите название компании',
+          code: 'COMPANY_REQUIRED',
+          message: 'Для первой регистрации укажите название компании',
         },
       }, 409);
     }
-    const created = await createWorkspace(env, user, companyName);
+    const created = await createWorkspace(env, user, companyName, body.provider ?? 'email');
     profile = created.profile;
     membership = created.membership;
   }
@@ -189,9 +190,11 @@ export async function handleGoogleAuthRequest(request: Request, env: AuthEnv) {
   const path = new URL(request.url).pathname;
   try {
     if (request.method === 'GET' && path === '/api/auth/google/start') return startGoogle(request, env);
-    if (request.method === 'POST' && path === '/api/auth/google/session') return completeGoogle(request, env);
+    if (request.method === 'POST' && (path === '/api/auth/google/session' || path === '/api/auth/supabase/session')) {
+      return completeSupabaseSession(request, env);
+    }
     return null;
   } catch (error) {
-    return json({ error: { message: error instanceof Error ? error.message : 'Ошибка Google OAuth' } }, 500);
+    return json({ error: { message: error instanceof Error ? error.message : 'Ошибка Supabase Auth' } }, 500);
   }
 }
