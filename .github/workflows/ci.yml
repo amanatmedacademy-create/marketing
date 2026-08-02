@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - agent/full-crm-repair
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.15
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck web
+        run: bun run --cwd apps/web typecheck
+
+      - name: Build web
+        run: bun run --cwd apps/web build
+
+      - name: Typecheck worker
+        run: bun run --cwd apps/worker typecheck
+
+      - name: Build worker
+        run: bun run --cwd apps/worker build
