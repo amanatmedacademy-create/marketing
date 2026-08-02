@@ -27,14 +27,17 @@ export function ProductShellRuntime({ children }: { children: ReactNode }) {
 
   const runtimeModules = useMemo<RuntimeModule[]>(() => entitlements.modules
     .filter((module) => module.metadata?.source === 'imds-platform' && Boolean(module.route))
-    .map((module) => ({
-      id: module.id,
-      name: module.name,
-      route: normalizePath(module.route ?? '/'),
-      navigationLabel: module.navigationLabel ?? module.name,
-      navigationOrder: module.navigationOrder,
-      metadata: module.metadata,
-    }))
+    .map((module) => {
+      const name = module.name ?? module.id;
+      return {
+        id: module.id,
+        name,
+        route: normalizePath(module.route ?? '/'),
+        navigationLabel: module.navigationLabel ?? name,
+        navigationOrder: module.navigationOrder ?? 1000,
+        metadata: module.metadata ?? {},
+      };
+    })
     .sort((a, b) => a.navigationOrder - b.navigationOrder), [entitlements.modules]);
 
   const activeModule = runtimeModules.find((module) => module.route === path) ?? null;
