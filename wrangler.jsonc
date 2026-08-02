@@ -1,19 +1,19 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "imds-crm",
-  "main": "apps/worker/src/index.ts",
+  "main": "apps/worker/src/entry.ts",
   "compatibility_date": "2026-07-31",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "apps/web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/health"]
+    "run_worker_first": ["/api/*", "/internal/*", "/health"]
   },
   "vars": {
     "APP_ENV": "production",
-    "SUPABASE_URL": "",
-    "DEFAULT_COMPANY_ID": ""
+    "SUPABASE_URL": "https://kysdtmgijkffwtzugonv.supabase.co",
+    "DEFAULT_COMPANY_ID": "4cd22020-6f1d-4afb-9266-b01c96e4a927"
   },
   "observability": {
     "enabled": true
