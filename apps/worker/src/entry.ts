@@ -10,7 +10,7 @@ interface Env extends AuthEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'real-user-tenant-v1';
+const RELEASE = 'pipeline-bootstrap-fix-v2';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
