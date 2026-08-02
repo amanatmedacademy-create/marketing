@@ -145,7 +145,7 @@ export function IntegrationsWorkspace() {
         <div className="integration-capabilities">{item.capabilities.map(capability => <span key={capability}>{capability}</span>)}</div>
         <footer><small>{state === 'error' ? 'Требуется повторная настройка' : item.status === 'planned' ? 'Подключение появится позже' : item.auth === 'oauth' ? 'Авторизация через провайдера' : 'Ключи и параметры подключения'}</small>
           <div className="integration-card-actions">
-            {(state === 'configured' || state === 'healthy' || state === 'error') && <button className="integration-check" disabled={state === 'checking'} onClick={() => void checkIntegration(item)}><RefreshCw size={14} /></button>}
+            {(state === 'configured' || state === 'healthy' || state === 'error') && <button className="integration-check" onClick={() => void checkIntegration(item)}><RefreshCw size={14} /></button>}
             <button disabled={item.status === 'planned' || state === 'checking'} onClick={() => setSelected(item)}>{item.status === 'planned' ? 'Скоро' : savedConfig[item.id] ? 'Настроить' : 'Подключить'}<ChevronRight size={15} /></button>
           </div>
         </footer>
