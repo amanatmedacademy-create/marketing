@@ -1,3 +1,4 @@
+import { AuthenticationError, resolveAuthContext } from './auth/resolve-auth-context';
 import { handleHealth } from './modules/health/handler';
 import { handleModuleCatalog } from './modules/module-catalog/handler';
 import type { Env } from './index';
@@ -19,8 +20,22 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
       return withSecurityHeaders(handleModuleCatalog());
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/me') {
+      const auth = await resolveAuthContext(request, env);
+      return withSecurityHeaders(json(auth));
+    }
+
     return withSecurityHeaders(notFound());
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return withSecurityHeaders(json({
+        error: {
+          code: error.status === 403 ? 'FORBIDDEN' : 'UNAUTHENTICATED',
+          message: error.message
+        }
+      }, error.status));
+    }
+
     console.error('Unhandled API error', error);
     return withSecurityHeaders(json({ error: { code: 'INTERNAL_ERROR', message: 'Unexpected server error' } }, 500));
   }
