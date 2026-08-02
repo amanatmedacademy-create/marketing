@@ -2,6 +2,7 @@ import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
 import { requireBearerSession } from './bearer-auth';
 import { handleDealDetails } from './deal-details';
+import { hasModuleEntitlement, requiredModuleForPath } from './entitlement-guard';
 import { handleGoogleAuthRequest } from './google-auth';
 import { handleMetaAdsRequest } from './meta-ads';
 import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
@@ -13,7 +14,7 @@ interface Env extends AuthEnv, MetaEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'platform-core-entitlements-v1';
+const RELEASE = 'platform-core-entitlements-v2';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
@@ -73,6 +74,17 @@ export default {
       const session = await requireBearerSession(request, env) ?? await requireSession(request, env);
       if (!session) return apiError(401, 'UNAUTHORIZED', 'Не авторизован');
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
+
+      const requiredModule = requiredModuleForPath(url.pathname);
+      if (requiredModule) {
+        try {
+          const entitled = await hasModuleEntitlement(env, session, requiredModule);
+          if (!entitled) return apiError(403, 'MODULE_NOT_ENTITLED', `Модуль ${requiredModule} не подключён для этой компании`);
+        } catch (error) {
+          return apiError(503, 'ENTITLEMENT_CHECK_FAILED', error instanceof Error ? error.message : 'Не удалось проверить доступ к модулю');
+        }
+      }
+
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
