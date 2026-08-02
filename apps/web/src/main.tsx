@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthGate } from './modules/auth/AuthGate';
 import { EntitlementsProvider } from './modules/platform/EntitlementsContext';
+import { ProductShellRuntime } from './modules/platform/ProductShellRuntime';
 import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
 import './styles.css';
 import './modules.css';
@@ -28,6 +29,7 @@ import './ui-system.css';
 import './modules/deals/kanban-fix.css';
 import './modules/analytics/end-to-end-analytics.css';
 import './modules/system/action-feedback.css';
+import './modules/platform/product-shell-runtime.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +48,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ActionFeedbackProvider>
           <AuthGate>
             <EntitlementsProvider>
-              <App />
+              <ProductShellRuntime>
+                <App />
+              </ProductShellRuntime>
             </EntitlementsProvider>
           </AuthGate>
         </ActionFeedbackProvider>
