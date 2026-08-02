@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ArrowUpRight, BarChart3, CircleDollarSign, Clock3, MessageSquareText, Target, Workflow } from 'lucide-react';
 import { useDealsQuery, usePipelinesQuery } from '../deals/api/useDeals';
 import type { Deal } from '../deals/types';
+import { DealsTrendChart } from './DealsTrendChart';
 
 type DashboardMetrics = {
   amountInWork: number;
@@ -102,6 +103,8 @@ export function AnalyticsDashboard({
       <KpiCard icon={Target} label="Средний чек" value={analyticsLoading ? '—' : money.format(averageDeal)} hint="По всем сделкам" tone="amber" />
       <KpiCard icon={MessageSquareText} label="Конверсия" value={analyticsLoading ? '—' : `${conversion}%`} hint={`${wonDeals.length} успешных сделок`} tone="rose" onClick={onOpenDeals} />
     </section>
+
+    <DealsTrendChart deals={deals} loading={analyticsLoading} />
 
     <section className="analytics-main-grid">
       <article className="analytics-card workload-card">
