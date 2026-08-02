@@ -68,7 +68,10 @@ async function rpc<T>(env: CrmPlatformEnv, name: string, body: Record<string, un
     body: JSON.stringify(body),
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) as unknown : null;
+  let payload: unknown = null;
+  if (text) {
+    try { payload = JSON.parse(text) as unknown; } catch { payload = text; }
+  }
   if (!response.ok) throw new Error(`CRM platform RPC ${name} failed: ${text}`);
   return payload as T;
 }
@@ -82,12 +85,15 @@ function requireCommand(body: InternalCommand) {
 
 async function provision(body: InternalCommand, env: CrmPlatformEnv) {
   const { installationId, idempotencyKey } = requireCommand(body);
-  const companyId = (body.companyId ?? body.organizationId)?.trim();
+  const companyId = body.companyId?.trim();
+  const platformOrganizationId = body.organizationId?.trim();
   if (!companyId) throw new Error('companyId is required');
+  if (!platformOrganizationId) throw new Error('organizationId is required');
   if (body.moduleCode && body.moduleCode !== 'crm.kanban') throw new Error('Unsupported module code');
 
   return rpc<Record<string, unknown>>(env, 'provision_crm_kanban', {
     installation_id_value: installationId,
+    platform_organization_id_value: platformOrganizationId,
     company_id_value: companyId,
     host_product_code_value: body.hostProductCode ?? 'marketing',
     module_version_value: body.moduleVersion ?? '1.0.0',
@@ -107,6 +113,11 @@ async function setState(body: InternalCommand, env: CrmPlatformEnv, targetStatus
     idempotency_key_value: idempotencyKey,
     trace_id_value: body.traceId ?? null,
   });
+}
+
+export async function resolvePlatformTenantId(env: CrmPlatformEnv, companyId: string): Promise<string | null> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  return rpc<string | null>(env, 'resolve_platform_organization_id', { company_id_value: companyId });
 }
 
 export async function handleCrmPlatformInternalRequest(request: Request, env: CrmPlatformEnv) {
@@ -146,11 +157,15 @@ export async function handleCrmPlatformInternalRequest(request: Request, env: Cr
 
 export async function authorizeCrmPermission(
   env: CrmPlatformEnv,
-  tenantId: string,
+  companyId: string,
   permission: string,
 ): Promise<PlatformDecision> {
   if (!env.PLATFORM_API_URL || !env.PLATFORM_SERVICE_TOKEN) {
     return { allowed: false, installationId: null, reason: 'PLATFORM_NOT_CONFIGURED', effectiveLimits: {} };
+  }
+  const tenantId = await resolvePlatformTenantId(env, companyId);
+  if (!tenantId) {
+    return { allowed: false, installationId: null, reason: 'PLATFORM_TENANT_NOT_MAPPED', effectiveLimits: {} };
   }
   const response = await fetch(`${env.PLATFORM_API_URL.replace(/\/$/, '')}/v1/platform/authorize`, {
     method: 'POST',
