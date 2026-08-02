@@ -18,6 +18,7 @@ import './modules/deals/deal-details.css';
 import './modules/deals/lead-modal.css';
 import './modules/deals/pipeline-manager.css';
 import './modules/ads/ads-workspace.css';
+import './modules/integrations/integrations-workspace.css';
 import './modules/auth/auth.css';
 import './modules/auth/user-profile.css';
 import './ui-system.css';
