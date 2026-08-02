@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Cable,
   CheckCircle2,
   Cloud,
@@ -12,6 +13,7 @@ import {
   Video,
 } from 'lucide-react';
 import { AdsWorkspace } from '../ads/AdsWorkspace';
+import { EndToEndAnalytics } from '../analytics/EndToEndAnalytics';
 import { EmailWorkspace } from '../inbox/EmailWorkspace';
 import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
@@ -22,6 +24,7 @@ export type ChannelView =
   | 'instagram'
   | 'email'
   | 'ads'
+  | 'analytics'
   | 'cloud'
   | 'meetings'
   | 'integrations';
@@ -66,12 +69,19 @@ const definitions: Record<ChannelView, ChannelDefinition> = {
     title: 'Реклама',
     description: 'Кабинеты Meta, TikTok и Google Ads: расходы, лиды, CPL, продажи и окупаемость.',
     icon: Megaphone,
-    metrics: [['Расход сегодня', '₸ 68 400'], ['Лиды', '37'], ['CPL', '₸ 1 849'], ['Продажи', '6']],
+    metrics: [['Расход сегодня', '—'], ['Лиды', '—'], ['CPL', '—'], ['Продажи', '—']],
     connections: [
       { name: 'Meta Ads', detail: 'Facebook и Instagram Ads', connected: false },
       { name: 'TikTok Ads', detail: 'Рекламные кабинеты TikTok', connected: false },
       { name: 'Google Ads', detail: 'Поиск, КМС и YouTube', connected: false },
     ],
+  },
+  analytics: {
+    title: 'Сквозная аналитика',
+    description: 'Путь клиента от рекламного расхода до продажи, выручки и ROMI.',
+    icon: BarChart3,
+    metrics: [],
+    connections: [],
   },
   cloud: {
     title: 'Облако',
@@ -107,6 +117,7 @@ export const channelNavigation = [
   { id: 'instagram' as ChannelView, label: 'Instagram', icon: Instagram },
   { id: 'email' as ChannelView, label: 'Email', icon: Mail },
   { id: 'ads' as ChannelView, label: 'Реклама', icon: Megaphone },
+  { id: 'analytics' as ChannelView, label: 'Сквозная аналитика', icon: BarChart3 },
   { id: 'cloud' as ChannelView, label: 'Облако', icon: Cloud },
   { id: 'meetings' as ChannelView, label: 'Видеовстречи', icon: Video },
   { id: 'integrations' as ChannelView, label: 'Интеграции', icon: Cable },
@@ -117,6 +128,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'instagram') return <InstagramWorkspace />;
   if (view === 'email') return <EmailWorkspace />;
   if (view === 'ads') return <AdsWorkspace />;
+  if (view === 'analytics') return <EndToEndAnalytics />;
   if (view === 'integrations') return <IntegrationsWorkspace />;
 
   const definition = definitions[view];
