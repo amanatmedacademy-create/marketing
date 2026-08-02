@@ -1,16 +1,92 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/api-client';
+import { supabase } from '../../../lib/supabase';
 import type { Deal, ListDealsResponse, Pipeline } from '../types';
 
+type PipelineRow = {
+  id: string;
+  name: string;
+  is_default: boolean;
+  position: number;
+};
+
+type StageRow = {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  stage_type: string;
+};
+
+async function loadPipelinesFromSupabase(): Promise<Pipeline[]> {
+  const [{ data: pipelines, error: pipelinesError }, { data: stages, error: stagesError }] = await Promise.all([
+    supabase
+      .from('crm_pipelines')
+      .select('id,name,is_default,position')
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('crm_pipeline_stages')
+      .select('id,pipeline_id,name,color,position,stage_type')
+      .order('position', { ascending: true }),
+  ]);
+
+  if (pipelinesError) throw pipelinesError;
+  if (stagesError) throw stagesError;
+
+  const stageRows = (stages ?? []) as StageRow[];
+  return ((pipelines ?? []) as PipelineRow[]).map((pipeline) => ({
+    id: pipeline.id,
+    name: pipeline.name,
+    isDefault: pipeline.is_default,
+    order: pipeline.position,
+    stages: stageRows
+      .filter((stage) => stage.pipeline_id === pipeline.id)
+      .map((stage) => ({
+        id: stage.id,
+        pipelineId: stage.pipeline_id,
+        name: stage.name,
+        color: stage.color ?? '#64748B',
+        order: stage.position,
+        isWon: stage.stage_type === 'won',
+        isLost: stage.stage_type === 'lost',
+        affectsRevenue: stage.stage_type !== 'lost',
+      })),
+  }));
+}
+
+async function loadPipelines(): Promise<Pipeline[]> {
+  try {
+    return await apiFetch<Pipeline[]>('/pipelines');
+  } catch {
+    return loadPipelinesFromSupabase();
+  }
+}
+
 export function usePipelinesQuery() {
-  return useQuery({ queryKey: ['pipelines'], queryFn: () => apiFetch<Pipeline[]>('/pipelines') });
+  return useQuery({ queryKey: ['pipelines'], queryFn: loadPipelines });
 }
 
 export function useBootstrapPipelineMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiFetch<Pipeline>('/pipelines/bootstrap', { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pipelines'] }),
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('ensure_default_crm_workspace');
+      if (error) throw error;
+
+      const pipelines = await loadPipelinesFromSupabase();
+      const pipeline = pipelines.find((item) => item.isDefault) ?? pipelines[0];
+      if (!pipeline) throw new Error('Supabase не создал стартовую воронку.');
+      return pipeline;
+    },
+    onSuccess: (pipeline) => {
+      queryClient.setQueryData<Pipeline[]>(['pipelines'], (current) => {
+        if (!current?.length) return [pipeline];
+        return current.some((item) => item.id === pipeline.id) ? current : [...current, pipeline];
+      });
+      queryClient.invalidateQueries({ queryKey: ['pipelines'] });
+    },
   });
 }
 
