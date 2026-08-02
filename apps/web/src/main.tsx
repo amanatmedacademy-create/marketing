@@ -7,6 +7,7 @@ import { AuthGate } from './modules/auth/AuthGate';
 import { EntitlementsProvider } from './modules/platform/EntitlementsContext';
 import { ProductShellRuntime } from './modules/platform/ProductShellRuntime';
 import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
+import { startMarketingTelemetry } from './lib/telemetry';
 import './styles.css';
 import './modules.css';
 import './preview-fidelity.css';
@@ -40,6 +41,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+startMarketingTelemetry();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
