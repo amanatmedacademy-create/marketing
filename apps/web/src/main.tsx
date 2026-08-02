@@ -9,6 +9,7 @@ import './modules.css';
 import './preview-fidelity.css';
 import './channel-modules.css';
 import './modules/dashboard/analytics-dashboard.css';
+import './modules/dashboard/analytics-data.css';
 import './modules/inbox/omnichannel-inbox.css';
 import './modules/inbox/whatsapp-workspace.css';
 import './modules/inbox/social-mail-workspaces.css';
