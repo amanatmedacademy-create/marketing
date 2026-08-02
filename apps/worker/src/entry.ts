@@ -8,13 +8,14 @@ import { handleMetaAdsRequest } from './meta-ads';
 import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
 import { handlePlatformCoreRequest } from './platform-core';
 import { handleTeamRequest } from './team';
+import { handleWorkManagementRequest } from './work-management';
 
 interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
   ASSETS: Fetcher;
   APP_ENV: string;
 }
 
-const RELEASE = 'crm-kanban-platform-runtime-v1';
+const RELEASE = 'work-management-runtime-v1';
 
 const apiError = (status: number, code: string, message: string, details?: unknown) => new Response(JSON.stringify({ error: { code, message, details } }), {
   status,
@@ -39,7 +40,10 @@ function canWrite(session: AuthSession, pathname: string) {
   if (session.role !== 'manager') return false;
   return pathname === '/api/deals'
     || /^\/api\/deals\/[^/]+$/.test(pathname)
-    || /^\/api\/deals\/[^/]+\/move$/.test(pathname);
+    || /^\/api\/deals\/[^/]+\/move$/.test(pathname)
+    || pathname === '/api/tasks'
+    || /^\/api\/tasks\/[^/]+$/.test(pathname)
+    || pathname === '/api/projects';
 }
 
 function requiredCrmPermission(request: Request, pathname: string): string | null {
@@ -110,6 +114,7 @@ export default {
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
       const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
+        ?? await handleWorkManagementRequest(request, tenantEnv, session)
         ?? await handleMetaAdsRequest(request, tenantEnv, session)
         ?? await handleMetaRequest(request, tenantEnv, session)
         ?? await handleDealDetails(request, tenantEnv)
