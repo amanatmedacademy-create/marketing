@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { BarChart3, Bot, BriefcaseBusiness, Facebook, FileText, Globe2, Megaphone, Plus, RefreshCw, Sparkles, Users, Wand2 } from 'lucide-react';
 import { useDealsQuery, usePipelinesQuery } from '../deals/api/useDeals';
+import { AdsPerformanceTable } from './AdsPerformanceTable';
 
 type Network = 'all' | 'facebook' | 'tiktok' | 'google' | 'yandex' | 'telegram' | 'linkedin';
 type Section = 'analytics' | 'campaigns' | 'forms' | 'audiences' | 'creative' | 'rpn' | 'recommendations';
@@ -66,7 +67,7 @@ export function AdsWorkspace() {
       sales: sales.length,
       revenue: sales.reduce((sum, deal) => sum + Number(deal.oneTimeAmount ?? 0), 0),
     };
-  }), [deals, wonStages]);
+  }), [deals, pipeline]);
 
   const selected = network === 'all'
     ? {
@@ -77,18 +78,22 @@ export function AdsWorkspace() {
         revenue: summaries.reduce((sum, item) => sum + item.revenue, 0),
       }
     : summaries.find(item => item.id === network) ?? { id: network, label: '', leads: 0, sales: 0, revenue: 0 };
+
   const conversion = selected.leads ? Math.round((selected.sales / selected.leads) * 100) : 0;
   const maxLeads = Math.max(...summaries.map(item => item.leads), 1);
+  const recognized = summaries.reduce((sum, item) => sum + item.leads, 0);
+  const attributionRate = deals.length ? Math.round(recognized / deals.length * 100) : 0;
+  const performanceRows = network === 'all' ? summaries : summaries.filter(item => item.id === network);
 
   return <div className="ads-workspace">
-    <div className="ads-heading"><span><Megaphone size={20} /></span><div><h1>Рекламная аналитика</h1><p>Лиды, продажи и выручка по рекламным каналам на основе CRM-атрибуции.</p></div></div>
-    <div className="ads-network-tabs">{networks.map((item) => <button key={item.id} className={network === item.id ? 'active' : ''} onClick={() => setNetwork(item.id)}>{item.id === 'facebook' ? <Facebook size={14} /> : item.id === 'google' || item.id === 'yandex' ? <Globe2 size={14} /> : <Megaphone size={14} />}{item.label}</button>)}</div>
+    <div className="ads-heading"><span><Megaphone size={20} /></span><div><h1>Рекламная аналитика</h1><p>Кабинеты, кампании, группы объявлений, креативы и CRM-результаты в одном рабочем пространстве.</p></div></div>
 
+    <div className="ads-network-tabs">{networks.map(item => <button key={item.id} className={network === item.id ? 'active' : ''} onClick={() => setNetwork(item.id)}>{item.id === 'facebook' ? <Facebook size={14} /> : item.id === 'google' || item.id === 'yandex' ? <Globe2 size={14} /> : <Megaphone size={14} />}{item.label}</button>)}</div>
     <div className="ads-section-tabs">{sections.map(({ id, label, icon: Icon }) => <button key={id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}><Icon size={14} />{label}</button>)}</div>
 
     {section === 'analytics' && <>
       <div className="ads-metrics ads-metrics-live">
-        <article><span>Расход</span><strong>—</strong><small>Подключите рекламный API</small></article>
+        <article><span>Расход</span><strong>—</strong><small>Появится после Ads API</small></article>
         <article><span>Лиды в CRM</span><strong>{dealsQuery.isLoading ? '—' : selected.leads}</strong><small>{selected.label}</small></article>
         <article><span>Продажи</span><strong>{dealsQuery.isLoading ? '—' : selected.sales}</strong><small>Успешные сделки</small></article>
         <article><span>Выручка</span><strong>{dealsQuery.isLoading ? '—' : money.format(selected.revenue)}</strong><small>По закрытым продажам</small></article>
@@ -97,7 +102,7 @@ export function AdsWorkspace() {
 
       <div className="ads-analytics-grid">
         <section className="ads-card ads-channel-chart">
-          <div className="ads-panel-head"><div><h2>Лиды по каналам</h2><p>Распределение сделок по полю «Источник»</p></div><button><RefreshCw size={14} /> Обновить</button></div>
+          <div className="ads-panel-head"><div><h2>Лиды по каналам</h2><p>Распределение CRM-сделок по полю «Источник»</p></div><button onClick={() => dealsQuery.refetch()}><RefreshCw size={14} /> Обновить</button></div>
           {summaries.some(item => item.leads) ? <div className="ads-channel-bars">{summaries.map(item => <button key={item.id} onClick={() => setNetwork(item.id)}>
             <div><strong>{item.label}</strong><span>{item.leads} лидов</span></div>
             <div className="ads-bar-track"><i style={{ width: `${Math.max(item.leads / maxLeads * 100, item.leads ? 6 : 0)}%` }} /></div>
@@ -107,26 +112,21 @@ export function AdsWorkspace() {
 
         <section className="ads-card ads-attribution-card">
           <div className="ads-panel-head"><div><h2>Атрибуция</h2><p>Качество заполнения источников</p></div></div>
-          <div className="ads-attribution-ring" style={{ '--value': `${deals.length ? Math.round((summaries.reduce((sum, item) => sum + item.leads, 0) / deals.length) * 100) : 0}%` } as React.CSSProperties}>
-            <div><strong>{deals.length ? Math.round((summaries.reduce((sum, item) => sum + item.leads, 0) / deals.length) * 100) : 0}%</strong><span>распознано</span></div>
-          </div>
-          <p className="ads-data-note">Нераспознанные источники не включаются в рекламную аналитику.</p>
+          <div className="ads-attribution-ring" style={{ '--value': `${attributionRate}%` } as CSSProperties}><div><strong>{attributionRate}%</strong><span>распознано</span></div></div>
+          <p className="ads-data-note">Нераспознанные источники не включаются в рекламные отчёты.</p>
         </section>
       </div>
 
-      <section className="ads-card ads-channel-table">
-        <div className="ads-panel-head"><div><h2>Эффективность каналов</h2><p>CPL и ROMI появятся после подключения расходов рекламных кабинетов.</p></div></div>
-        <div className="ads-table-scroll"><table><thead><tr><th>Канал</th><th>Расход</th><th>Лиды</th><th>CPL</th><th>Продажи</th><th>Конверсия</th><th>Выручка</th><th>ROMI</th></tr></thead><tbody>{summaries.map(item => <tr key={item.id}><td><strong>{item.label}</strong></td><td>—</td><td>{item.leads}</td><td>—</td><td>{item.sales}</td><td>{item.leads ? Math.round(item.sales / item.leads * 100) : 0}%</td><td>{money.format(item.revenue)}</td><td>—</td></tr>)}</tbody></table></div>
-      </section>
+      <AdsPerformanceTable rows={performanceRows} />
     </>}
 
-    {section === 'campaigns' && <section className="ads-card"><div className="ads-card-toolbar"><select><option>Рекламный кабинет не подключён</option></select><button><RefreshCw size={14} /> Обновить</button><button className="primary"><Plus size={14} /> Новая кампания</button></div><div className="ads-empty">Подключите Meta, TikTok или Google Ads, чтобы управлять кампаниями.</div></section>}
+    {section === 'campaigns' && <section className="ads-card"><div className="ads-card-toolbar"><select><option>Рекламный кабинет не подключён</option></select><button><RefreshCw size={14} /> Обновить</button><button className="primary"><Plus size={14} /> Новая кампания</button></div><div className="ads-empty">После подключения API здесь появятся кампании, группы объявлений и объявления.</div></section>}
     {section === 'forms' && <section className="ads-card"><div className="ads-card-toolbar"><span>Lead-формы: 0</span><button><RefreshCw size={14} /> Синхронизировать</button></div><div className="ads-empty">Формы появятся после подключения рекламного кабинета.</div></section>}
     {section === 'audiences' && <section className="ads-card"><div className="ads-card-toolbar"><select><option>Рекламный кабинет</option></select><div><button disabled>Импортировать</button><button className="primary" onClick={() => setAudienceModal(true)}><Plus size={14} /> Custom из CRM</button><button>Lookalike</button></div></div><div className="ads-empty">Аудиторий пока нет.</div></section>}
     {section === 'creative' && <section className="ads-creative-layout"><form className="ads-generator"><h3><Sparkles size={16} /> AI-генератор креативов</h3><label>Продукт / услуга<input defaultValue="CRM для отдела продаж" /></label><label>Аудитория<input defaultValue="Руководители МСБ, 28–55, KZ" /></label><label>Бриф / оффер<textarea defaultValue="Скидка 20%, бесплатный тест 14 дней…" /></label><div><label>Тон<select><option>Энергичный</option></select></label><label>Язык<select><option>Русский</option></select></label></div><label>Вариантов<input type="number" defaultValue="3" /></label><button><Sparkles size={15} /> Сгенерировать</button></form><section className="ads-card ads-empty">Креативов пока нет — сгенерируйте первую партию.</section></section>}
-    {section === 'rpn' && <section><div className="ads-report-controls"><label>С<input type="date" /></label><label>По<input type="date" /></label><button><RefreshCw size={14} /> Обновить</button><button className="primary">Синхронизировать с Meta</button></div><div className="ads-metrics">{['Расход','Лидов в CRM','Продажи','Выручка','ROMI'].map((label) => <article key={label}><span>{label}</span><strong>{label === 'Лидов в CRM' ? selected.leads : label === 'Продажи' ? selected.sales : label === 'Выручка' ? money.format(selected.revenue) : '—'}</strong></article>)}</div><section className="ads-card"><div className="ads-empty">Для отчёта РПН необходимо подключить рекламный кабинет.</div></section></section>}
-    {section === 'recommendations' && <section className="ads-card ads-ai"><h3><Bot size={17} /> AI-рекомендации по рекламе</h3><p>После подключения расходов AI сможет сравнить CPL, продажи и ROMI. Сейчас доступны рекомендации только по CRM-конверсии и качеству атрибуции.</p><button><Sparkles size={15} /> Получить рекомендации</button></section>}
+    {section === 'rpn' && <section><div className="ads-report-controls"><label>С<input type="date" /></label><label>По<input type="date" /></label><button><RefreshCw size={14} /> Обновить</button><button className="primary">Синхронизировать с Meta</button></div><div className="ads-metrics">{['Расход','Лидов в CRM','Продажи','Выручка','ROMI'].map(label => <article key={label}><span>{label}</span><strong>{label === 'Лидов в CRM' ? selected.leads : label === 'Продажи' ? selected.sales : label === 'Выручка' ? money.format(selected.revenue) : '—'}</strong></article>)}</div><section className="ads-card"><div className="ads-empty">Для отчёта РПН необходимо подключить рекламный кабинет.</div></section></section>}
+    {section === 'recommendations' && <section className="ads-card ads-ai"><h3><Bot size={17} /> AI-рекомендации по рекламе</h3><p>После подключения расходов AI сможет сравнить CPM, CTR, CPL, CAC, ROAS и ROMI. Сейчас доступны рекомендации по CRM-конверсии и качеству атрибуции.</p><button><Sparkles size={15} /> Получить рекомендации</button></section>}
 
-    {audienceModal && <div className="ads-modal-backdrop" onMouseDown={() => setAudienceModal(false)}><form className="ads-modal" onMouseDown={(event) => event.stopPropagation()}><h2>Создать Custom Audience из CRM</h2><label>Название<input autoFocus /></label><label>Описание<input /></label><label>Сегмент<select><option>Все лиды</option></select></label><p>Email и телефон должны хешироваться SHA-256 перед отправкой.</p><button type="button" onClick={() => setAudienceModal(false)}>Создать аудиторию</button></form></div>}
+    {audienceModal && <div className="ads-modal-backdrop" onMouseDown={() => setAudienceModal(false)}><form className="ads-modal" onMouseDown={event => event.stopPropagation()}><h2>Создать Custom Audience из CRM</h2><label>Название<input autoFocus /></label><label>Описание<input /></label><label>Сегмент<select><option>Все лиды</option></select></label><p>Email и телефон должны хешироваться SHA-256 перед отправкой.</p><button type="button" onClick={() => setAudienceModal(false)}>Создать аудиторию</button></form></div>}
   </div>;
 }
