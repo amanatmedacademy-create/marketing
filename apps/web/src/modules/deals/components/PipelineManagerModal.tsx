@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
-import { useAuth } from '../../auth/AuthContext';
 import { useCreatePipelineMutation, useDeletePipelineMutation, useRenamePipelineMutation } from '../api/usePipelineManagement';
 import type { Pipeline } from '../types';
 
@@ -14,7 +13,6 @@ const defaultStages = (): DraftStage[] => [
 ];
 
 export function PipelineManagerModal({ pipelines, currentPipelineId, onClose, onSelect }: { pipelines: Pipeline[]; currentPipelineId?: string; onClose: () => void; onSelect: (id: string) => void }) {
-  const { currentUser } = useAuth();
   const [mode, setMode] = useState<'list' | 'create'>('list');
   const [name, setName] = useState('Новая воронка');
   const [isDefault, setIsDefault] = useState(false);
@@ -32,12 +30,11 @@ export function PipelineManagerModal({ pipelines, currentPipelineId, onClose, on
 
   const submit = () => {
     createPipeline.mutate({
-      companyId: currentUser.companyId,
       name,
       isDefault,
       stages: stages.map(stage => ({ name: stage.name, color: stage.color, isWon: stage.type === 'won', isLost: stage.type === 'lost' })),
     }, {
-      onSuccess: (id) => { onSelect(id); onClose(); },
+      onSuccess: (pipeline) => { onSelect(pipeline.id); onClose(); },
     });
   };
 
@@ -55,7 +52,7 @@ export function PipelineManagerModal({ pipelines, currentPipelineId, onClose, on
               <span style={{ background: pipeline.stages[0]?.color ?? '#3B82F6' }} />
               <div><strong>{pipeline.name}</strong><small>{pipeline.stages.length} этапов{pipeline.isDefault ? ' · основная' : ''}</small></div>
             </button>
-            {renamingId === pipeline.id ? <div className="pipeline-rename-row"><input value={renameValue} autoFocus onChange={event => setRenameValue(event.target.value)} /><button onClick={() => renamePipeline.mutate({ companyId: currentUser.companyId, pipelineId: pipeline.id, name: renameValue }, { onSuccess: () => setRenamingId(null) })}><Save size={15} /></button></div> : <div className="pipeline-row-actions"><button onClick={() => { setRenamingId(pipeline.id); setRenameValue(pipeline.name); }}>Переименовать</button><button className="danger" disabled={pipelines.length <= 1 || deletePipeline.isPending} onClick={() => { if (window.confirm(`Удалить воронку «${pipeline.name}»?`)) deletePipeline.mutate({ companyId: currentUser.companyId, pipelineId: pipeline.id }); }}><Trash2 size={15} /></button></div>}
+            {renamingId === pipeline.id ? <div className="pipeline-rename-row"><input value={renameValue} autoFocus onChange={event => setRenameValue(event.target.value)} /><button onClick={() => renamePipeline.mutate({ pipelineId: pipeline.id, name: renameValue }, { onSuccess: () => setRenamingId(null) })}><Save size={15} /></button></div> : <div className="pipeline-row-actions"><button onClick={() => { setRenamingId(pipeline.id); setRenameValue(pipeline.name); }}>Переименовать</button><button className="danger" disabled={pipelines.length <= 1 || deletePipeline.isPending} onClick={() => { if (window.confirm(`Удалить воронку «${pipeline.name}»?`)) deletePipeline.mutate({ pipelineId: pipeline.id }); }}><Trash2 size={15} /></button></div>}
           </article>)}
         </div>
         <footer><span>{error instanceof Error ? error.message : ''}</span><button className="pipeline-primary" onClick={() => setMode('create')}><Plus size={16} /> Создать воронку</button></footer>
