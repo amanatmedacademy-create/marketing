@@ -1,4 +1,7 @@
+import { useMemo } from 'react';
 import { ArrowUpRight, BarChart3, CircleDollarSign, Clock3, MessageSquareText, Target, Workflow } from 'lucide-react';
+import { useDealsQuery, usePipelinesQuery } from '../deals/api/useDeals';
+import type { Deal } from '../deals/types';
 
 type DashboardMetrics = {
   amountInWork: number;
@@ -38,89 +41,119 @@ export function AnalyticsDashboard({
   onOpenInbox,
   onOpenAds,
 }: Props) {
-  const countMax = Math.max(metrics.newDeals, metrics.openTasks, metrics.unansweredConversations, 1);
-  const workload = [
-    { label: 'Сделки', value: metrics.newDeals },
-    { label: 'Задачи', value: metrics.openTasks },
-    { label: 'Без ответа', value: metrics.unansweredConversations },
-  ];
-  const answered = Math.max(metrics.newDeals - metrics.unansweredConversations, 0);
-  const responseTotal = answered + metrics.unansweredConversations;
-  const responseRate = responseTotal ? Math.round((answered / responseTotal) * 100) : 0;
-  const circumference = 2 * Math.PI * 42;
-  const dash = circumference * (responseRate / 100);
+  const pipelinesQuery = usePipelinesQuery();
+  const pipeline = pipelinesQuery.data?.find(item => item.isDefault) ?? pipelinesQuery.data?.[0];
+  const dealsQuery = useDealsQuery(pipeline?.id);
+  const deals = dealsQuery.data?.items ?? [];
+  const analyticsLoading = loading || pipelinesQuery.isLoading || dealsQuery.isLoading;
+
+  const stageRows = useMemo(() => (pipeline?.stages ?? []).map(stage => {
+    const stageDeals = deals.filter(deal => deal.stageId === stage.id);
+    return {
+      id: stage.id,
+      name: stage.name,
+      color: stage.color,
+      count: stageDeals.length,
+      amount: stageDeals.reduce((sum, deal) => sum + Number(deal.oneTimeAmount ?? 0), 0),
+    };
+  }), [deals, pipeline]);
+
+  const sourceRows = useMemo(() => {
+    const grouped = new Map<string, { count: number; amount: number }>();
+    for (const deal of deals) {
+      const source = deal.source?.trim() || 'Без источника';
+      const current = grouped.get(source) ?? { count: 0, amount: 0 };
+      grouped.set(source, {
+        count: current.count + 1,
+        amount: current.amount + Number(deal.oneTimeAmount ?? 0),
+      });
+    }
+    return [...grouped.entries()]
+      .map(([name, values]) => ({ name, ...values }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [deals]);
+
+  const totalAmount = deals.reduce((sum, deal) => sum + Number(deal.oneTimeAmount ?? 0), 0);
+  const averageDeal = deals.length ? totalAmount / deals.length : 0;
+  const wonStageIds = new Set((pipeline?.stages ?? []).filter(stage => stage.isWon).map(stage => stage.id));
+  const wonDeals = deals.filter(deal => wonStageIds.has(deal.stageId));
+  const conversion = deals.length ? Math.round((wonDeals.length / deals.length) * 100) : 0;
+  const countMax = Math.max(...stageRows.map(item => item.count), 1);
+  const sourceMax = Math.max(...sourceRows.map(item => item.count), 1);
+  const displayedStages = stageRows.length ? stageRows : stages.map(stage => ({ id: stage.id, name: stage.name, color: '#4f6ef7', count: 0, amount: 0 }));
 
   return <div className="analytics-dashboard">
     <header className="analytics-hero">
       <div>
         <span className="analytics-eyebrow">Обзор бизнеса</span>
         <h1>Добро пожаловать, {userName}</h1>
-        <p>Продажи, задачи, коммуникации и состояние CRM в одном экране.</p>
+        <p>Продажи, источники, воронка и состояние CRM в одном экране.</p>
       </div>
       <div className="analytics-hero-actions">
-        <span className={`connection-status ${error ? 'error' : ''}`}>{loading ? 'Подключение…' : error ? 'Ошибка подключения' : 'Данные актуальны'}</span>
+        <span className={`connection-status ${error ? 'error' : ''}`}>{analyticsLoading ? 'Подключение…' : error ? 'Ошибка подключения' : 'Данные актуальны'}</span>
         <button onClick={onOpenDeals}>Открыть CRM <ArrowUpRight size={15} /></button>
       </div>
     </header>
 
     <section className="analytics-kpis">
-      <KpiCard icon={CircleDollarSign} label="Сумма в работе" value={loading ? '—' : money.format(metrics.amountInWork)} hint="Активный портфель" tone="violet" />
-      <KpiCard icon={Workflow} label="Сделки в работе" value={loading ? '—' : String(metrics.newDeals)} hint="Текущая воронка" tone="blue" onClick={onOpenDeals} />
-      <KpiCard icon={Target} label="Открытые задачи" value={loading ? '—' : String(metrics.openTasks)} hint="Требуют выполнения" tone="amber" onClick={onOpenTasks} />
-      <KpiCard icon={MessageSquareText} label="Без ответа" value={loading ? '—' : String(metrics.unansweredConversations)} hint="Нужна реакция" tone="rose" onClick={onOpenInbox} />
+      <KpiCard icon={CircleDollarSign} label="Сумма в работе" value={analyticsLoading ? '—' : money.format(metrics.amountInWork)} hint="Активный портфель" tone="violet" />
+      <KpiCard icon={Workflow} label="Всего сделок" value={analyticsLoading ? '—' : String(deals.length)} hint="В выбранной воронке" tone="blue" onClick={onOpenDeals} />
+      <KpiCard icon={Target} label="Средний чек" value={analyticsLoading ? '—' : money.format(averageDeal)} hint="По всем сделкам" tone="amber" />
+      <KpiCard icon={MessageSquareText} label="Конверсия" value={analyticsLoading ? '—' : `${conversion}%`} hint={`${wonDeals.length} успешных сделок`} tone="rose" onClick={onOpenDeals} />
     </section>
 
     <section className="analytics-main-grid">
       <article className="analytics-card workload-card">
-        <CardHeader title="Операционная нагрузка" subtitle="Сравнение текущих объектов CRM" action="Открыть задачи" onAction={onOpenTasks} />
-        <div className="bar-chart" role="img" aria-label="Сделки, задачи и диалоги без ответа">
+        <CardHeader title="Сделки по этапам" subtitle="Распределение активной воронки" action="Открыть канбан" onAction={onOpenDeals} />
+        {displayedStages.length ? <div className="bar-chart" role="img" aria-label="Количество сделок по этапам">
           <div className="bar-grid"><span /><span /><span /><span /></div>
-          <div className="bar-columns">{workload.map(item => <div className="bar-column" key={item.label}>
-            <strong>{loading ? '—' : item.value}</strong>
-            <div className="bar-track"><i style={{ height: loading ? '12%' : `${Math.max((item.value / countMax) * 100, item.value ? 12 : 3)}%` }} /></div>
-            <span>{item.label}</span>
+          <div className="bar-columns">{displayedStages.map(item => <div className="bar-column" key={item.id}>
+            <strong>{analyticsLoading ? '—' : item.count}</strong>
+            <div className="bar-track"><i style={{ height: analyticsLoading ? '12%' : `${Math.max((item.count / countMax) * 100, item.count ? 12 : 3)}%`, background: item.color }} /></div>
+            <span title={item.name}>{item.name}</span>
           </div>)}</div>
-        </div>
+        </div> : <DashboardEmpty icon={Workflow} title="Нет этапов" text="Создайте CRM-воронку для отображения диаграммы." />}
       </article>
 
       <article className="analytics-card response-card">
-        <CardHeader title="Скорость реакции" subtitle="Доля обработанных диалогов" />
-        <div className="response-donut">
-          <svg viewBox="0 0 110 110" aria-label={`Обработано ${responseRate}%`}>
-            <circle cx="55" cy="55" r="42" className="donut-base" />
-            <circle cx="55" cy="55" r="42" className="donut-value" strokeDasharray={`${dash} ${circumference - dash}`} />
-          </svg>
-          <div><strong>{loading ? '—' : `${responseRate}%`}</strong><span>обработано</span></div>
-        </div>
-        <div className="response-legend"><span><i className="done" />Обработано <b>{answered}</b></span><span><i className="pending" />Без ответа <b>{metrics.unansweredConversations}</b></span></div>
-        <button className="analytics-secondary-action" onClick={onOpenInbox}>Перейти в сообщения</button>
+        <CardHeader title="Конверсия в продажу" subtitle="Доля успешных сделок" />
+        <Donut value={conversion} />
+        <div className="response-legend"><span><i className="done" />Успешные <b>{wonDeals.length}</b></span><span><i className="pending" />Все сделки <b>{deals.length}</b></span></div>
+        <button className="analytics-secondary-action" onClick={onOpenDeals}>Посмотреть сделки</button>
       </article>
     </section>
 
     <section className="analytics-secondary-grid">
       <article className="analytics-card funnel-card">
-        <CardHeader title="Воронка продаж" subtitle="Этапы активной CRM-воронки" action="Открыть канбан" onAction={onOpenDeals} />
-        {stages.length ? <div className="analytics-funnel">{[...stages].sort((a, b) => a.position - b.position).map((stage, index) => {
-          const width = Math.max(100 - index * (58 / Math.max(stages.length - 1, 1)), 42);
+        <CardHeader title="Воронка продаж" subtitle="Количество и сумма по каждому этапу" action="Открыть канбан" onAction={onOpenDeals} />
+        {displayedStages.length ? <div className="analytics-funnel">{displayedStages.map((stage, index) => {
+          const width = Math.max(100 - index * (58 / Math.max(displayedStages.length - 1, 1)), 42);
           return <div key={stage.id} className="funnel-row">
             <span>{stage.name}</span>
-            <div><i style={{ width: `${width}%` }} /></div>
-            <b>—</b>
+            <div><i style={{ width: `${width}%`, background: stage.color }} /></div>
+            <b>{stage.count}</b>
+            <small>{money.format(stage.amount)}</small>
           </div>;
         })}</div> : <DashboardEmpty icon={Workflow} title="Воронка не создана" text="Создайте этапы, чтобы увидеть распределение сделок." />}
-        <p className="data-note">Количество по этапам появится после расширения endpoint `/dashboard`.</p>
       </article>
 
-      <article className="analytics-card control-card">
-        <CardHeader title="Контроль показателей" subtitle="Что требует внимания сейчас" />
-        <div className="control-table">
-          <div className="control-head"><span>Показатель</span><span>Значение</span><span>Статус</span></div>
-          <ControlRow label="Сделки в работе" value={metrics.newDeals} status={metrics.newDeals ? 'Активно' : 'Нет данных'} tone={metrics.newDeals ? 'good' : 'neutral'} />
-          <ControlRow label="Открытые задачи" value={metrics.openTasks} status={metrics.openTasks ? 'Проверить' : 'В норме'} tone={metrics.openTasks ? 'warning' : 'good'} />
-          <ControlRow label="Диалоги без ответа" value={metrics.unansweredConversations} status={metrics.unansweredConversations ? 'Требует реакции' : 'В норме'} tone={metrics.unansweredConversations ? 'danger' : 'good'} />
-          <ControlRow label="Этапы воронки" value={stages.length} status={stages.length ? 'Настроено' : 'Не настроено'} tone={stages.length ? 'good' : 'neutral'} />
-        </div>
+      <article className="analytics-card sources-card">
+        <CardHeader title="Источники лидов" subtitle="Топ каналов по количеству сделок" action="Реклама" onAction={onOpenAds} />
+        {sourceRows.length ? <div className="source-list">{sourceRows.map(source => <div className="source-row" key={source.name}>
+          <div><strong>{source.name}</strong><span>{money.format(source.amount)}</span></div>
+          <div className="source-progress"><i style={{ width: `${Math.max((source.count / sourceMax) * 100, 6)}%` }} /></div>
+          <b>{source.count}</b>
+        </div>)}</div> : <DashboardEmpty icon={BarChart3} title="Источники не заполнены" text="Укажите источник в карточках сделок." />}
       </article>
+    </section>
+
+    <section className="analytics-card deals-table-card">
+      <CardHeader title="Последние сделки" subtitle="Оперативная таблица активной воронки" action="Все сделки" onAction={onOpenDeals} />
+      {deals.length ? <div className="analytics-table-wrap"><table className="analytics-table">
+        <thead><tr><th>Сделка</th><th>Источник</th><th>Этап</th><th>Сумма</th><th>Контакт</th></tr></thead>
+        <tbody>{deals.slice(0, 8).map(deal => <DealRow key={deal.id} deal={deal} stageName={pipeline?.stages.find(stage => stage.id === deal.stageId)?.name ?? 'Неизвестно'} />)}</tbody>
+      </table></div> : <DashboardEmpty icon={Workflow} title="Сделок пока нет" text="Добавьте первую сделку в CRM-воронку." />}
     </section>
 
     <section className="analytics-quick-actions">
@@ -141,8 +174,15 @@ function CardHeader({ title, subtitle, action, onAction }: { title: string; subt
   return <header className="analytics-card-head"><div><h2>{title}</h2><p>{subtitle}</p></div>{action && <button onClick={onAction}>{action}<ArrowUpRight size={14} /></button>}</header>;
 }
 
-function ControlRow({ label, value, status, tone }: { label: string; value: number; status: string; tone: string }) {
-  return <div className="control-row"><strong>{label}</strong><b>{value}</b><span className={tone}>{status}</span></div>;
+function Donut({ value }: { value: number }) {
+  const circumference = 2 * Math.PI * 42;
+  const dash = circumference * (value / 100);
+  return <div className="response-donut"><svg viewBox="0 0 110 110" aria-label={`Конверсия ${value}%`}><circle cx="55" cy="55" r="42" className="donut-base" /><circle cx="55" cy="55" r="42" className="donut-value" strokeDasharray={`${dash} ${circumference - dash}`} /></svg><div><strong>{value}%</strong><span>конверсия</span></div></div>;
+}
+
+function DealRow({ deal, stageName }: { deal: Deal; stageName: string }) {
+  const contact = deal.contact?.phone || deal.contact?.email || 'Не указан';
+  return <tr><td><strong>{deal.title}</strong></td><td><span className="table-source">{deal.source || 'Без источника'}</span></td><td>{stageName}</td><td className="table-money">{money.format(Number(deal.oneTimeAmount ?? 0))}</td><td>{contact}</td></tr>;
 }
 
 function DashboardEmpty({ icon: Icon, title, text }: { icon: typeof Workflow; title: string; text: string }) {
