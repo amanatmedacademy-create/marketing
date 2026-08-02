@@ -3,14 +3,15 @@ import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } fro
 import { requireBearerSession } from './bearer-auth';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
+import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
 import { handleTeamRequest } from './team';
 
-interface Env extends AuthEnv {
+interface Env extends AuthEnv, MetaEnv {
   ASSETS: Fetcher;
   APP_ENV: string;
 }
 
-const RELEASE = 'pipeline-bootstrap-fix-v2';
+const RELEASE = 'meta-login-business-v1';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
@@ -50,6 +51,10 @@ export default {
       return json({ environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', supabaseConfigured: Boolean(env.SUPABASE_URL) });
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/integrations/meta/config') {
+      return getMetaPublicConfig(env);
+    }
+
     if (url.pathname.startsWith('/api/auth/google/')) {
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
       const googleResponse = await handleGoogleAuthRequest(request, env);
@@ -69,7 +74,8 @@ export default {
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
-      const specializedResponse = await handleDealDetails(request, tenantEnv)
+      const specializedResponse = await handleMetaRequest(request, tenantEnv, session)
+        ?? await handleDealDetails(request, tenantEnv)
         ?? await handleTeamRequest(request, tenantEnv);
       const response = specializedResponse ?? await app.fetch(request, tenantEnv);
       const decorated = new Response(response.body, response);
