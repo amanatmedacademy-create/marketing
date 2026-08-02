@@ -1,5 +1,5 @@
 import type { AuthEnv, AuthSession } from './auth';
-import type { CrmPlatformEnv } from './crm-kanban-platform';
+import { resolvePlatformTenantId, type CrmPlatformEnv } from './crm-kanban-platform';
 
 type EntitlementRow = {
   entitlement_type: 'product' | 'module' | 'capability';
@@ -71,10 +71,13 @@ function mergeLimits(target: Record<string, unknown>, source: Record<string, unk
 
 async function getCentralBootstrap(env: CrmPlatformEnv, companyId: string): Promise<CentralBootstrap | null> {
   if (!env.PLATFORM_API_URL || !env.PLATFORM_SERVICE_TOKEN) return null;
+  const platformTenantId = await resolvePlatformTenantId(env, companyId);
+  if (!platformTenantId) return null;
+
   const response = await fetch(`${env.PLATFORM_API_URL.replace(/\/$/, '')}/v1/platform/bootstrap?product=marketing`, {
     headers: {
       authorization: `Bearer ${env.PLATFORM_SERVICE_TOKEN}`,
-      'x-tenant-id': companyId,
+      'x-tenant-id': platformTenantId,
       accept: 'application/json',
     },
   });
