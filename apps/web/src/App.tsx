@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bell, CalendarDays, FolderKanban, Headphones, LayoutDashboard, Moon, Search,
-  Settings, Sun, Trophy, UsersRound, WalletCards, Workflow,
+  Settings, Sun, UsersRound, WalletCards, Workflow,
 } from 'lucide-react';
 import { apiFetch } from './lib/api-client';
 import { useAuth } from './modules/auth/AuthContext';
@@ -20,6 +20,7 @@ import {
   channelNavigation,
   type ChannelView,
 } from './modules/channels/ChannelsView';
+import { useEntitlements } from './modules/platform/EntitlementsContext';
 
 type CoreView = 'dashboard' | 'deals' | 'tasks' | 'projects' | 'team' | 'accounting';
 type View = CoreView | ChannelView;
@@ -29,23 +30,54 @@ type DashboardResponse = {
   stages: Array<{ id: string; name: string; position: number }>;
 };
 
-const primaryNavigation = [
-  { id: 'dashboard' as View, label: 'Дашборд', icon: LayoutDashboard },
-  { id: 'deals' as View, label: 'Сделки', icon: Workflow },
-  { id: 'tasks' as View, label: 'Задачи', icon: CalendarDays },
-  { id: 'projects' as View, label: 'Проекты', icon: FolderKanban },
-  { id: 'team' as View, label: 'Команда', icon: UsersRound },
-  { id: 'accounting' as View, label: 'Бухгалтерия', icon: WalletCards },
+type NavigationItem = {
+  id: View;
+  moduleId: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+};
+
+const VIEW_MODULES: Record<View, string> = {
+  dashboard: 'dashboard',
+  deals: 'crm.deals',
+  tasks: 'work.tasks',
+  projects: 'work.projects',
+  team: 'team',
+  accounting: 'accounting',
+  whatsapp: 'communications.whatsapp',
+  instagram: 'communications.instagram',
+  email: 'communications.email',
+  ads: 'advertising',
+  analytics: 'analytics.attribution',
+  cloud: 'cloud',
+  meetings: 'meetings',
+  integrations: 'integrations',
+};
+
+const primaryNavigation: NavigationItem[] = [
+  { id: 'dashboard', moduleId: VIEW_MODULES.dashboard, label: 'Дашборд', icon: LayoutDashboard },
+  { id: 'deals', moduleId: VIEW_MODULES.deals, label: 'Сделки', icon: Workflow },
+  { id: 'tasks', moduleId: VIEW_MODULES.tasks, label: 'Задачи', icon: CalendarDays },
+  { id: 'projects', moduleId: VIEW_MODULES.projects, label: 'Проекты', icon: FolderKanban },
+  { id: 'team', moduleId: VIEW_MODULES.team, label: 'Команда', icon: UsersRound },
+  { id: 'accounting', moduleId: VIEW_MODULES.accounting, label: 'Бухгалтерия', icon: WalletCards },
 ];
+
+function channelIcon(id: ChannelView) {
+  const item = channelNavigation.find(candidate => candidate.id === id);
+  if (!item) throw new Error(`Unknown channel navigation item: ${id}`);
+  return item.icon;
+}
+
 const activeModules = [
-  { id: 'whatsapp' as ChannelView, title: 'WhatsApp', description: 'Диалоги, шаблоны, операторы и лиды из WhatsApp.', icon: channelNavigation[0].icon },
-  { id: 'instagram' as ChannelView, title: 'Instagram', description: 'Direct, комментарии и лиды из рекламы.', icon: channelNavigation[1].icon },
-  { id: 'email' as ChannelView, title: 'Email', description: 'Общие ящики, шаблоны и история писем.', icon: channelNavigation[2].icon },
-  { id: 'ads' as ChannelView, title: 'Реклама', description: 'Meta, TikTok и Google Ads с CPL и ROMI.', icon: channelNavigation[3].icon },
-  { id: 'cloud' as ChannelView, title: 'Облако', description: 'Документы, вложения, файлы и резервные копии.', icon: channelNavigation[4].icon },
-  { id: 'meetings' as ChannelView, title: 'Видеовстречи', description: 'Онлайн-консультации и напоминания.', icon: channelNavigation[5].icon },
-  { id: 'integrations' as ChannelView, title: 'Интеграции', description: 'Центр подключений и синхронизаций.', icon: channelNavigation[6].icon },
-  { id: 'integrations' as ChannelView, title: 'Геймификация', description: 'Баллы, цели, достижения и рейтинг команды.', icon: Trophy },
+  { id: 'whatsapp' as ChannelView, moduleId: VIEW_MODULES.whatsapp, title: 'WhatsApp', description: 'Диалоги, шаблоны, операторы и лиды из WhatsApp.', icon: channelIcon('whatsapp') },
+  { id: 'instagram' as ChannelView, moduleId: VIEW_MODULES.instagram, title: 'Instagram', description: 'Direct, комментарии и лиды из рекламы.', icon: channelIcon('instagram') },
+  { id: 'email' as ChannelView, moduleId: VIEW_MODULES.email, title: 'Email', description: 'Общие ящики, шаблоны и история писем.', icon: channelIcon('email') },
+  { id: 'ads' as ChannelView, moduleId: VIEW_MODULES.ads, title: 'Реклама', description: 'Meta, TikTok и Google Ads с CPL и ROMI.', icon: channelIcon('ads') },
+  { id: 'analytics' as ChannelView, moduleId: VIEW_MODULES.analytics, title: 'Сквозная аналитика', description: 'Расходы, лиды, продажи, выручка, ROAS и ROMI.', icon: channelIcon('analytics') },
+  { id: 'cloud' as ChannelView, moduleId: VIEW_MODULES.cloud, title: 'Облако', description: 'Документы, вложения, файлы и резервные копии.', icon: channelIcon('cloud') },
+  { id: 'meetings' as ChannelView, moduleId: VIEW_MODULES.meetings, title: 'Видеовстречи', description: 'Онлайн-консультации и напоминания.', icon: channelIcon('meetings') },
+  { id: 'integrations' as ChannelView, moduleId: VIEW_MODULES.integrations, title: 'Интеграции', description: 'Центр подключений и синхронизаций.', icon: channelIcon('integrations') },
 ] as const;
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
@@ -55,6 +87,7 @@ const isChannelView = (view: View): view is ChannelView => channelIds.has(view a
 
 export default function App() {
   const { currentUser, initials, logout } = useAuth();
+  const entitlements = useEntitlements();
   const [view, setView] = useState<View>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,10 +97,43 @@ export default function App() {
   const [bannerVisible, setBannerVisible] = useState(true);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 
+  const accessReady = !entitlements.loading && !entitlements.error;
+  const dashboardAllowed = entitlements.hasModule(VIEW_MODULES.dashboard);
+  const visiblePrimaryNavigation = accessReady
+    ? primaryNavigation.filter(item => entitlements.hasModule(item.moduleId))
+    : [];
+  const visibleChannelNavigation = accessReady
+    ? channelNavigation.filter(item => entitlements.hasModule(VIEW_MODULES[item.id]))
+    : [];
+  const visibleModuleCards = accessReady
+    ? activeModules.filter(item => entitlements.hasModule(item.moduleId))
+    : [];
+  const viewAllowed = accessReady && entitlements.hasModule(VIEW_MODULES[view]);
+
+  const openView = (candidate: View) => {
+    if (!accessReady || !entitlements.hasModule(VIEW_MODULES[candidate])) return;
+    setView(candidate);
+  };
+
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   useEffect(() => { const close = () => setOpenMenu(null); window.addEventListener('click', close); return () => window.removeEventListener('click', close); }, []);
   useEffect(() => {
+    if (!accessReady || viewAllowed) return;
+    const fallback = visiblePrimaryNavigation[0]?.id ?? visibleChannelNavigation[0]?.id;
+    if (fallback) setView(fallback);
+  }, [accessReady, view, viewAllowed, visiblePrimaryNavigation, visibleChannelNavigation]);
+  useEffect(() => {
+    if (entitlements.loading) {
+      setLoading(true);
+      return;
+    }
+    if (entitlements.error || !dashboardAllowed) {
+      setDashboard(null);
+      setLoading(false);
+      return;
+    }
+
     let active = true;
     setLoading(true);
     void apiFetch<DashboardResponse>('/dashboard')
@@ -75,7 +141,7 @@ export default function App() {
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : 'Нет соединения'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [currentUser.companyId]);
+  }, [currentUser.companyId, entitlements.loading, entitlements.error, dashboardAllowed]);
 
   const metrics = useMemo(() => [
     ['Сумма в работе', money.format(dashboard?.metrics.amountInWork ?? 0), '', 'up'],
@@ -91,12 +157,12 @@ export default function App() {
   return <div className="satu-shell">
     <aside className="sidebar">
       <div className="brand-dot"><span /></div>
-      <nav className="nav-primary">{primaryNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => setView(id)}><Icon size={18} /></button>)}</nav>
-      <nav className="nav-secondary">{channelNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => setView(id)}><Icon size={18} /></button>)}</nav>
-      <button className="settings-button" title="Настройки" onClick={() => setView('integrations')}><Settings size={18} /></button>
+      <nav className="nav-primary">{visiblePrimaryNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => openView(id)}><Icon size={18} /></button>)}</nav>
+      <nav className="nav-secondary">{visibleChannelNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} title={label} onClick={() => openView(id)}><Icon size={18} /></button>)}</nav>
+      {entitlements.hasModule(VIEW_MODULES.integrations) && <button className="settings-button" title="Настройки" onClick={() => openView('integrations')}><Settings size={18} /></button>}
     </aside>
     <main className="main-column">
-      {bannerVisible && <section className="subscription-banner"><span><strong>{currentUser.companyName}</strong></span><div><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
+      {bannerVisible && <section className="subscription-banner"><span><strong>{currentUser.companyName}</strong>{accessReady && <small> · {entitlements.getLimit('users')} пользователей · {entitlements.getLimit('pipelines')} воронок · {entitlements.getLimit('adAccounts')} рекламных кабинетов</small>}</span><div><button className="close-banner" onClick={() => setBannerVisible(false)}>×</button></div></section>}
       <header className="topbar">
         <div className="clock-block"><strong>{time}</strong><span>{date}</span></div>
         <label className="search-box"><Search size={16} /><input placeholder="Поиск или вопрос .J.A.R.V.I.S..." /><span className="ai-badge">AI</span></label>
@@ -107,18 +173,20 @@ export default function App() {
             <button className="avatar-button" onClick={toggleMenu('profile')} aria-label={currentUser.fullName}>
               {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt={currentUser.fullName} referrerPolicy="no-referrer" /> : initials}
             </button>
-            {openMenu === 'profile' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head"><strong>{currentUser.fullName}</strong><span>{currentUser.role.toUpperCase()}</span><small>{currentUser.email}</small><small>{currentUser.companyName}</small></div><button onClick={() => setView('integrations')}>Настройки</button><button onClick={() => void logout()}>Выйти</button></div>}
+            {openMenu === 'profile' && <div className="dropdown-menu" onClick={event => event.stopPropagation()}><div className="dropdown-head"><strong>{currentUser.fullName}</strong><span>{currentUser.role.toUpperCase()}</span><small>{currentUser.email}</small><small>{currentUser.companyName}</small></div>{entitlements.hasModule(VIEW_MODULES.integrations) && <button onClick={() => openView('integrations')}>Настройки</button>}<button onClick={() => void logout()}>Выйти</button></div>}
           </div>
         </div>
       </header>
       <section className="content">
-        {view === 'dashboard' && <AnalyticsDashboard userName={currentUser.firstName} metrics={dashboard?.metrics ?? { amountInWork: 0, newDeals: 0, openTasks: 0, unansweredConversations: 0 }} stages={dashboard?.stages ?? []} loading={loading} error={error} onOpenDeals={() => setView('deals')} onOpenTasks={() => setView('tasks')} onOpenInbox={() => setView('whatsapp')} onOpenAds={() => setView('ads')} />}
-        {view === 'deals' && <KanbanBoard />}
-        {view === 'tasks' && <TasksView />}
-        {view === 'projects' && <ProjectsView />}
-        {view === 'team' && <TeamView />}
-        {view === 'accounting' && <AccountingView />}
-        {isChannelView(view) && <ChannelsView view={view} />}
+        {entitlements.loading && <div className="empty-state">Загрузка доступных модулей…</div>}
+        {entitlements.error && <div className="empty-state"><strong>Не удалось загрузить права компании</strong><span>{entitlements.error}</span><button onClick={() => void entitlements.refresh()}>Повторить</button></div>}
+        {viewAllowed && view === 'dashboard' && <AnalyticsDashboard userName={currentUser.firstName} metrics={dashboard?.metrics ?? { amountInWork: 0, newDeals: 0, openTasks: 0, unansweredConversations: 0 }} stages={dashboard?.stages ?? []} loading={loading} error={error} onOpenDeals={() => openView('deals')} onOpenTasks={() => openView('tasks')} onOpenInbox={() => openView('whatsapp')} onOpenAds={() => openView('ads')} />}
+        {viewAllowed && view === 'deals' && <KanbanBoard />}
+        {viewAllowed && view === 'tasks' && <TasksView />}
+        {viewAllowed && view === 'projects' && <ProjectsView />}
+        {viewAllowed && view === 'team' && <TeamView />}
+        {viewAllowed && view === 'accounting' && <AccountingView />}
+        {viewAllowed && isChannelView(view) && <ChannelsView view={view} />}
       </section>
     </main>
   </div>;

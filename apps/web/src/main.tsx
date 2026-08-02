@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthGate } from './modules/auth/AuthGate';
+import { EntitlementsProvider } from './modules/platform/EntitlementsContext';
 import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
 import './styles.css';
 import './modules.css';
@@ -44,7 +45,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <ActionFeedbackProvider>
           <AuthGate>
-            <App />
+            <EntitlementsProvider>
+              <App />
+            </EntitlementsProvider>
           </AuthGate>
         </ActionFeedbackProvider>
       </BrowserRouter>
