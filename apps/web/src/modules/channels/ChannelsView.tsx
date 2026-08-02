@@ -17,7 +17,7 @@ import { EndToEndAnalytics } from '../analytics/EndToEndAnalytics';
 import { EmailWorkspace } from '../inbox/EmailWorkspace';
 import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
-import { IntegrationsWorkspace } from '../integrations/IntegrationsWorkspace';
+import { IntegrationsWorkspaceWithMeta } from '../integrations/IntegrationsWorkspaceWithMeta';
 
 export type ChannelView =
   | 'whatsapp'
@@ -129,7 +129,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'email') return <EmailWorkspace />;
   if (view === 'ads') return <AdsWorkspace />;
   if (view === 'analytics') return <EndToEndAnalytics />;
-  if (view === 'integrations') return <IntegrationsWorkspace />;
+  if (view === 'integrations') return <IntegrationsWorkspaceWithMeta />;
 
   const definition = definitions[view];
   const Icon = definition.icon;
