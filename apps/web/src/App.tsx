@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from './lib/api-client';
 import { useAuth } from './modules/auth/AuthContext';
+import { AnalyticsDashboard } from './modules/dashboard/AnalyticsDashboard';
 import { KanbanBoard } from './modules/deals/components/KanbanBoard';
 import {
   useAccountingQuery,
@@ -111,7 +112,7 @@ export default function App() {
         </div>
       </header>
       <section className="content">
-        {view === 'dashboard' && <Dashboard userName={currentUser.firstName} metrics={metrics} dashboard={dashboard} loading={loading} error={error} onOpenModule={setView} />}
+        {view === 'dashboard' && <AnalyticsDashboard userName={currentUser.firstName} metrics={dashboard?.metrics ?? { amountInWork: 0, newDeals: 0, openTasks: 0, unansweredConversations: 0 }} stages={dashboard?.stages ?? []} loading={loading} error={error} onOpenDeals={() => setView('deals')} onOpenTasks={() => setView('tasks')} onOpenInbox={() => setView('whatsapp')} onOpenAds={() => setView('ads')} />}
         {view === 'deals' && <KanbanBoard />}
         {view === 'tasks' && <TasksView />}
         {view === 'projects' && <ProjectsView />}
