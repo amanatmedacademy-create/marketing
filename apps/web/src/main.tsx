@@ -22,6 +22,7 @@ import './modules/integrations/integrations-workspace.css';
 import './modules/auth/auth.css';
 import './modules/auth/user-profile.css';
 import './ui-system.css';
+import './modules/deals/kanban-fix.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
