@@ -75,20 +75,21 @@ export function KanbanBoard() {
   }
 
   const selectedStage = selectedDeal ? pipeline?.stages.find((stage) => stage.id === selectedDeal.stageId) : undefined;
+  const createError = createDeal.error instanceof Error ? createDeal.error.message : createDeal.isError ? 'Не удалось создать лид.' : '';
 
   return <section className="kanban-module">
     <header className="kanban-toolbar kanban-toolbar-reference">
       <select value={pipelineId} onChange={(event) => { setPipelineId(event.target.value); setSelectedDeal(null); }}>{pipelines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <label className="kanban-search"><Search size={15} /><input placeholder="Поиск" /></label>
       <button className="kanban-filter"><Filter size={15} /> Фильтр</button>
-      <button className="kanban-add" onClick={() => setShowCreateLead(true)}><Plus size={16} /> Добавить</button>
+      <button className="kanban-add" onClick={() => { createDeal.reset(); setShowCreateLead(true); }}><Plus size={16} /> Добавить</button>
       <span className="kanban-total">Всего лидов: {dealsData?.total ?? 0}</span>
       <button className="kanban-more" title="Управление воронками" onClick={() => setShowPipelineManager(true)}><MoreVertical size={18} /></button>
     </header>
 
     {dealsLoading ? <div className="kanban-message">Загрузка сделок…</div> : <DndContext sensors={sensors} onDragEnd={handleDragEnd}><div className="kanban-board">{(pipeline?.stages ?? []).sort((a, b) => a.order - b.order).map((stage) => <StageColumn key={stage.id} stage={stage} deals={dealsByStage.get(stage.id) ?? []} isCreating={createDeal.isPending} onCreateDeal={(title, stageId) => createDeal.mutate({ title, stageId })} onOpenDeal={setSelectedDeal} />)}</div></DndContext>}
 
-    {showCreateLead && pipeline && <CreateLeadModal pipeline={pipeline} isSubmitting={createDeal.isPending} onClose={() => setShowCreateLead(false)} onSubmit={(input) => createDeal.mutate(input, { onSuccess: () => setShowCreateLead(false) })} />}
+    {showCreateLead && pipeline && <CreateLeadModal pipeline={pipeline} isSubmitting={createDeal.isPending} error={createError} onClose={() => { if (!createDeal.isPending) { createDeal.reset(); setShowCreateLead(false); } }} onSubmit={(input) => createDeal.mutate(input, { onSuccess: () => { createDeal.reset(); setShowCreateLead(false); } })} />}
     {selectedDeal && pipeline && selectedStage && <DealDetailsPanel deal={selectedDeal} pipeline={pipeline} stage={selectedStage} onClose={() => setSelectedDeal(null)} />}
     {showPipelineManager && <PipelineManagerModal pipelines={pipelines} currentPipelineId={pipelineId} onClose={() => setShowPipelineManager(false)} onSelect={(id) => { setPipelineId(id); setSelectedDeal(null); }} />}
   </section>;
