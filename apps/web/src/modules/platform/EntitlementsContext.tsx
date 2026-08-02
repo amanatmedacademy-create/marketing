@@ -1,28 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../auth/AuthContext';
+import {
+  normalizeEntitlements,
+  type NormalizedEntitlements,
+  type RawEntitlementsResponse,
+} from './entitlements-normalizer';
 
-type Product = { id: string; name: string; description: string | null; metadata: Record<string, unknown> };
-type Module = {
-  id: string;
-  name: string;
-  description: string | null;
-  category: string;
-  route: string | null;
-  navigationLabel: string | null;
-  navigationOrder: number;
-  metadata: Record<string, unknown>;
-};
-
-type EntitlementsResponse = {
-  companyId: string;
-  products: Product[];
-  modules: Module[];
-  capabilities: string[];
-  limits: Record<string, number>;
-};
-
-type EntitlementsContextValue = EntitlementsResponse & {
+type EntitlementsContextValue = NormalizedEntitlements & {
   loading: boolean;
   error: string | null;
   hasProduct: (id: string) => boolean;
@@ -32,7 +17,7 @@ type EntitlementsContextValue = EntitlementsResponse & {
   refresh: () => Promise<void>;
 };
 
-const EMPTY: EntitlementsResponse = {
+const EMPTY: NormalizedEntitlements = {
   companyId: '',
   products: [],
   modules: [],
@@ -44,7 +29,7 @@ const EntitlementsContext = createContext<EntitlementsContextValue | null>(null)
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth();
-  const [data, setData] = useState<EntitlementsResponse>(EMPTY);
+  const [data, setData] = useState<NormalizedEntitlements>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,8 +37,10 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiFetch<EntitlementsResponse>('/platform/entitlements');
-      setData(response);
+      const response = await apiFetch<RawEntitlementsResponse>('/platform/entitlements');
+      const normalized = normalizeEntitlements(response);
+      if (!normalized.companyId) throw new Error('Некорректный ответ Platform Core');
+      setData(normalized);
     } catch (reason) {
       setData(EMPTY);
       setError(reason instanceof Error ? reason.message : 'Не удалось загрузить права компании');
