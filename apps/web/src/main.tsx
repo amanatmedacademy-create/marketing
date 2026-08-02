@@ -17,6 +17,7 @@ import './modules/deals/pipeline-manager.css';
 import './modules/ads/ads-workspace.css';
 import './modules/auth/auth.css';
 import './modules/auth/user-profile.css';
+import './ui-system.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
