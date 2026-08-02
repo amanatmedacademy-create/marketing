@@ -21,6 +21,31 @@ type DealInsertRow = {
 
 type CreateDealInput = { title: string; stageId: string; phone?: string; email?: string; source?: string; amount?: number };
 
+function mapDealRow(row: DealInsertRow): Deal {
+  return {
+    id: row.id,
+    pipelineId: row.pipeline_id,
+    stageId: row.stage_id,
+    title: row.title,
+    oneTimeAmount: row.amount == null ? null : String(row.amount),
+    recurringAmount: null,
+    order: Number(row.position ?? 0),
+    phone: row.phone,
+    email: row.email,
+    source: row.source,
+    createdAt: row.created_at,
+    contact: row.phone || row.email ? {
+      id: row.id,
+      firstName: row.title,
+      lastName: null,
+      phone: row.phone,
+      email: row.email,
+    } : null,
+    manager: null,
+    tags: [],
+  };
+}
+
 async function loadPipelinesFromSupabase(): Promise<Pipeline[]> {
   const [{ data: pipelines, error: pipelinesError }, { data: stages, error: stagesError }] = await Promise.all([
     supabase.from('crm_pipelines').select('id,name,is_default,position').order('position', { ascending: true }).order('created_at', { ascending: true }),
@@ -52,6 +77,24 @@ async function loadPipelines(): Promise<Pipeline[]> {
   catch { return loadPipelinesFromSupabase(); }
 }
 
+async function loadDealsFromSupabase(pipelineId: string): Promise<ListDealsResponse> {
+  const { data, error } = await supabase
+    .from('crm_deals')
+    .select('id,pipeline_id,stage_id,title,phone,email,source,amount,position,created_at')
+    .eq('pipeline_id', pipelineId)
+    .is('deleted_at', null)
+    .order('position', { ascending: true })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const items = ((data ?? []) as DealInsertRow[]).map(mapDealRow);
+  return { items, total: items.length, page: 1, pageSize: 100 };
+}
+
+async function loadDeals(pipelineId: string): Promise<ListDealsResponse> {
+  try { return await apiFetch<ListDealsResponse>(`/deals?pipelineId=${pipelineId}&pageSize=100`); }
+  catch { return loadDealsFromSupabase(pipelineId); }
+}
+
 async function createDealWithSupabase(input: CreateDealInput, pipelineId: string): Promise<Deal> {
   const [{ data: contextData, error: contextError }, { data: stageData, error: stageError }] = await Promise.all([
     supabase.rpc('resolve_company_context', { requested_company_id: null }),
@@ -78,23 +121,7 @@ async function createDealWithSupabase(input: CreateDealInput, pipelineId: string
     position: Date.now(),
   }).select('id,pipeline_id,stage_id,title,phone,email,source,amount,position,created_at').single();
   if (error) throw error;
-  const row = data as DealInsertRow;
-  return {
-    id: row.id,
-    pipelineId: row.pipeline_id,
-    stageId: row.stage_id,
-    title: row.title,
-    oneTimeAmount: row.amount == null ? null : String(row.amount),
-    recurringAmount: null,
-    order: row.position,
-    phone: row.phone,
-    email: row.email,
-    source: row.source,
-    createdAt: row.created_at,
-    contact: null,
-    manager: null,
-    tags: [],
-  };
+  return mapDealRow(data as DealInsertRow);
 }
 
 export function usePipelinesQuery() {
@@ -123,7 +150,7 @@ export function useBootstrapPipelineMutation() {
 }
 
 export function useDealsQuery(pipelineId: string | undefined) {
-  return useQuery({ queryKey: ['deals', pipelineId], queryFn: () => apiFetch<ListDealsResponse>(`/deals?pipelineId=${pipelineId}&pageSize=100`), enabled: Boolean(pipelineId) });
+  return useQuery({ queryKey: ['deals', pipelineId], queryFn: () => loadDeals(pipelineId!), enabled: Boolean(pipelineId) });
 }
 
 export function useDealQuery(dealId: string | undefined) {
@@ -174,7 +201,7 @@ export function useCreateDealMutation(pipelineId: string | undefined) {
       }
     },
     onSuccess: (deal) => {
-      queryClient.setQueryData<ListDealsResponse>(['deals', pipelineId], (current) => current ? { ...current, total: current.total + 1, items: [...current.items, deal] } : current);
+      queryClient.setQueryData<ListDealsResponse>(['deals', pipelineId], (current) => current ? { ...current, total: current.total + 1, items: [...current.items, deal] } : { items: [deal], total: 1, page: 1, pageSize: 100 });
       queryClient.invalidateQueries({ queryKey: ['deals', pipelineId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
