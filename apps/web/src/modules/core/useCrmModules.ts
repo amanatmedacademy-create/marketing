@@ -45,7 +45,7 @@ export type Project = {
   description: string | null;
   priority?: TaskPriority;
   status?: string;
-  dueAt?: string | null;
+  due_at?: string | null;
   items: Array<{ id: string; title: string; status: 'todo' | 'in_progress' | 'done'; position: number }>;
 };
 
@@ -77,7 +77,17 @@ export function useCreateTaskMutation() {
   const queryClient = useQueryClient();
   const feedback = useActionFeedback();
   return useMutation({
-    mutationFn: (input: CreateTaskInput) => apiFetch<TaskItem>('/tasks', { method: 'POST', body: input }),
+    mutationFn: (input: CreateTaskInput) => apiFetch<TaskItem>('/tasks', {
+      method: 'POST',
+      body: {
+        title: input.title,
+        description: input.description,
+        priority: input.priority,
+        due_at: input.dueAt || null,
+        project_id: input.projectId || null,
+        assignee_id: input.assigneeId || null,
+      },
+    }),
     onSuccess: (task) => {
       queryClient.setQueryData<TaskItem[]>(['tasks'], current => [task, ...(current ?? [])]);
       feedback.success('Задача создана');
@@ -90,7 +100,15 @@ export function useCreateProjectMutation() {
   const queryClient = useQueryClient();
   const feedback = useActionFeedback();
   return useMutation({
-    mutationFn: (input: CreateProjectInput) => apiFetch<Project>('/projects', { method: 'POST', body: input }),
+    mutationFn: (input: CreateProjectInput) => apiFetch<Project>('/projects', {
+      method: 'POST',
+      body: {
+        name: input.name,
+        description: input.description,
+        priority: input.priority,
+        due_at: input.dueAt || null,
+      },
+    }),
     onSuccess: (project) => {
       queryClient.setQueryData<Project[]>(['projects'], current => [project, ...(current ?? [])]);
       feedback.success('Проект создан');
