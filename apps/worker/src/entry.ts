@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
 import { requireBearerSession } from './bearer-auth';
+import { handleCrmPlatformInternalRequest, authorizeCrmPermission, type CrmPlatformEnv } from './crm-kanban-platform';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
 import { handleMetaAdsRequest } from './meta-ads';
@@ -8,14 +9,14 @@ import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-aut
 import { handlePlatformCoreRequest } from './platform-core';
 import { handleTeamRequest } from './team';
 
-interface Env extends AuthEnv, MetaEnv {
+interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
   ASSETS: Fetcher;
   APP_ENV: string;
 }
 
-const RELEASE = 'platform-core-entitlements-v1';
+const RELEASE = 'crm-kanban-platform-runtime-v1';
 
-const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
+const apiError = (status: number, code: string, message: string, details?: unknown) => new Response(JSON.stringify({ error: { code, message, details } }), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-imds-release': RELEASE },
 });
@@ -41,16 +42,35 @@ function canWrite(session: AuthSession, pathname: string) {
     || /^\/api\/deals\/[^/]+\/move$/.test(pathname);
 }
 
+function requiredCrmPermission(request: Request, pathname: string): string | null {
+  if (request.method === 'GET' && pathname === '/api/pipelines') return 'crm.pipelines.read';
+  if (request.method === 'GET' && pathname === '/api/deals') return 'crm.deals.read';
+  if (request.method === 'POST' && pathname === '/api/deals') return 'crm.deals.create';
+  if (request.method === 'PATCH' && /^\/api\/deals\/[^/]+\/move$/.test(pathname)) return 'crm.deals.move';
+  if (request.method === 'PATCH' && /^\/api\/deals\/[^/]+$/.test(pathname)) return 'crm.deals.update';
+  if (request.method === 'GET' && /^\/api\/deals\/[^/]+$/.test(pathname)) return 'crm.deals.read';
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    const internalResponse = await handleCrmPlatformInternalRequest(request, env);
+    if (internalResponse) return internalResponse;
 
     if (url.pathname === '/health') {
       return json({ status: 'ok', service: 'imds-crm-edge', environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', timestamp: new Date().toISOString() });
     }
 
     if (request.method === 'GET' && url.pathname === '/api/config') {
-      return json({ environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', supabaseConfigured: Boolean(env.SUPABASE_URL) });
+      return json({
+        environment: env.APP_ENV,
+        release: RELEASE,
+        auth: 'supabase-bearer',
+        supabaseConfigured: Boolean(env.SUPABASE_URL),
+        platformConfigured: Boolean(env.PLATFORM_API_URL && env.PLATFORM_SERVICE_TOKEN),
+      });
     }
 
     if (request.method === 'GET' && url.pathname === '/api/integrations/meta/config') {
@@ -74,6 +94,19 @@ export default {
       if (!session) return apiError(401, 'UNAUTHORIZED', 'Не авторизован');
       if (!hasAllowedOrigin(request)) return apiError(403, 'INVALID_ORIGIN', 'Недопустимый источник запроса');
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
+
+      const permission = requiredCrmPermission(request, url.pathname);
+      if (permission) {
+        const decision = await authorizeCrmPermission(env, session.companyId, permission);
+        if (!decision.allowed) {
+          const status = decision.reason === 'MODULE_READ_ONLY' ? 409 : 403;
+          return apiError(status, decision.reason, 'Операция CRM Kanban запрещена платформой', {
+            installationId: decision.installationId,
+            permission,
+            limits: decision.effectiveLimits,
+          });
+        }
+      }
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
       const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
