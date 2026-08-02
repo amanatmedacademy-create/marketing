@@ -1,0 +1,126 @@
+/* Final UI system layer. Loaded after legacy module styles on purpose. */
+:root {
+  --ui-radius-xs: 8px;
+  --ui-radius-sm: 12px;
+  --ui-radius-md: 16px;
+  --ui-radius-lg: 22px;
+  --ui-shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.05);
+  --ui-shadow-md: 0 16px 44px rgba(15,23,42,.10);
+  --ui-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+button, input, select, textarea { transition: border-color .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 0; box-shadow: var(--ui-ring); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { cursor: not-allowed; opacity: .55; }
+
+/* Shared page language */
+.view-page, .channel-page, .kanban-module { animation: ui-enter .2s ease-out; }
+@keyframes ui-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.view-title, .channel-heading { margin-bottom: 22px; }
+.view-title h1, .channel-heading h1 { font-size: clamp(22px, 2vw, 28px); letter-spacing: -.035em; font-weight: 760; }
+.view-title span, .channel-heading p { color: var(--muted); }
+
+/* Buttons and fields */
+.channel-primary-button, .kanban-add, .connection-action.connected, .pipeline-onboarding button {
+  min-height: 40px; border: 0; border-radius: var(--ui-radius-sm); padding: 0 15px;
+  background: var(--accent); color: #fff; font-weight: 720; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.channel-primary-button:hover, .kanban-add:hover, .pipeline-onboarding button:hover { filter: brightness(.97); transform: translateY(-1px); }
+.channel-secondary-button, .kanban-filter, .kanban-more, .connection-action {
+  min-height: 40px; border: 1px solid var(--border); border-radius: var(--ui-radius-sm); background: var(--surface); color: var(--text); font-weight: 650;
+}
+.channel-secondary-button:hover, .kanban-filter:hover, .kanban-more:hover, .connection-action:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); background: var(--accent-soft); }
+
+/* KPI and standard panels */
+.kpi-card, .panel, .channel-panel, .table-wrap {
+  border-color: color-mix(in srgb, var(--border) 88%, transparent); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow-sm);
+}
+.kpi-card { min-height: 126px; padding: 19px; position: relative; overflow: hidden; }
+.kpi-card::after { content: ''; position: absolute; width: 78px; height: 78px; border-radius: 50%; right: -30px; top: -34px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.kpi-card > span { font-size: 12px; font-weight: 620; }
+.kpi-card > strong { margin-top: 12px; font-size: 25px; letter-spacing: -.035em; }
+
+/* Kanban */
+.kanban-module { margin: -4px -8px 0; }
+.kanban-toolbar-reference {
+  position: sticky; top: -1px; z-index: 8; min-height: 64px; margin: 0 0 18px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--ui-radius-md); background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--ui-shadow-sm); backdrop-filter: blur(16px);
+}
+.kanban-toolbar select { min-width: 190px; height: 40px; margin: 0; padding: 0 36px 0 12px; border-radius: var(--ui-radius-sm); font-weight: 680; }
+.kanban-search { min-width: 220px; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--ui-radius-sm); background: var(--canvas); }
+.kanban-search:focus-within { border-color: var(--accent); box-shadow: var(--ui-ring); }
+.kanban-search input { height: 100%; font-size: 13px; }
+.kanban-total { margin-left: auto; padding: 7px 11px; border-radius: 999px; background: var(--canvas); color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.kanban-more { width: 40px; padding: 0; }
+.kanban-board { gap: 14px; padding: 2px 3px 20px; scroll-snap-type: x proximity; }
+.stage-column {
+  width: 292px; min-width: 292px; max-height: calc(100vh - 190px); border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: var(--ui-radius-md); background: color-mix(in srgb, var(--canvas) 72%, var(--surface)); scroll-snap-align: start;
+}
+.stage-column-header { padding: 14px 14px 7px; }
+.stage-column-title { gap: 9px; }
+.stage-column-title i { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 10%, transparent); }
+.stage-column-title h3 { font-size: 13px; font-weight: 760; letter-spacing: -.01em; }
+.stage-column-title span { min-width: 25px; padding: 3px 7px; text-align: center; font-weight: 720; }
+.stage-column-total { padding: 1px 14px 11px; font-size: 11px; }
+.stage-column-cards { padding: 0 9px 9px; gap: 9px; scrollbar-width: thin; }
+.deal-card {
+  padding: 13px; border-radius: 13px; border-color: color-mix(in srgb, var(--border) 88%, transparent); box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 7px 20px rgba(15,23,42,.045);
+}
+.deal-card:hover { border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); box-shadow: 0 10px 28px rgba(15,23,42,.09); transform: translateY(-1px); }
+.deal-card h4 { font-size: 13px; font-weight: 720; }
+.deal-card p { margin-top: 6px; font-size: 11px; }
+.deal-card-footer { margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); }
+.deal-card-avatar { width: 24px; height: 24px; border-radius: 8px; }
+.quick-add { min-height: 36px; border-radius: 11px; font-weight: 650; }
+.quick-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.stage-column.is-over { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: var(--ui-ring); }
+.pipeline-onboarding { max-width: 560px; margin: 8vh auto; padding: 42px; border: 1px solid var(--border); border-radius: var(--ui-radius-lg); background: var(--surface); text-align: center; box-shadow: var(--ui-shadow-md); }
+.pipeline-onboarding > span { width: 60px; height: 60px; margin: 0 auto 18px; display: grid; place-items: center; border-radius: 18px; background: var(--accent-soft); color: var(--accent); }
+
+/* Integrations and channel modules */
+.channel-title-icon { width: 48px; height: 48px; border-radius: 15px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent); }
+.channel-panel { overflow: clip; }
+.channel-panel-head { padding: 18px 20px; background: color-mix(in srgb, var(--canvas) 45%, var(--surface)); }
+.channel-panel-head h2 { font-size: 16px; letter-spacing: -.015em; }
+.connection-row { min-height: 76px; padding: 15px 20px; }
+.connection-row:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.connection-logo { width: 44px; height: 44px; border-radius: 14px; }
+.connection-logo.connected { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 18%, transparent); }
+.connection-copy strong { font-size: 13px; font-weight: 720; }
+.connection-copy span { margin-top: 5px; line-height: 1.4; }
+.connection-chip { padding: 5px 9px; }
+
+/* Tasks, projects and tables */
+.task-row { min-height: 54px; padding: 12px 15px; border-radius: var(--ui-radius-sm); box-shadow: 0 1px 1px rgba(15,23,42,.02); }
+.task-row:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 25%, var(--surface)); }
+.project-board { gap: 16px; }
+.project-board section { padding: 14px; border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius: var(--ui-radius-md); }
+.project-board article { min-height: 48px; padding: 13px; border-radius: var(--ui-radius-sm); }
+.table-wrap { overflow: hidden; }
+.table-wrap table { border-collapse: separate; border-spacing: 0; }
+th { height: 44px; background: color-mix(in srgb, var(--canvas) 55%, var(--surface)); font-weight: 720; }
+td { height: 54px; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 30%, transparent); }
+
+/* Modal/workspace compatibility */
+.deal-details-panel, .lead-modal, .pipeline-manager-modal, .inbox-workspace, .ads-workspace { font-family: inherit; }
+.deal-details-panel, .lead-modal-content, .pipeline-manager-content { box-shadow: var(--ui-shadow-md); }
+
+@media (max-width: 980px) {
+  .kanban-toolbar-reference { position: static; flex-wrap: wrap; }
+  .kanban-search { flex: 1; min-width: 180px; }
+  .kanban-total { order: 10; width: 100%; margin-left: 0; text-align: center; }
+  .stage-column { width: 320px; min-width: 320px; }
+}
+@media (max-width: 640px) {
+  .kanban-module { margin: 0; }
+  .kanban-toolbar-reference { padding: 10px; gap: 8px; }
+  .kanban-toolbar select, .kanban-search { width: 100%; min-width: 0; }
+  .kanban-filter, .kanban-add { flex: 1; }
+  .stage-column { width: 86vw; min-width: 86vw; max-height: calc(100vh - 250px); }
+  .connection-row { padding: 14px; }
+  .pipeline-onboarding { margin: 5vh 0; padding: 28px 20px; }
+}
