@@ -24,6 +24,7 @@ import './modules/auth/auth.css';
 import './modules/auth/user-profile.css';
 import './ui-system.css';
 import './modules/deals/kanban-fix.css';
+import './modules/analytics/end-to-end-analytics.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
