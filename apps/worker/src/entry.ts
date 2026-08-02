@@ -5,6 +5,7 @@ import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
 import { handleMetaAdsRequest } from './meta-ads';
 import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
+import { handlePlatformCoreRequest } from './platform-core';
 import { handleTeamRequest } from './team';
 
 interface Env extends AuthEnv, MetaEnv {
@@ -12,7 +13,7 @@ interface Env extends AuthEnv, MetaEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'meta-ads-data-pipeline-v1';
+const RELEASE = 'platform-core-entitlements-v1';
 
 const apiError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { code, message } }), {
   status,
@@ -75,7 +76,8 @@ export default {
       if (isMutation(request.method) && !canWrite(session, url.pathname)) return apiError(403, 'FORBIDDEN', 'Недостаточно прав для выполнения операции');
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
-      const specializedResponse = await handleMetaAdsRequest(request, tenantEnv, session)
+      const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
+        ?? await handleMetaAdsRequest(request, tenantEnv, session)
         ?? await handleMetaRequest(request, tenantEnv, session)
         ?? await handleDealDetails(request, tenantEnv)
         ?? await handleTeamRequest(request, tenantEnv);
