@@ -1,0 +1,6 @@
+name = "imds-marketing-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[vars]
+APP_ENV = "development"
