@@ -15,6 +15,7 @@ import { AdsWorkspace } from '../ads/AdsWorkspace';
 import { EmailWorkspace } from '../inbox/EmailWorkspace';
 import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
+import { IntegrationsWorkspace } from '../integrations/IntegrationsWorkspace';
 
 export type ChannelView =
   | 'whatsapp'
@@ -96,13 +97,8 @@ const definitions: Record<ChannelView, ChannelDefinition> = {
     title: 'Интеграции',
     description: 'Единый центр подключения внешних систем и контроля состояния синхронизации.',
     icon: Cable,
-    metrics: [['Доступно', '12'], ['Подключено', '0'], ['Требуют внимания', '0'], ['События сегодня', '0']],
-    connections: [
-      { name: 'Meta', detail: 'WhatsApp, Instagram и Ads', connected: false },
-      { name: 'Google Workspace', detail: 'Gmail, Drive, Calendar и Meet', connected: false },
-      { name: 'TikTok Ads', detail: 'Кампании, расходы и лиды', connected: false },
-      { name: 'Телефония', detail: 'Звонки, записи и пропущенные', connected: false },
-    ],
+    metrics: [],
+    connections: [],
   },
 };
 
@@ -121,6 +117,7 @@ export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'instagram') return <InstagramWorkspace />;
   if (view === 'email') return <EmailWorkspace />;
   if (view === 'ads') return <AdsWorkspace />;
+  if (view === 'integrations') return <IntegrationsWorkspace />;
 
   const definition = definitions[view];
   const Icon = definition.icon;
