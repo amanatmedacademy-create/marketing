@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/api-client';
+import { useActionFeedback } from '../system/ActionFeedback';
 
 export type TaskItem = {
   id: string;
@@ -48,9 +49,23 @@ export const useAccountingQuery = () => useQuery({ queryKey: ['accounting'], que
 
 export function useToggleTaskMutation() {
   const queryClient = useQueryClient();
+  const feedback = useActionFeedback();
   return useMutation({
     mutationFn: ({ id, done }: { id: string; done: boolean }) =>
       apiFetch<TaskItem>(`/tasks/${id}`, { method: 'PATCH', body: { status: done ? 'done' : 'todo' } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+    onMutate: async ({ id, done }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      const previous = queryClient.getQueryData<TaskItem[]>(['tasks']);
+      queryClient.setQueryData<TaskItem[]>(['tasks'], current => current?.map(task => task.id === id ? { ...task, status: done ? 'done' : 'todo' } : task) ?? []);
+      return { previous, done };
+    },
+    onError: (reason, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(['tasks'], context.previous);
+      feedback.error('Задача не обновлена', reason instanceof Error ? reason.message : 'Backend отклонил изменение статуса.');
+    },
+    onSuccess: (_task, _variables, context) => {
+      feedback.success(context?.done ? 'Задача выполнена' : 'Задача возвращена в работу');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
 }
