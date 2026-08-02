@@ -21,10 +21,12 @@ type CompanyContext = {
   member_role: string;
 };
 
-function assertEnv(env: AuthEnv): asserts env is AuthEnv & { SUPABASE_SERVICE_ROLE_KEY: string } {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+function getPublicKey(env: AuthEnv): string {
+  const key = env.SUPABASE_PUBLISHABLE_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!env.SUPABASE_URL || !key) {
     throw new Error('Supabase environment is not configured');
   }
+  return key;
 }
 
 async function resolveCompanyContext(
@@ -32,11 +34,11 @@ async function resolveCompanyContext(
   accessToken: string,
   requestedCompanyId: string | null,
 ): Promise<CompanyContext | null> {
-  assertEnv(env);
+  const apiKey = getPublicKey(env);
   const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/resolve_company_context`, {
     method: 'POST',
     headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      apikey: apiKey,
       authorization: `Bearer ${accessToken}`,
       'content-type': 'application/json',
     },
@@ -48,14 +50,14 @@ async function resolveCompanyContext(
   return rows[0] ?? null;
 }
 
-async function loadProfile(env: AuthEnv, marketingUserId: string): Promise<Profile | null> {
-  assertEnv(env);
+async function loadProfile(env: AuthEnv, accessToken: string, marketingUserId: string): Promise<Profile | null> {
+  const apiKey = getPublicKey(env);
   const response = await fetch(
     `${env.SUPABASE_URL}/rest/v1/marketing_users?select=id,name,email,role,status&id=eq.${encodeURIComponent(marketingUserId)}&status=eq.active&limit=1`,
     {
       headers: {
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-        authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: apiKey,
+        authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
       },
     },
@@ -73,10 +75,10 @@ export async function requireBearerSession(request: Request, env: AuthEnv): Prom
   const accessToken = authorization.slice(7).trim();
   if (!accessToken) return null;
 
-  assertEnv(env);
+  const apiKey = getPublicKey(env);
   const userResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      apikey: apiKey,
       authorization: `Bearer ${accessToken}`,
     },
   });
@@ -87,7 +89,7 @@ export async function requireBearerSession(request: Request, env: AuthEnv): Prom
   const context = await resolveCompanyContext(env, accessToken, requestedCompanyId);
   if (!context) return null;
 
-  const profile = await loadProfile(env, context.marketing_user_id);
+  const profile = await loadProfile(env, accessToken, context.marketing_user_id);
   if (!profile || profile.id !== context.marketing_user_id) return null;
 
   return {
