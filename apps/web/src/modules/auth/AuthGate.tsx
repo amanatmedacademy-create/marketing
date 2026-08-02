@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Building2, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
@@ -71,45 +71,75 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   const [pendingSession, setPendingSession] = useState<Session | null>(null);
   const [error, setError] = useState('');
+  const appliedTokenRef = useRef<string | null>(null);
+  const applyPromiseRef = useRef<Promise<void> | null>(null);
+  const logoutPromiseRef = useRef<Promise<void> | null>(null);
+  const oauthStartingRef = useRef(false);
 
   async function applySession(nextSession: Session | null) {
     setSession(nextSession);
-    setCurrentUser(null);
-    if (!nextSession) return;
-    const storedCompany = window.sessionStorage.getItem('imds_oauth_company') ?? '';
-    try {
-      const profile = await syncCurrentProfile(storedCompany || undefined);
-      window.sessionStorage.removeItem('imds_oauth_company');
-      setCurrentUser(profile);
-      setPendingSession(null);
-      setError('');
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Не удалось загрузить профиль пользователя.';
-      if (message.toLowerCase().includes('company_required')) {
-        setPendingSession(nextSession);
-        setMode('register');
-        setError('Укажите название компании для завершения регистрации.');
-      } else {
-        setError(readableAuthError(message));
-      }
+    if (!nextSession) {
+      appliedTokenRef.current = null;
+      applyPromiseRef.current = null;
+      setCurrentUser(null);
+      return;
     }
+
+    if (appliedTokenRef.current === nextSession.access_token && currentUser) return;
+    if (applyPromiseRef.current) return applyPromiseRef.current;
+
+    const run = async () => {
+      const storedCompany = window.sessionStorage.getItem('imds_oauth_company') ?? '';
+      try {
+        const profile = await syncCurrentProfile(storedCompany || undefined);
+        appliedTokenRef.current = nextSession.access_token;
+        window.sessionStorage.removeItem('imds_oauth_company');
+        setCurrentUser(profile);
+        setPendingSession(null);
+        setError('');
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'Не удалось загрузить профиль пользователя.';
+        if (message.toLowerCase().includes('company_required')) {
+          setPendingSession(nextSession);
+          setMode('register');
+          setError('Укажите название компании для завершения регистрации.');
+        } else {
+          setError(readableAuthError(message));
+        }
+      } finally {
+        applyPromiseRef.current = null;
+      }
+    };
+
+    applyPromiseRef.current = run();
+    return applyPromiseRef.current;
   }
 
   async function logout() {
-    setSubmitting(true);
-    try {
-      await supabase.auth.signOut();
-    } finally {
-      queryClient.clear();
-      window.sessionStorage.removeItem('imds_oauth_company');
-      setSession(null);
-      setCurrentUser(null);
-      setPendingSession(null);
-      setPassword('');
-      setError('');
-      setMode('login');
-      setSubmitting(false);
-    }
+    if (logoutPromiseRef.current) return logoutPromiseRef.current;
+    const run = async () => {
+      setSubmitting(true);
+      try {
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+        if (signOutError && !signOutError.message.toLowerCase().includes('session')) throw signOutError;
+      } finally {
+        queryClient.clear();
+        window.sessionStorage.removeItem('imds_oauth_company');
+        appliedTokenRef.current = null;
+        applyPromiseRef.current = null;
+        oauthStartingRef.current = false;
+        setSession(null);
+        setCurrentUser(null);
+        setPendingSession(null);
+        setPassword('');
+        setError('');
+        setMode('login');
+        setSubmitting(false);
+        logoutPromiseRef.current = null;
+      }
+    };
+    logoutPromiseRef.current = run();
+    return logoutPromiseRef.current;
   }
 
   useEffect(() => {
@@ -122,7 +152,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (!cancelled) setChecking(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'INITIAL_SESSION') return;
       window.setTimeout(() => {
         if (!cancelled) void applySession(nextSession);
       }, 0);
@@ -159,11 +190,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return;
     setError('');
     setSubmitting(true);
     try {
       if (pendingSession) {
-        setCurrentUser(await syncCurrentProfile(companyName));
+        const profile = await syncCurrentProfile(companyName);
+        appliedTokenRef.current = pendingSession.access_token;
+        setCurrentUser(profile);
         setPendingSession(null);
         return;
       }
@@ -181,8 +215,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           setError('Проверьте email и подтвердите регистрацию, затем войдите в систему.');
           return;
         }
-        setSession(data.session);
-        setCurrentUser(await syncCurrentProfile(companyName));
+        await applySession(data.session);
         return;
       }
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
@@ -190,8 +223,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         password,
       });
       if (signInError) throw signInError;
-      setSession(data.session);
-      setCurrentUser(await syncCurrentProfile());
+      await applySession(data.session);
     } catch (reason) {
       setError(readableAuthError(reason instanceof Error ? reason.message : 'Не удалось выполнить вход'));
     } finally {
@@ -200,9 +232,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   async function startGoogle() {
+    if (oauthStartingRef.current || submitting) return;
+    oauthStartingRef.current = true;
+    setSubmitting(true);
     setError('');
     if (mode === 'register') {
       if (!companyName.trim()) {
+        oauthStartingRef.current = false;
+        setSubmitting(false);
         setError('Сначала укажите название компании.');
         return;
       }
@@ -214,7 +251,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       provider: 'google',
       options: { redirectTo: window.location.origin, queryParams: { prompt: 'select_account' } },
     });
-    if (oauthError) setError(readableAuthError(oauthError.message));
+    if (oauthError) {
+      oauthStartingRef.current = false;
+      setSubmitting(false);
+      setError(readableAuthError(oauthError.message));
+    }
   }
 
   const initials = useMemo(() => currentUser ? `${currentUser.firstName[0] ?? ''}${currentUser.lastName[0] ?? ''}`.toUpperCase() || currentUser.email[0].toUpperCase() : '', [currentUser]);
