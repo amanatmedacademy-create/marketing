@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
 import { requireBearerSession } from './bearer-auth';
+import { handleContentStudioRequest } from './content-studio';
 import { handleCrmPlatformInternalRequest, authorizeCrmPermission, type CrmPlatformEnv } from './crm-kanban-platform';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
@@ -15,7 +16,7 @@ interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'work-management-runtime-v1';
+const RELEASE = 'content-studio-runtime-v1';
 
 const apiError = (status: number, code: string, message: string, details?: unknown) => new Response(JSON.stringify({ error: { code, message, details } }), {
   status,
@@ -43,7 +44,10 @@ function canWrite(session: AuthSession, pathname: string) {
     || /^\/api\/deals\/[^/]+\/move$/.test(pathname)
     || pathname === '/api/tasks'
     || /^\/api\/tasks\/[^/]+$/.test(pathname)
-    || pathname === '/api/projects';
+    || pathname === '/api/projects'
+    || pathname === '/api/content/entries'
+    || /^\/api\/content\/entries\/[^/]+$/.test(pathname)
+    || pathname === '/api/content/media';
 }
 
 function requiredCrmPermission(request: Request, pathname: string): string | null {
@@ -114,6 +118,7 @@ export default {
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
       const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
+        ?? await handleContentStudioRequest(request, tenantEnv, session)
         ?? await handleWorkManagementRequest(request, tenantEnv, session)
         ?? await handleMetaAdsRequest(request, tenantEnv, session)
         ?? await handleMetaRequest(request, tenantEnv, session)
