@@ -31,6 +31,7 @@ import './modules/deals/kanban-fix.css';
 import './modules/analytics/end-to-end-analytics.css';
 import './modules/system/action-feedback.css';
 import './modules/platform/product-shell-runtime.css';
+import './modules/content/content-studio.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
