@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "declaration": false,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": false
   },
   "include": [
     "src/main.ts",
