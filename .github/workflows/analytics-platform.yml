@@ -1,0 +1,31 @@
+name: Analytics Platform
+
+on:
+  pull_request:
+    paths: ['apps/api/**','apps/sync-worker/**','infra/**','docker-compose.analytics.yml']
+  push:
+    branches: [main]
+    paths: ['apps/api/**','apps/sync-worker/**','infra/**','docker-compose.analytics.yml']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { app: [api, sync-worker] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - working-directory: apps/${{ matrix.app }}
+        run: npm install
+      - working-directory: apps/${{ matrix.app }}
+        run: npm run typecheck
+      - working-directory: apps/${{ matrix.app }}
+        run: npm run build
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.analytics.yml config
+      - run: docker build -f apps/api/Dockerfile -t imds-marketing-api:test .
+      - run: docker build -f apps/sync-worker/Dockerfile -t imds-marketing-sync-worker:test .
