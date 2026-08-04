@@ -4,6 +4,7 @@ import { requireBearerSession } from './bearer-auth';
 import { handleCrmPlatformInternalRequest, authorizeCrmPermission, type CrmPlatformEnv } from './crm-kanban-platform';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
+import { handleMarketingAnalyticsRequest } from './marketing-analytics';
 import { handleMetaAdsRequest } from './meta-ads';
 import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
 import { handlePlatformCoreRequest } from './platform-core';
@@ -15,7 +16,7 @@ interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'work-management-runtime-v1';
+const RELEASE = 'marketing-analytics-foundation-v1';
 
 const apiError = (status: number, code: string, message: string, details?: unknown) => new Response(JSON.stringify({ error: { code, message, details } }), {
   status,
@@ -64,7 +65,7 @@ export default {
     if (internalResponse) return internalResponse;
 
     if (url.pathname === '/health') {
-      return json({ status: 'ok', service: 'imds-crm-edge', environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', timestamp: new Date().toISOString() });
+      return json({ status: 'ok', service: 'imds-marketing-edge', environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', timestamp: new Date().toISOString() });
     }
 
     if (request.method === 'GET' && url.pathname === '/api/config') {
@@ -115,6 +116,7 @@ export default {
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
       const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
         ?? await handleWorkManagementRequest(request, tenantEnv, session)
+        ?? await handleMarketingAnalyticsRequest(request, tenantEnv, session)
         ?? await handleMetaAdsRequest(request, tenantEnv, session)
         ?? await handleMetaRequest(request, tenantEnv, session)
         ?? await handleDealDetails(request, tenantEnv)
