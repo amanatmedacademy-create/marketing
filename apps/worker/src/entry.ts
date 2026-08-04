@@ -9,9 +9,10 @@ import { handleMetaAdsRequest } from './meta-ads';
 import { getMetaPublicConfig, handleMetaRequest, type MetaEnv } from './meta-auth';
 import { handlePlatformCoreRequest } from './platform-core';
 import { handleTeamRequest } from './team';
+import { handleTikTokPublicRequest, handleTikTokRequest, type TikTokEnv } from './tiktok-auth';
 import { handleWorkManagementRequest } from './work-management';
 
-interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
+interface Env extends AuthEnv, MetaEnv, TikTokEnv, CrmPlatformEnv {
   ASSETS: Fetcher;
   APP_ENV: string;
 }
@@ -63,6 +64,9 @@ export default {
 
     const internalResponse = await handleCrmPlatformInternalRequest(request, env);
     if (internalResponse) return internalResponse;
+
+    const tiktokPublicResponse = await handleTikTokPublicRequest(request, env);
+    if (tiktokPublicResponse) return tiktokPublicResponse;
 
     if (url.pathname === '/health') {
       return json({ status: 'ok', service: 'imds-marketing-edge', environment: env.APP_ENV, release: RELEASE, auth: 'supabase-bearer', timestamp: new Date().toISOString() });
@@ -119,6 +123,7 @@ export default {
         ?? await handleMarketingAnalyticsRequest(request, tenantEnv, session)
         ?? await handleMetaAdsRequest(request, tenantEnv, session)
         ?? await handleMetaRequest(request, tenantEnv, session)
+        ?? await handleTikTokRequest(request, tenantEnv, session)
         ?? await handleDealDetails(request, tenantEnv)
         ?? await handleTeamRequest(request, tenantEnv);
       const response = specializedResponse ?? await app.fetch(request, tenantEnv);
