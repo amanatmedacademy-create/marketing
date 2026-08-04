@@ -1,6 +1,7 @@
 import app from './index';
 import { handleAuthRequest, requireSession, type AuthEnv, type AuthSession } from './auth';
 import { requireBearerSession } from './bearer-auth';
+import { handleBulkOperationsRequest } from './bulk-operations';
 import { handleCrmPlatformInternalRequest, authorizeCrmPermission, type CrmPlatformEnv } from './crm-kanban-platform';
 import { handleDealDetails } from './deal-details';
 import { handleGoogleAuthRequest } from './google-auth';
@@ -16,7 +17,7 @@ interface Env extends AuthEnv, MetaEnv, CrmPlatformEnv {
   APP_ENV: string;
 }
 
-const RELEASE = 'marketing-analytics-foundation-v1';
+const RELEASE = 'bulk-operations-v1';
 
 const apiError = (status: number, code: string, message: string, details?: unknown) => new Response(JSON.stringify({ error: { code, message, details } }), {
   status,
@@ -44,7 +45,8 @@ function canWrite(session: AuthSession, pathname: string) {
     || /^\/api\/deals\/[^/]+\/move$/.test(pathname)
     || pathname === '/api/tasks'
     || /^\/api\/tasks\/[^/]+$/.test(pathname)
-    || pathname === '/api/projects';
+    || pathname === '/api/projects'
+    || pathname === '/api/bulk-operations/execute';
 }
 
 function requiredCrmPermission(request: Request, pathname: string): string | null {
@@ -115,6 +117,7 @@ export default {
 
       const tenantEnv: Env = { ...env, DEFAULT_COMPANY_ID: session.companyId };
       const specializedResponse = await handlePlatformCoreRequest(request, tenantEnv, session)
+        ?? await handleBulkOperationsRequest(request, tenantEnv, session)
         ?? await handleWorkManagementRequest(request, tenantEnv, session)
         ?? await handleMarketingAnalyticsRequest(request, tenantEnv, session)
         ?? await handleMetaAdsRequest(request, tenantEnv, session)
