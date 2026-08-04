@@ -11,6 +11,9 @@ export const Public = () => SetMetadata('isPublic', true);
 export const CurrentAgency = createParamDecorator((_data: unknown, context: ExecutionContext) => {
   return context.switchToHttp().getRequest<TenantRequest>().agencyId;
 });
+export const CurrentPrincipal = createParamDecorator((_data: unknown, context: ExecutionContext) => {
+  return context.switchToHttp().getRequest<TenantRequest>().principal;
+});
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -46,10 +49,27 @@ export class TenantGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (this.reflector.getAllAndOverride<boolean>('isPublic', [context.getHandler(), context.getClass()])) return true;
     const request = context.switchToHttp().getRequest<TenantRequest>();
+    const subject = request.principal?.subject;
+    if (!subject) throw new UnauthorizedException('Authenticated subject is required');
+
     const raw = request.headers['x-agency-id'];
-    const agencyId = Array.isArray(raw) ? raw[0] : raw;
-    if (!agencyId || !/^[0-9a-f-]{36}$/i.test(agencyId)) throw new UnauthorizedException('Valid x-agency-id is required');
-    const rows = await this.db.query('select analytics.is_agency_member($1, $2) as allowed', [request.principal?.subject, agencyId]);
+    let agencyId = Array.isArray(raw) ? raw[0] : raw;
+    if (agencyId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(agencyId)) {
+      throw new UnauthorizedException('Valid x-agency-id is required');
+    }
+
+    if (!agencyId) {
+      const memberships = await this.db.query(
+        "select agency_id from analytics.users where external_auth_id = $1 and status = 'active' order by agency_id limit 2",
+        [subject],
+      ) as Array<{ agency_id: string }>;
+      if (memberships.length === 1) agencyId = memberships[0].agency_id;
+      if (!agencyId) {
+        throw new UnauthorizedException(memberships.length > 1 ? 'x-agency-id is required for users with multiple agencies' : 'Agency membership not found');
+      }
+    }
+
+    const rows = await this.db.query('select analytics.is_agency_member($1, $2) as allowed', [subject, agencyId]);
     if (!rows[0]?.allowed) throw new UnauthorizedException('Agency access denied');
     request.agencyId = agencyId;
     return true;

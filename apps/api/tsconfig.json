@@ -19,7 +19,9 @@
     "src/main.ts",
     "src/app.module.ts",
     "src/common/security.ts",
+    "src/common/security.module.ts",
     "src/database/entities.ts",
+    "src/integrations/meta.module.ts",
     "src/metrics/metrics.module.ts",
     "src/platform/platform.module.ts"
   ],

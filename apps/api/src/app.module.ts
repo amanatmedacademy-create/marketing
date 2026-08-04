@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { JwtAuthGuard, TenantDbService, TenantGuard } from './common/security';
+import { JwtAuthGuard, TenantGuard } from './common/security';
+import { SecurityModule } from './common/security.module';
 import { AgencyEntity, ClientEntity, DataSourceEntity, IntegrationEntity, UserEntity } from './database/entities';
+import { MetaIntegrationModule } from './integrations/meta.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { PlatformModule } from './platform/platform.module';
 
@@ -22,16 +24,14 @@ import { PlatformModule } from './platform/platform.module';
         extra: { max: 20, application_name: 'imds-marketing-api' },
       }),
     }),
+    SecurityModule,
     PlatformModule,
     MetricsModule,
+    MetaIntegrationModule,
   ],
   providers: [
-    TenantDbService,
-    JwtAuthGuard,
-    TenantGuard,
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useExisting: TenantGuard },
   ],
-  exports: [TenantDbService],
 })
 export class AppModule {}
