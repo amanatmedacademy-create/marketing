@@ -48,7 +48,17 @@ type LegacyMetaRow = {
 };
 
 type MetaConnectionRow = {
-  ad_accounts?: Array<{ id?: string; name?: string; currency?: string }>;
+  ad_accounts?: Array<{ id?: string; name?: string; currency?: string; timezone_name?: string }>;
+};
+
+type OAuthConnectionRow = {
+  accounts?: Array<Record<string, unknown>>;
+};
+
+type AccountMetadata = {
+  name: string;
+  currency?: string;
+  timezone?: string;
 };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -96,6 +106,11 @@ function numeric(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeCurrency(value: string | null | undefined) {
+  const currency = value?.trim().toUpperCase();
+  return currency || 'UNKNOWN';
+}
+
 function aggregate(rows: PerformanceRow[]) {
   return rows.reduce((total, row) => {
     total.spend += numeric(row.spend);
@@ -128,6 +143,20 @@ function derived(totals: ReturnType<typeof aggregate>) {
   };
 }
 
+function aggregateByCurrency(rows: PerformanceRow[]) {
+  const groups = rows.reduce<Record<string, PerformanceRow[]>>((result, row) => {
+    const currency = normalizeCurrency(row.currency);
+    (result[currency] ||= []).push(row);
+    return result;
+  }, {});
+  return Object.entries(groups)
+    .map(([currency, currencyRows]) => {
+      const totals = aggregate(currencyRows);
+      return { currency, totals, metrics: derived(totals), rows: currencyRows.length };
+    })
+    .sort((a, b) => b.totals.spend - a.totals.spend);
+}
+
 async function loadCanonical(env: MetaEnv, session: AuthSession, since: string, until: string, clientId?: string | null, provider?: string | null) {
   const filters = [
     `company_id=eq.${encodeURIComponent(session.companyId)}`,
@@ -137,31 +166,80 @@ async function loadCanonical(env: MetaEnv, session: AuthSession, since: string, 
     provider ? `provider=eq.${encodeURIComponent(provider)}` : '',
   ].filter(Boolean).join('&');
   return supabaseRest<PerformanceRow[]>(env,
-    `marketing_ad_performance_daily?select=provider,metric_date,account_external_id,account_name,campaign_external_id,campaign_name,campaign_status,ad_group_external_id,ad_group_name,currency,spend,impressions,reach,clicks,link_clicks,video_views,leads,qualified_leads,arrived,sales,revenue,purchases,purchase_value,synced_at&${filters}&order=metric_date.asc`
+    `marketing_ad_performance_daily?select=provider,metric_date,account_external_id,account_name,campaign_external_id,campaign_name,campaign_status,ad_group_external_id,ad_group_name,currency,spend,impressions,reach,clicks,link_clicks,video_views,leads,qualified_leads,arrived,sales,revenue,purchases,purchase_value,synced_at&${filters}&order=metric_date.asc`,
   );
 }
 
 async function loadMetaAccountMap(env: MetaEnv, session: AuthSession) {
   const rows = await supabaseRest<MetaConnectionRow[]>(env,
-    `meta_connections?select=ad_accounts&company_id=eq.${encodeURIComponent(session.companyId)}&product=eq.ads&status=eq.connected`
+    `meta_connections?select=ad_accounts&company_id=eq.${encodeURIComponent(session.companyId)}&product=eq.ads&status=eq.connected`,
   ).catch(() => []);
-  const map = new Map<string, { name: string; currency?: string }>();
+  const map = new Map<string, AccountMetadata>();
   for (const row of rows) {
     for (const account of row.ad_accounts ?? []) {
       if (!account.id) continue;
       const normalized = account.id.replace(/^act_/, '');
-      map.set(normalized, { name: account.name || account.id, currency: account.currency });
-      map.set(`act_${normalized}`, { name: account.name || account.id, currency: account.currency });
+      const metadata = {
+        name: account.name || account.id,
+        currency: normalizeCurrency(account.currency),
+        timezone: account.timezone_name,
+      };
+      map.set(normalized, metadata);
+      map.set(`act_${normalized}`, metadata);
     }
   }
   return map;
+}
+
+function readText(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+async function loadOAuthAccountMap(env: MetaEnv, session: AuthSession, provider: string) {
+  const rows = await supabaseRest<OAuthConnectionRow[]>(env,
+    `marketing_oauth_connections?select=accounts&company_id=eq.${encodeURIComponent(session.companyId)}&provider=eq.${encodeURIComponent(provider)}&status=eq.connected&limit=1`,
+  ).catch(() => []);
+  const map = new Map<string, AccountMetadata>();
+  for (const account of rows[0]?.accounts ?? []) {
+    const id = readText(account, ['advertiser_id', 'customer_id', 'account_id', 'id']);
+    if (!id) continue;
+    map.set(id, {
+      name: readText(account, ['advertiser_name', 'customer_name', 'account_name', 'name']) || id,
+      currency: normalizeCurrency(readText(account, ['currency', 'currency_code'])),
+      timezone: readText(account, ['timezone', 'timezone_name']),
+    });
+  }
+  return map;
+}
+
+async function loadProviderAccountMap(env: MetaEnv, session: AuthSession, provider: string) {
+  if (provider === 'meta_ads') return loadMetaAccountMap(env, session);
+  return loadOAuthAccountMap(env, session, provider);
+}
+
+function applyAccountMetadata(rows: PerformanceRow[], accountMap: Map<string, AccountMetadata>) {
+  return rows.map((row) => {
+    const id = row.account_external_id || '';
+    const normalized = id.replace(/^act_/, '');
+    const account = accountMap.get(id) || accountMap.get(normalized) || accountMap.get(`act_${normalized}`);
+    return {
+      ...row,
+      account_name: account?.name || row.account_name,
+      // OAuth/provider account currency is authoritative. Row currency is only a fallback.
+      currency: account?.currency && account.currency !== 'UNKNOWN' ? account.currency : normalizeCurrency(row.currency),
+    };
+  });
 }
 
 async function loadLegacyMeta(env: MetaEnv, session: AuthSession, since: string, until: string) {
   const filters = [`company_id=eq.${encodeURIComponent(session.companyId)}`, `insight_date=gte.${encodeURIComponent(since)}`, `insight_date=lte.${encodeURIComponent(until)}`].join('&');
   const [rows, accounts] = await Promise.all([
     supabaseRest<LegacyMetaRow[]>(env,
-      `meta_ads_insights_daily?select=ad_account_id,campaign_id,campaign_name,adset_id,adset_name,insight_date,currency,spend,impressions,reach,clicks,inline_link_clicks,leads,purchases,purchase_value,synced_at&${filters}&order=insight_date.asc`
+      `meta_ads_insights_daily?select=ad_account_id,campaign_id,campaign_name,adset_id,adset_name,insight_date,currency,spend,impressions,reach,clicks,inline_link_clicks,leads,purchases,purchase_value,synced_at&${filters}&order=insight_date.asc`,
     ),
     loadMetaAccountMap(env, session),
   ]);
@@ -177,7 +255,7 @@ async function loadLegacyMeta(env: MetaEnv, session: AuthSession, since: string,
       campaign_status: null,
       ad_group_external_id: row.adset_id || '',
       ad_group_name: row.adset_name,
-      currency: row.currency || account?.currency || null,
+      currency: account?.currency && account.currency !== 'UNKNOWN' ? account.currency : normalizeCurrency(row.currency),
       spend: row.spend,
       impressions: row.impressions,
       reach: row.reach,
@@ -208,7 +286,8 @@ async function loadProviderRows(env: MetaEnv, session: AuthSession, since: strin
     rows = await loadLegacyMeta(env, session, since, until);
     source = 'legacy_meta';
   }
-  return { rows, source };
+  const accountMap = await loadProviderAccountMap(env, session, provider);
+  return { rows: applyAccountMetadata(rows, accountMap), source };
 }
 
 async function overview(request: Request, env: MetaEnv, session: AuthSession) {
@@ -224,16 +303,35 @@ async function overview(request: Request, env: MetaEnv, session: AuthSession) {
   }
   if (!rows.length && !clientId) { rows = await loadLegacyMeta(env, session, since, until); source = 'legacy_meta'; }
   const totals = aggregate(rows);
-  const byProvider = Object.entries(rows.reduce<Record<string, PerformanceRow[]>>((groups, row) => { (groups[row.provider] ||= []).push(row); return groups; }, {}))
-    .map(([provider, providerRows]) => { const providerTotals = aggregate(providerRows); return { provider, totals: providerTotals, metrics: derived(providerTotals) }; });
-  return json({ range: { since, until }, clientId, currency: rows.find((row) => row.currency)?.currency || 'KZT', source, totals, metrics: derived(totals), byProvider, rows: rows.length });
+  const totalsByCurrency = aggregateByCurrency(rows);
+  const byProvider = Object.entries(rows.reduce<Record<string, PerformanceRow[]>>((groups, row) => {
+    (groups[row.provider] ||= []).push(row);
+    return groups;
+  }, {})).map(([provider, providerRows]) => {
+    const providerTotals = aggregate(providerRows);
+    return { provider, totals: providerTotals, metrics: derived(providerTotals), totalsByCurrency: aggregateByCurrency(providerRows) };
+  });
+  return json({
+    range: { since, until },
+    clientId,
+    currency: totalsByCurrency.length === 1 ? totalsByCurrency[0].currency : 'MIXED',
+    mixedCurrencies: totalsByCurrency.length > 1,
+    totalsByCurrency,
+    source,
+    totals,
+    metrics: derived(totals),
+    byProvider,
+    rows: rows.length,
+  });
 }
 
 function buildCampaignPayload(rows: PerformanceRow[]) {
   const grouped = new Map<string, PerformanceRow[]>();
   for (const row of rows) {
     const key = `${row.account_external_id || 'unknown'}:${row.campaign_external_id || 'unknown'}`;
-    (grouped.get(key) ?? grouped.set(key, []).get(key)!).push(row);
+    const current = grouped.get(key) || [];
+    current.push(row);
+    grouped.set(key, current);
   }
   return [...grouped.values()].map((campaignRows) => {
     const totals = aggregate(campaignRows);
@@ -251,7 +349,7 @@ function buildCampaignPayload(rows: PerformanceRow[]) {
       accountId: campaignRows[0]?.account_external_id || 'unknown',
       accountName: campaignRows.find((row) => row.account_name)?.account_name || campaignRows[0]?.account_external_id || 'Неизвестный кабинет',
       status: campaignRows.find((row) => row.campaign_status)?.campaign_status || 'UNKNOWN',
-      currency: campaignRows.find((row) => row.currency)?.currency || 'KZT',
+      currency: normalizeCurrency(campaignRows.find((row) => row.currency)?.currency),
       totals,
       metrics: derived(totals),
       adGroups,
@@ -259,20 +357,68 @@ function buildCampaignPayload(rows: PerformanceRow[]) {
   }).sort((a, b) => b.totals.spend - a.totals.spend);
 }
 
+function buildAccounts(rows: PerformanceRow[]) {
+  const accountGroups = rows.reduce<Record<string, PerformanceRow[]>>((groups, row) => {
+    const key = row.account_external_id || 'unknown';
+    (groups[key] ||= []).push(row);
+    return groups;
+  }, {});
+  return Object.entries(accountGroups).map(([id, accountRows]) => {
+    const totals = aggregate(accountRows);
+    return {
+      accountId: id,
+      accountName: accountRows.find((row) => row.account_name)?.account_name || id,
+      currency: normalizeCurrency(accountRows.find((row) => row.currency)?.currency),
+      campaignCount: new Set(accountRows.map((row) => row.campaign_external_id).filter(Boolean)).size,
+      totals,
+      metrics: derived(totals),
+    };
+  }).sort((a, b) => b.totals.spend - a.totals.spend);
+}
+
 function buildTrend(rows: PerformanceRow[]) {
-  return Object.entries(rows.reduce<Record<string, PerformanceRow[]>>((groups, row) => { (groups[row.metric_date] ||= []).push(row); return groups; }, {}))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, dateRows]) => ({ date, ...aggregate(dateRows) }));
+  return Object.entries(rows.reduce<Record<string, PerformanceRow[]>>((groups, row) => {
+    (groups[row.metric_date] ||= []).push(row);
+    return groups;
+  }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateRows]) => ({ date, ...aggregate(dateRows) }));
 }
 
 async function tiktokCampaigns(request: Request, env: MetaEnv, session: AuthSession) {
   const url = new URL(request.url);
   const { since, until } = dateRange(url);
+  const previous = previousRange(since, until);
   const clientId = url.searchParams.get('clientId');
-  const rows = await loadCanonical(env, session, since, until, clientId, 'tiktok_ads');
-  const campaigns = buildCampaignPayload(rows).map(({ accountId: _accountId, accountName: _accountName, ...campaign }) => campaign);
-  const totals = aggregate(rows);
-  return json({ range: { since, until }, clientId, provider: 'tiktok_ads', currency: rows.find((row) => row.currency)?.currency || 'KZT', totals, metrics: derived(totals), campaigns, trend: buildTrend(rows) });
+  const accountId = url.searchParams.get('accountId');
+  const [currentResult, previousResult] = await Promise.all([
+    loadProviderRows(env, session, since, until, clientId, 'tiktok_ads'),
+    loadProviderRows(env, session, previous.since, previous.until, clientId, 'tiktok_ads'),
+  ]);
+  const allCurrentRows = currentResult.rows;
+  const currentRows = accountId ? allCurrentRows.filter((row) => row.account_external_id === accountId) : allCurrentRows;
+  const previousRows = accountId ? previousResult.rows.filter((row) => row.account_external_id === accountId) : previousResult.rows;
+  const totals = aggregate(currentRows);
+  const previousTotals = aggregate(previousRows);
+  const totalsByCurrency = aggregateByCurrency(currentRows);
+  const previousTotalsByCurrency = aggregateByCurrency(previousRows);
+  return json({
+    range: { since, until },
+    previousRange: previous,
+    clientId,
+    accountId,
+    provider: 'tiktok_ads',
+    source: currentResult.source,
+    currency: totalsByCurrency.length === 1 ? totalsByCurrency[0].currency : totalsByCurrency.length ? 'MIXED' : 'UNKNOWN',
+    mixedCurrencies: totalsByCurrency.length > 1,
+    totalsByCurrency,
+    previousTotalsByCurrency,
+    totals,
+    metrics: derived(totals),
+    previousTotals,
+    previousMetrics: derived(previousTotals),
+    accounts: buildAccounts(allCurrentRows),
+    campaigns: buildCampaignPayload(currentRows),
+    trend: buildTrend(currentRows),
+  });
 }
 
 async function metaCampaigns(request: Request, env: MetaEnv, session: AuthSession) {
@@ -288,24 +434,11 @@ async function metaCampaigns(request: Request, env: MetaEnv, session: AuthSessio
   const allCurrentRows = currentResult.rows;
   const currentRows = accountId ? allCurrentRows.filter((row) => row.account_external_id === accountId) : allCurrentRows;
   const previousRows = accountId ? previousResult.rows.filter((row) => row.account_external_id === accountId) : previousResult.rows;
-  const accountGroups = allCurrentRows.reduce<Record<string, PerformanceRow[]>>((groups, row) => {
-    const key = row.account_external_id || 'unknown';
-    (groups[key] ||= []).push(row);
-    return groups;
-  }, {});
-  const accounts = Object.entries(accountGroups).map(([id, accountRows]) => {
-    const totals = aggregate(accountRows);
-    return {
-      accountId: id,
-      accountName: accountRows.find((row) => row.account_name)?.account_name || id,
-      currency: accountRows.find((row) => row.currency)?.currency || 'KZT',
-      campaignCount: new Set(accountRows.map((row) => row.campaign_external_id).filter(Boolean)).size,
-      totals,
-      metrics: derived(totals),
-    };
-  }).sort((a, b) => b.totals.spend - a.totals.spend);
+  const accounts = buildAccounts(allCurrentRows);
   const totals = aggregate(currentRows);
   const previousTotals = aggregate(previousRows);
+  const totalsByCurrency = aggregateByCurrency(currentRows);
+  const previousTotalsByCurrency = aggregateByCurrency(previousRows);
   const lastMetricDate = allCurrentRows.map((row) => row.metric_date).sort().at(-1) || null;
   const lastSyncedAt = allCurrentRows.map((row) => row.synced_at).filter((value): value is string => Boolean(value)).sort().at(-1) || null;
   return json({
@@ -315,7 +448,10 @@ async function metaCampaigns(request: Request, env: MetaEnv, session: AuthSessio
     accountId,
     provider: 'meta_ads',
     source: currentResult.source,
-    currency: currentRows.find((row) => row.currency)?.currency || accounts[0]?.currency || 'KZT',
+    currency: totalsByCurrency.length === 1 ? totalsByCurrency[0].currency : totalsByCurrency.length ? 'MIXED' : 'UNKNOWN',
+    mixedCurrencies: totalsByCurrency.length > 1,
+    totalsByCurrency,
+    previousTotalsByCurrency,
     totals,
     metrics: derived(totals),
     previousTotals,
