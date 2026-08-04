@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { BarChart3, LogOut, PanelLeftClose } from 'lucide-react';
+import { BarChart3, Layers3, LogOut, PanelLeftClose } from 'lucide-react';
 import { useAuth } from './modules/auth/AuthContext';
 import { MetaAdsAllAccounts } from './modules/ads/MetaAdsAllAccounts';
 import { TikTokAdsCampaigns } from './modules/ads/TikTokAdsCampaigns';
+import { BulkOperations } from './modules/operations/BulkOperations';
 
-type AnalyticsView = 'meta' | 'tiktok';
+type AnalyticsView = 'meta' | 'tiktok' | 'bulk';
 
-const views: Array<{ id: AnalyticsView; label: string; description: string }> = [
+const views: Array<{ id: AnalyticsView; label: string; description: string; icon?: typeof Layers3 }> = [
   { id: 'meta', label: 'Meta Ads', description: 'Кабинеты, кампании и группы объявлений' },
   { id: 'tiktok', label: 'TikTok Ads', description: 'Кампании и рекламные показатели' },
+  { id: 'bulk', label: 'Bulk Operations', description: 'Массовые операции с отчётами и dashboard sections', icon: Layers3 },
 ];
 
 export default function App() {
@@ -28,17 +30,18 @@ export default function App() {
         </div>
 
         <nav className="marketing-navigation" aria-label="Marketing Analytics">
-          {views.map((item) => (
-            <button
+          {views.map((item) => {
+            const Icon = item.icon;
+            return <button
               key={item.id}
               type="button"
               className={view === item.id ? 'active' : ''}
               onClick={() => setView(item.id)}
             >
-              <span>{item.label}</span>
+              <span>{Icon && <Icon size={14} />} {item.label}</span>
               <small>{item.description}</small>
-            </button>
-          ))}
+            </button>;
+          })}
         </nav>
 
         <div className="marketing-sidebar-footer">
@@ -63,7 +66,9 @@ export default function App() {
         </header>
 
         <section className="marketing-content">
-          {view === 'meta' ? <MetaAdsAllAccounts /> : <TikTokAdsCampaigns />}
+          {view === 'meta' && <MetaAdsAllAccounts />}
+          {view === 'tiktok' && <TikTokAdsCampaigns />}
+          {view === 'bulk' && <BulkOperations />}
         </section>
       </main>
     </div>
