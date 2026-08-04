@@ -1,28 +1,37 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { PrismaModule } from './infrastructure/prisma/prisma.module.js';
-import { AdsModule } from './modules/ads/ads.module.js';
-import { AuthModule } from './modules/auth/auth.module.js';
-import { HealthController } from './modules/health/health.controller.js';
-import { PipelinesModule } from './modules/pipelines/pipelines.module.js';
-import { WhatsAppModule } from './modules/whatsapp/whatsapp.module.js';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtAuthGuard, TenantGuard } from './common/security';
+import { SecurityModule } from './common/security.module';
+import { AgencyEntity, ClientEntity, DataSourceEntity, IntegrationEntity, UserEntity } from './database/entities';
+import { MetaIntegrationModule } from './integrations/meta.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { PlatformModule } from './platform/platform.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, cache: true }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 120,
-      },
-    ]),
-    PrismaModule,
-    AuthModule,
-    PipelinesModule,
-    WhatsAppModule,
-    AdsModule,
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        url: config.getOrThrow<string>('DATABASE_URL'),
+        ssl: config.get<string>('DATABASE_SSL', 'false') === 'true' ? { rejectUnauthorized: false } : false,
+        entities: [AgencyEntity, UserEntity, ClientEntity, IntegrationEntity, DataSourceEntity],
+        synchronize: false,
+        logging: config.get<string>('NODE_ENV') !== 'production',
+        extra: { max: 20, application_name: 'imds-marketing-api' },
+      }),
+    }),
+    SecurityModule,
+    PlatformModule,
+    MetricsModule,
+    MetaIntegrationModule,
   ],
-  controllers: [HealthController],
+  providers: [
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
+    { provide: APP_GUARD, useExisting: TenantGuard },
+  ],
 })
 export class AppModule {}
