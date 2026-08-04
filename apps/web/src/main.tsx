@@ -8,29 +8,9 @@ import { EntitlementsProvider } from './modules/platform/EntitlementsContext';
 import { ProductShellRuntime } from './modules/platform/ProductShellRuntime';
 import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
 import { startMarketingTelemetry } from './lib/telemetry';
-import './styles.css';
-import './modules.css';
-import './preview-fidelity.css';
-import './channel-modules.css';
-import './modules/dashboard/analytics-dashboard.css';
-import './modules/dashboard/analytics-data.css';
-import './modules/dashboard/deals-trend-chart.css';
-import './modules/inbox/omnichannel-inbox.css';
-import './modules/inbox/whatsapp-workspace.css';
-import './modules/inbox/social-mail-workspaces.css';
-import './modules/deals/deal-details.css';
-import './modules/deals/lead-modal.css';
-import './modules/deals/pipeline-manager.css';
-import './modules/ads/ads-workspace.css';
-import './modules/ads/ads-performance-table.css';
-import './modules/integrations/integrations-workspace.css';
 import './modules/auth/auth.css';
-import './modules/auth/user-profile.css';
-import './ui-system.css';
-import './modules/deals/kanban-fix.css';
-import './modules/analytics/end-to-end-analytics.css';
 import './modules/system/action-feedback.css';
-import './modules/platform/product-shell-runtime.css';
+import './marketing-app.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
