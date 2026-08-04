@@ -10,6 +10,7 @@ import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
 import { startMarketingTelemetry } from './lib/telemetry';
 import './modules/auth/auth.css';
 import './modules/system/action-feedback.css';
+import './modules/operations/bulk-operations.css';
 import './marketing-app.css';
 
 const queryClient = new QueryClient({
