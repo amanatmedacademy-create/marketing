@@ -1,6 +1,49 @@
 import type { Env } from './integrations';
 
 type Row = Record<string, unknown>;
+
+type AdManagerRow = Row & {
+  key: string;
+  account_id: string;
+  account_name: string;
+  account_status: string;
+  currency: string;
+  account_timezone: string;
+  campaign_id: string;
+  campaign_name: string;
+  adset_id: string;
+  adset_name: string;
+  ad_id: string;
+  ad_name: string;
+  source: string;
+  platform: string;
+  status: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_content: string;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  link_clicks: number;
+  spend: number;
+  leads: number;
+  target_leads: number;
+  arrived: number;
+  sales: number;
+  revenue: number;
+};
+
+type AdManagerResult = AdManagerRow & {
+  frequency: number;
+  cpm: number;
+  ctr: number;
+  link_ctr: number;
+  cpc: number;
+  cost_per_result: number;
+};
+
+const numericFields = ['impressions', 'reach', 'clicks', 'link_clicks', 'spend', 'leads', 'target_leads', 'arrived', 'sales', 'revenue'] as const;
 const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 
@@ -26,10 +69,10 @@ export async function handleAdManager(_request: Request, env: Env, url: URL): Pr
   const { from, to } = dateRange(days, url);
   const rows = await query<Row[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,account_status,currency,account_timezone,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,effective_status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&and=(report_date.gte.${from},report_date.lte.${to})&limit=50000`);
 
-  const map = new Map<string, Row>();
+  const map = new Map<string, AdManagerRow>();
   for (const row of rows) {
     const key = `${text(row.account_id)}:${text(row.campaign_id)}:${text(row.adset_id)}:${text(row.ad_id)}`;
-    const item = map.get(key) || {
+    const item: AdManagerRow = map.get(key) || {
       key,
       account_id: text(row.account_id), account_name: text(row.account_name, 'Без названия'), account_status: text(row.account_status),
       currency: text(row.currency, 'USD'), account_timezone: text(row.account_timezone),
@@ -40,12 +83,12 @@ export async function handleAdManager(_request: Request, env: Env, url: URL): Pr
       utm_source: text(row.utm_source), utm_medium: text(row.utm_medium), utm_campaign: text(row.utm_campaign), utm_content: text(row.utm_content),
       impressions: 0, reach: 0, clicks: 0, link_clicks: 0, spend: 0, leads: 0, target_leads: 0, arrived: 0, sales: 0, revenue: 0,
     };
-    item.status = text(row.effective_status || row.status, text(item.status, 'UNKNOWN'));
-    for (const field of ['impressions','reach','clicks','link_clicks','spend','leads','target_leads','arrived','sales','revenue']) item[field] = num(item[field]) + num(row[field]);
+    item.status = text(row.effective_status || row.status, item.status || 'UNKNOWN');
+    for (const field of numericFields) item[field] = num(item[field]) + num(row[field]);
     map.set(key, item);
   }
 
-  const result = [...map.values()].map((item) => {
+  const result: AdManagerResult[] = [...map.values()].map((item) => {
     const impressions = num(item.impressions), clicks = num(item.clicks), linkClicks = num(item.link_clicks), spend = num(item.spend), leads = num(item.leads), reach = num(item.reach);
     return { ...item, frequency: reach ? impressions / reach : 0, cpm: impressions ? spend * 1000 / impressions : 0, ctr: impressions ? clicks * 100 / impressions : 0, link_ctr: impressions ? linkClicks * 100 / impressions : 0, cpc: clicks ? spend / clicks : 0, cost_per_result: leads ? spend / leads : 0 };
   });
