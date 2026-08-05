@@ -1,3 +1,5 @@
+import { resolveCompanyId } from './companyContext';
+
 type JsonRecord = Record<string, unknown>;
 
 export interface MetaOAuthEnv {
@@ -8,6 +10,7 @@ export interface MetaOAuthEnv {
   META_APP_SECRET?: string;
   META_GRAPH_VERSION?: string;
   META_OAUTH_REDIRECT_URI?: string;
+  DEFAULT_COMPANY_ID?: string;
 }
 
 interface MetaAdAccount {
@@ -96,7 +99,7 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
   const params = new URLSearchParams({ fields: 'id,account_id,name,account_status,currency,timezone_name', limit: '200', access_token: accessToken });
   let next: string | undefined = `https://graph.facebook.com/${graphVersion(env)}/me/adaccounts?${params}`;
   while (next) {
-    const page = await fetchJson<{ data?: MetaAdAccount[]; paging?: { next?: string } }>(next);
+    const page: { data?: MetaAdAccount[]; paging?: { next?: string } } = await fetchJson(next);
     accounts.push(...(page.data || []));
     next = page.paging?.next;
     if (accounts.length >= 1000) break;
@@ -106,6 +109,7 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
 
 async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<void> {
   const { appSecret } = requireMetaApp(env);
+  const companyId = await resolveCompanyId(env);
   const accountIds = accounts.map((account) => account.id || (account.account_id ? `act_${account.account_id}` : '')).filter(Boolean);
   if (!accountIds.length) throw new Error('В Facebook-профиле не найдено доступных рекламных кабинетов');
 
@@ -113,6 +117,7 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
   const row = {
     provider: 'meta',
     user_id: null,
+    company_id: companyId,
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
@@ -125,7 +130,7 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
     updated_at: new Date().toISOString(),
   };
 
-  const existing = await supabase(env, 'integration_credentials?user_id=is.null&provider=eq.meta&select=id&limit=1') as Array<{ id?: string }>;
+  const existing = await supabase(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.meta&select=id&limit=1`) as Array<{ id?: string }>;
   if (existing[0]?.id) {
     await supabase(env, `integration_credentials?id=eq.${encodeURIComponent(existing[0].id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
   } else {
