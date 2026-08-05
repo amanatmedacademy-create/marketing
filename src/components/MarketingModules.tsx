@@ -4,26 +4,6 @@ function ModuleHeading({ eyebrow, title, text }: { eyebrow: string; title: strin
   return <div className="heading"><span>{eyebrow}</span><h1>{title}</h1><p>{text}</p></div>;
 }
 
-const pipelineStages = [
-  ['Новый лид', 'Новые обращения из рекламы, мессенджеров и CRM'],
-  ['Не обработан', 'Оператор ещё не связался с клиентом'],
-  ['В работе', 'Идёт диалог и квалификация'],
-  ['Квалифицирован', 'Подтверждены потребность и возможность записи'],
-  ['Записан', 'Назначены дата, время и врач'],
-  ['Подтвердил запись', 'Пациент подтвердил визит'],
-  ['Пришёл', 'Фактический визит в клинику'],
-  ['Продажа', 'Оплачен курс лечения'],
-  ['Повторная сделка', 'Повторная продажа существующему клиенту'],
-  ['Отказ', 'Закрытие с обязательной причиной отказа'],
-];
-
-export function SalesPipelinePage() {
-  return <div className="stack">
-    <ModuleHeading eyebrow="Sales department" title="Воронка отдела продаж" text="Единая рабочая воронка для лидов из Bitrix24, Wazzup, телефонии и рекламы." />
-    <div className="architecture-pipeline">{pipelineStages.map(([title, text], index) => <article key={title}><span>{index + 1}</span><div><strong>{title}</strong><p>{text}</p></div></article>)}</div>
-  </div>;
-}
-
 const communicationProviders = [
   ['Wazzup', 'WhatsApp, Instagram и другие мессенджеры', MessageCircle, 'Каналы и переписка'],
   ['Binotel', 'Входящие и исходящие звонки, записи разговоров', Phone, 'Телефония'],
