@@ -7,13 +7,16 @@ import {
   LockKeyhole,
   ShieldCheck,
   Sparkles,
+  UserPlus,
 } from 'lucide-react';
 import {
+  consumeGoogleAuthIntent,
   currentSession,
   loadAppUser,
   signOutSession,
-  startGoogleSignIn,
+  startGoogleAuth,
   type AppUser,
+  type GoogleAuthIntent,
 } from '../services/auth';
 
 interface AuthContextValue {
@@ -41,9 +44,10 @@ function GoogleIcon() {
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [signingIn, setSigningIn] = useState(false);
+  const [activeIntent, setActiveIntent] = useState<GoogleAuthIntent | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -69,14 +73,20 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return nativeFetch(input, { ...init, headers });
     };
 
+    const intent = consumeGoogleAuthIntent();
     currentSession()
       .then(async (session) => {
         if (!active) return;
         setHasSession(Boolean(session));
         if (!session) return;
-        const appUser = await loadAppUser();
-        if (active) {
-          setUser(appUser);
+        const result = await loadAppUser(intent);
+        if (!active) return;
+        if (result.pending) {
+          setNotice(result.message || 'Регистрация завершена. Аккаунт ожидает подтверждения администратора.');
+          return;
+        }
+        if (result.user) {
+          setUser(result.user);
           setError(null);
         }
       })
@@ -93,14 +103,15 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async () => {
-    setSigningIn(true);
+  const startAuth = async (intent: GoogleAuthIntent) => {
+    setActiveIntent(intent);
     setError(null);
+    setNotice(null);
     try {
-      await startGoogleSignIn();
+      await startGoogleAuth(intent);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
-      setSigningIn(false);
+      setActiveIntent(null);
     }
   };
 
@@ -109,6 +120,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     setUser(null);
     setHasSession(false);
     setError(null);
+    setNotice(null);
   };
 
   const context = useMemo(() => user ? { user, signOut } : null, [user]);
@@ -157,16 +169,25 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         <div className="auth-login-card">
           <div className="auth-login-icon"><ShieldCheck size={28}/></div>
           <span className="auth-login-product">AMANAT MED</span>
-          <h2>Вход в систему</h2>
-          <p>Используйте рабочий Google-аккаунт. При первом входе профиль будет зарегистрирован автоматически.</p>
+          <h2>Доступ к системе</h2>
+          <p>Используйте рабочий Google-аккаунт разрешённого корпоративного домена.</p>
           {error && <div className="auth-error" role="alert">{error}</div>}
-          <button className="google-login" onClick={() => void signIn()} disabled={signingIn}>
-            {signingIn ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
-            <span>{signingIn ? 'Открываем Google…' : 'Продолжить через Google'}</span>
-            {!signingIn && <ArrowRight size={17}/>} 
-          </button>
-          {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
-          <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся AMANAT MED.</span></div>
+          {notice && <div className="auth-notice" role="status">{notice}</div>}
+          <div className="auth-actions">
+            <button className="google-login" onClick={() => void startAuth('login')} disabled={activeIntent !== null}>
+              {activeIntent === 'login' ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
+              <span>{activeIntent === 'login' ? 'Открываем Google…' : 'Войти через Google'}</span>
+              {activeIntent !== 'login' && <ArrowRight size={17}/>} 
+            </button>
+            <button className="google-register" onClick={() => void startAuth('signup')} disabled={activeIntent !== null}>
+              {activeIntent === 'signup' ? <LoaderCircle className="spin" size={20}/> : <UserPlus size={20}/>} 
+              <span>{activeIntent === 'signup' ? 'Открываем Google…' : 'Зарегистрироваться через Google'}</span>
+              {activeIntent !== 'signup' && <ArrowRight size={17}/>} 
+            </button>
+          </div>
+          <p className="auth-registration-note">После регистрации новый аккаунт получает роль viewer и ожидает подтверждения администратора.</p>
+          {hasSession && (error || notice) && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
+          <div className="auth-security-note"><LockKeyhole size={15}/><span>Пароль Google не передаётся AMANAT MED. Доступ разрешён только корпоративным аккаунтам.</span></div>
           <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
         </div>
         <p className="auth-support">Проблемы со входом? Обратитесь к администратору системы.</p>
