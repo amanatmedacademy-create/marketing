@@ -771,7 +771,7 @@ export async function handleSalesFunnel(request: Request, env: Env, url: URL): P
       upstreamDetail: upstream ? error.detail : undefined
     }));
     return json(requestId, {
-      error: upstream ? 'Ошибка подключения к PostgreSQL/Supabase' : 'Внутренняя ошибка модуля воронки',
+      error: upstream ? 'Ошибка подключения к Supabase' : 'Внутренняя ошибка модуля воронки',
       requestId
     }, upstream ? 502 : 500);
   }
