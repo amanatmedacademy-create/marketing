@@ -104,7 +104,7 @@ function parentKey(level: Level, row: Identity) {
   return hierarchyKey('adset', row);
 }
 
-function finalize(row: RecordValue) {
+function finalize(row: RecordValue): RecordValue {
   const spend = num(row.spend), impressions = num(row.impressions), clicks = num(row.clicks), linkClicks = num(row.link_clicks);
   const reach = num(row.reach);
   return {
