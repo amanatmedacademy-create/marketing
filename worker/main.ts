@@ -3,6 +3,7 @@ import { handleAdManager } from './adManager';
 import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
+import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
@@ -93,6 +94,8 @@ export default {
       if (adManager) return adManager;
       const salesFunnel = await handleSalesFunnel(forwardedRequest, runtimeEnv, url);
       if (salesFunnel) return salesFunnel;
+      const callCenter = await handleCallCenterChat(forwardedRequest, runtimeEnv, url);
+      if (callCenter) return callCenter;
       const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
       if (conversionMatrix) return conversionMatrix;
       const analytics = await handleAnalytics(forwardedRequest, runtimeEnv, url);
