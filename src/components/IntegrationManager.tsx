@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import CommunicationIntegrations from './CommunicationIntegrations';
 import IntegrationWorkspace from './IntegrationWorkspace';
+import MetaOAuthLauncher from './MetaOAuthLauncher';
 import { marketingApi, type IntegrationProvider } from '../services/api';
 import '../integration-catalog.css';
 
@@ -62,6 +63,7 @@ export default function IntegrationManager() {
 
   return <div className="stack">
     <IntegrationWorkspace />
+    <MetaOAuthLauncher />
     <CommunicationIntegrations />
   </div>;
 }
