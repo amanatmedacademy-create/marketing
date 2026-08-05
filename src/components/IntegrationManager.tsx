@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import type { CardConnectionStatus, CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
@@ -30,15 +30,22 @@ type ProviderDefinition = {
   fields: Field[];
 };
 
+type MetaOAuthStartResponse = {
+  ok?: boolean;
+  authorizationUrl?: string;
+  redirectUri?: string;
+  error?: string;
+};
+
 const supported: ProviderDefinition[] = [
   {
     provider: 'meta',
     title: 'Meta Ads',
     description: 'Facebook и Instagram: кабинеты, кампании, расходы и лиды.',
     fields: [
-      { name: 'accessToken', label: 'Access token', placeholder: 'Долгоживущий токен Meta', secret: true, required: true },
-      { name: 'adAccountIds', label: 'ID рекламных кабинетов', placeholder: '123456789,987654321', required: true },
-      { name: 'graphVersion', label: 'Graph API version', placeholder: 'v23.0', required: true },
+      { name: 'accessToken', label: 'Access token', placeholder: 'Долгоживущий токен Meta', secret: true },
+      { name: 'adAccountIds', label: 'ID рекламных кабинетов', placeholder: '123456789,987654321' },
+      { name: 'graphVersion', label: 'Graph API version', placeholder: 'v23.0' },
     ],
   },
   {
@@ -176,7 +183,6 @@ export default function IntegrationManager() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setMessage(null);
     try {
       const [nextStatus, nextConfigs] = await Promise.all([
         withTimeout(marketingApi.integrationStatus()),
@@ -195,6 +201,28 @@ export default function IntegrationManager() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('meta');
+    if (!result) return;
+
+    const accounts = params.get('accounts') || '0';
+    const oauthMessage = params.get('message') || 'Неизвестная ошибка Meta OAuth';
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('meta');
+    cleanUrl.searchParams.delete('accounts');
+    cleanUrl.searchParams.delete('message');
+    window.history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+
+    if (result === 'connected') {
+      setMessage({ type: 'ok', text: `Meta Ads подключена. Доступно рекламных кабинетов: ${accounts}.` });
+      setEditor(null);
+      void load();
+    } else {
+      setMessage({ type: 'error', text: `Meta OAuth: ${oauthMessage}` });
+    }
+  }, [load]);
+
   const updateField = (provider: IntegrationProvider, name: string, value: string) => {
     setForms((previous) => ({ ...previous, [provider]: { ...previous[provider], [name]: value } }));
   };
@@ -204,12 +232,43 @@ export default function IntegrationManager() {
     if (definition) setEditor(definition);
   };
 
+  const startMetaOAuth = async () => {
+    setBusy('oauth:meta');
+    setMessage(null);
+    try {
+      const response = await fetch('/api/integrations/meta/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const body = await response.text();
+      let result: MetaOAuthStartResponse = {};
+      try {
+        result = body ? JSON.parse(body) as MetaOAuthStartResponse : {};
+      } catch {
+        throw new Error(body || `Meta OAuth start failed: ${response.status}`);
+      }
+      if (!response.ok || !result.authorizationUrl) {
+        throw new Error(result.error || `Meta OAuth start failed: ${response.status}`);
+      }
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setMessage({ type: 'error', text: `Meta OAuth: ${errorText(error)}` });
+      setBusy(null);
+    }
+  };
+
   const save = async (definition: ProviderDefinition) => {
     const current = configMap.get(definition.provider);
     const values = forms[definition.provider];
     const missing = definition.fields.filter((field) => field.required && !values[field.name] && !current?.secretFields[field.name]);
     if (missing.length) {
       setMessage({ type: 'error', text: `Заполните: ${missing.map((field) => field.label).join(', ')}` });
+      return;
+    }
+
+    if (definition.provider === 'meta' && !values.accessToken && !current?.secretFields.accessToken) {
+      setMessage({ type: 'error', text: 'Для Meta используйте вход через Facebook или укажите резервный access token.' });
       return;
     }
 
@@ -309,7 +368,16 @@ export default function IntegrationManager() {
     {editor && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}>
       <section className="iv2-modal" role="dialog" aria-modal="true" aria-label={`Настройка ${editor.title}`}>
         <header><div><div><h2>{editor.title}</h2><p>{editor.description}</p></div></div><button type="button" onClick={() => setEditor(null)} aria-label="Закрыть"><X size={20}/></button></header>
+
+        {editor.provider === 'meta' && <div className="iv2-oauth">
+          <div><strong>Рекомендуемый способ</strong><span>Войдите через Facebook. Токен и доступные рекламные кабинеты сохранятся автоматически.</span></div>
+          <button className="iv2-facebook" type="button" onClick={() => void startMetaOAuth()} disabled={Boolean(busy)}>
+            {busy === 'oauth:meta' ? <LoaderCircle className="spin" size={17}/> : <Facebook size={17}/>} Войти через Facebook
+          </button>
+        </div>}
+
         <div className="iv2-form">
+          {editor.provider === 'meta' && <div className="iv2-form-title"><strong>Резервное ручное подключение</strong><span>Используйте только если OAuth недоступен.</span></div>}
           {editor.fields.map((field) => {
             const config = configMap.get(editor.provider);
             const savedSecret = field.secret && config?.secretFields[field.name];
