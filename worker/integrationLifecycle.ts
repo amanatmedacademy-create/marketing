@@ -1,8 +1,11 @@
+import { isFrontendAdmin } from './credentials';
+
 type JsonRecord = Record<string, unknown>;
 
 type LifecycleEnv = {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  FRONTEND_ADMIN_KEY?: string;
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -53,9 +56,28 @@ function allowedMetricRow(row: JsonRecord, connected: Set<string>): boolean {
   return [...connected].some((item) => item.toLowerCase() === platform.toLowerCase());
 }
 
-async function visibleDailyMetrics(env: LifecycleEnv): Promise<JsonRecord[]> {
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function readDateFilter(url: URL, key: 'from' | 'to'): string | null {
+  const value = url.searchParams.get(key);
+  if (!value) return null;
+  if (!ISO_DATE.test(value)) throw new Error(`Некорректный параметр ${key}. Ожидается YYYY-MM-DD`);
+  return value;
+}
+
+async function visibleDailyMetrics(env: LifecycleEnv, url?: URL): Promise<JsonRecord[]> {
   const connected = await connectedAdvertisingPlatforms(env);
-  const response = await rest(env, 'marketing_daily_metrics?select=date,source,platform,leads,target_leads,arrived,sales,spend,revenue&order=date.asc');
+  const params = new URLSearchParams({
+    select: 'date,source,platform,leads,target_leads,arrived,sales,spend,revenue',
+    order: 'date.asc',
+  });
+  if (url) {
+    const from = readDateFilter(url, 'from');
+    const to = readDateFilter(url, 'to');
+    if (from) params.append('date', `gte.${from}`);
+    if (to) params.append('date', `lte.${to}`);
+  }
+  const response = await rest(env, `marketing_daily_metrics?${params.toString()}`);
   const rows = await readJson(response) as JsonRecord[];
   return rows.filter((row) => allowedMetricRow(row, connected));
 }
@@ -64,9 +86,9 @@ function numeric(row: JsonRecord, key: string): number {
   return Number(row[key] || 0);
 }
 
-async function handleDashboard(env: LifecycleEnv): Promise<Response> {
+async function handleDashboard(env: LifecycleEnv, url: URL): Promise<Response> {
   const grouped = new Map<string, JsonRecord>();
-  for (const row of await visibleDailyMetrics(env)) {
+  for (const row of await visibleDailyMetrics(env, url)) {
     const date = String(row.date || '');
     const current = grouped.get(date) || { date, leads: 0, target_leads: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 };
     current.leads = numeric(current, 'leads') + numeric(row, 'leads');
@@ -123,17 +145,26 @@ async function handleCurrencies(env: LifecycleEnv): Promise<Response> {
 }
 
 async function disconnectProvider(request: Request, env: LifecycleEnv, url: URL): Promise<Response> {
+  if (!isFrontendAdmin(request, env)) return json({ error: 'Настройки интеграций доступны только администратору' }, 403);
+
   const provider = url.pathname.split('/').pop()?.toLowerCase() || '';
   if (!['bitrix', 'meta', 'tiktok', 'n8n'].includes(provider)) return json({ error: 'Неизвестная интеграция' }, 404);
   const purge = url.searchParams.get('purge') === 'true';
   let dataResult: unknown = null;
+  let warning: string | null = null;
 
   if (provider === 'meta' || provider === 'tiktok') {
     const rpc = await rest(env, 'rpc/manage_ad_provider_data', {
       method: 'POST',
       body: JSON.stringify({ p_provider: provider, p_purge: purge }),
     });
-    dataResult = await readJson(rpc);
+    if (rpc.ok) {
+      dataResult = await readJson(rpc);
+    } else {
+      const details = await rpc.text();
+      if (purge) return json({ error: `Не удалось удалить данные ${provider}: ${rpc.status} ${details}` }, 502);
+      warning = `Реквизиты отключены, но архивирование данных не выполнено: ${rpc.status} ${details}`;
+    }
   }
 
   const deleted = await rest(env, `integration_credentials?user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
@@ -142,13 +173,16 @@ async function disconnectProvider(request: Request, env: LifecycleEnv, url: URL)
   });
   await readJson(deleted);
 
-  return json({ ok: true, provider, mode: purge ? 'purged' : 'archived', data: dataResult });
+  return json({ ok: true, provider, mode: purge ? 'purged' : 'archived', data: dataResult, warning });
 }
 
 export async function handleIntegrationLifecycle(request: Request, env: LifecycleEnv, url: URL): Promise<Response | null> {
   if (request.method === 'DELETE' && url.pathname.startsWith('/api/integrations/config/')) return disconnectProvider(request, env, url);
   if (request.method !== 'GET') return null;
-  if (url.pathname === '/api/dashboard') return handleDashboard(env);
+  if (url.pathname === '/api/dashboard') {
+    try { return await handleDashboard(env, url); }
+    catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 400); }
+  }
   if (url.pathname === '/api/sources') return handleSources(env);
   if (url.pathname === '/api/ads') return handleAds(env);
   if (url.pathname === '/api/ads/currencies') return handleCurrencies(env);

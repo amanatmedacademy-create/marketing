@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
-import MetaOAuthLauncher from './components/MetaOAuthLauncher';
 import AdvertisingCatalogExpansion from './components/AdvertisingCatalogExpansion';
 import TelephonySectionDeduplicator from './components/TelephonySectionDeduplicator';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
@@ -32,7 +31,6 @@ function Root() {
   return <>
     <MarketingPlatform />
     <AnalyticsTableColorizer />
-    <MetaOAuthLauncher />
     <AdvertisingCatalogExpansion />
     <TelephonySectionDeduplicator />
   </>;

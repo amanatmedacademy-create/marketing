@@ -46,33 +46,53 @@ function parseError(message: string): string {
 async function loadFacebookSdk(config: SdkConfig): Promise<FacebookSdk> {
   if (!config.appId || !config.version) throw new Error('META_APP_ID или версия Graph API не настроены');
   const target = window as FacebookWindow;
-  if (target.FB) return target.FB;
+
+  const initialize = (): FacebookSdk => {
+    if (!target.FB) throw new Error('Facebook SDK недоступен');
+    target.FB.init({ appId: config.appId as string, cookie: true, xfbml: false, version: config.version as string });
+    target.FB.AppEvents?.logPageView();
+    return target.FB;
+  };
+
+  if (target.FB) return initialize();
 
   return new Promise<FacebookSdk>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error('Facebook SDK не загрузился')), 15000);
-    target.fbAsyncInit = () => {
-      if (!target.FB) {
-        window.clearTimeout(timeout);
-        reject(new Error('Facebook SDK недоступен'));
-        return;
-      }
-      target.FB.init({ appId: config.appId as string, cookie: true, xfbml: false, version: config.version as string });
-      target.FB.AppEvents?.logPageView();
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timeout);
-      resolve(target.FB);
+      callback();
+    };
+    const timeout = window.setTimeout(
+      () => finish(() => reject(new Error('Facebook SDK не загрузился'))),
+      15000,
+    );
+    const ready = () => finish(() => {
+      try { resolve(initialize()); } catch (error) { reject(error); }
+    });
+
+    const previous = target.fbAsyncInit;
+    target.fbAsyncInit = () => {
+      previous?.();
+      ready();
     };
 
-    if (document.getElementById('facebook-jssdk')) return;
+    const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', ready, { once: true });
+      existing.addEventListener('error', () => finish(() => reject(new Error('Не удалось загрузить Facebook SDK'))), { once: true });
+      return;
+    }
+
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.async = true;
     script.defer = true;
     script.crossOrigin = 'anonymous';
     script.src = 'https://connect.facebook.net/ru_RU/sdk.js';
-    script.onerror = () => {
-      window.clearTimeout(timeout);
-      reject(new Error('Не удалось загрузить Facebook SDK'));
-    };
+    script.addEventListener('load', ready, { once: true });
+    script.addEventListener('error', () => finish(() => reject(new Error('Не удалось загрузить Facebook SDK'))), { once: true });
     document.head.appendChild(script);
   });
 }
@@ -88,22 +108,29 @@ export default function MetaOAuthLauncher() {
 
   useEffect(() => {
     if (!isIntegrationsRoute()) return;
-    let cancelled = false;
 
-    const mountIntoCard = () => {
+    const locateTarget = () => {
       const nextCard = document.querySelector('.connection-card--meta');
-      const actions = nextCard?.querySelector('.connection-actions');
-      if (nextCard && actions) {
-        setCard(nextCard);
-        setTarget(actions);
-      }
+      const nextTarget = nextCard?.querySelector('.connection-actions') || null;
+      setCard((current) => current === nextCard ? current : nextCard);
+      setTarget((current) => current === nextTarget ? current : nextTarget);
     };
 
-    mountIntoCard();
-    const observer = new MutationObserver(mountIntoCard);
-    observer.observe(document.body, { childList: true, subtree: true });
+    locateTarget();
+    const interval = window.setInterval(locateTarget, 300);
+    return () => window.clearInterval(interval);
+  }, []);
 
+  useEffect(() => {
+    if (!target) {
+      setReady(false);
+      setSdk(null);
+      return;
+    }
+
+    let cancelled = false;
     const initialize = async () => {
+      setReady(false);
       try {
         const response = await fetch('/api/integrations/meta/sdk-config', { headers: { accept: 'application/json' } });
         const body = await response.text();
@@ -120,11 +147,8 @@ export default function MetaOAuthLauncher() {
     };
 
     void initialize();
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [target]);
 
   useLayoutEffect(() => {
     if (!card) return;

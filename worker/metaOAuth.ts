@@ -133,8 +133,8 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
   }
 }
 
-function redirectResult(kind: 'connected' | 'error', value: string): Response {
-  const target = new URL('/integrations', DEFAULT_REDIRECT_URI);
+function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: string): Response {
+  const target = new URL('/integrations', redirectUri(env));
   target.searchParams.set('meta', kind);
   target.searchParams.set(kind === 'connected' ? 'accounts' : 'message', value.slice(0, 300));
   return new Response(null, {
@@ -173,10 +173,10 @@ export async function handleMetaOAuthRequest(request: Request, env: MetaOAuthEnv
       const accessToken = await exchangeCode(env, code);
       const accounts = await listAdAccounts(env, accessToken);
       await saveMetaCredentials(env, accessToken, accounts);
-      return redirectResult('connected', String(accounts.length));
+      return redirectResult(env, 'connected', String(accounts.length));
     } catch (error) {
       console.error('Meta OAuth callback failed', error);
-      return redirectResult('error', error instanceof Error ? error.message : 'Ошибка подключения Meta');
+      return redirectResult(env, 'error', error instanceof Error ? error.message : 'Ошибка подключения Meta');
     }
   }
 
