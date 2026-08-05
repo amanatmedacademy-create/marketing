@@ -10,10 +10,13 @@ declare
   resolved_id uuid;
   company_count integer;
 begin
-  select min(id), count(*) into resolved_id, company_count
+  select count(*) into company_count
   from public.crm_companies;
 
   if company_count = 1 then
+    select id into resolved_id
+    from public.crm_companies
+    limit 1;
     return resolved_id;
   end if;
 
