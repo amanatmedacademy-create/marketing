@@ -6,6 +6,7 @@ export type AuthEnv = Env & {
   SUPABASE_ANON_KEY?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   AUTH_ALLOWED_EMAIL_DOMAINS?: string;
+  AUTH_ADMIN_EMAILS?: string;
   AUTH_AUTO_APPROVE?: string;
 };
 
@@ -50,36 +51,61 @@ function bearerToken(request: Request): string | null {
   return authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : null;
 }
 
-function allowedDomains(env: AuthEnv): string[] {
-  return (env.AUTH_ALLOWED_EMAIL_DOMAINS || '')
+function csvList(value?: string): string[] {
+  return (value || '')
     .split(',')
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 }
 
+function allowedDomains(env: AuthEnv): string[] {
+  return csvList(env.AUTH_ALLOWED_EMAIL_DOMAINS);
+}
+
+function adminEmails(env: AuthEnv): string[] {
+  return csvList(env.AUTH_ADMIN_EMAILS);
+}
+
 function domainAllowed(email: string, env: AuthEnv): boolean {
   const domains = allowedDomains(env);
-  if (!domains.length) return true;
+  if (!domains.length) return false;
   const domain = email.split('@').pop()?.toLowerCase() || '';
   return domains.includes(domain);
+}
+
+function isAdminEmail(email: string, env: AuthEnv): boolean {
+  return adminEmails(env).includes(email.toLowerCase());
+}
+
+function publicAuthError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'Этот Google-аккаунт не разрешён для входа') return message;
+  if (message === 'Аккаунт ожидает подтверждения администратора') return message;
+  if (message === 'Доступ пользователя заблокирован') return message;
+  return 'Не удалось проверить доступ пользователя';
 }
 
 async function readAuthSettings(env: AuthEnv): Promise<{ googleEnabled: boolean; error: string | null }> {
   const apiKey = authApiKey(env);
   if (!env.SUPABASE_URL) return { googleEnabled: false, error: 'SUPABASE_URL не настроен' };
-  if (!apiKey) return { googleEnabled: false, error: 'SUPABASE_SERVICE_ROLE_KEY не настроен' };
+  if (!apiKey) return { googleEnabled: false, error: 'Публичный ключ Supabase Auth не настроен' };
+  if (!allowedDomains(env).length) return { googleEnabled: false, error: 'AUTH_ALLOWED_EMAIL_DOMAINS не настроен' };
 
   try {
     const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/settings`, {
       headers: { apikey: apiKey, authorization: `Bearer ${apiKey}` },
     });
     const body = await response.text();
-    if (!response.ok) return { googleEnabled: false, error: `Supabase Auth settings: ${response.status} ${body}` };
+    if (!response.ok) {
+      console.error(`Supabase Auth settings ${response.status}: ${body.slice(0, 500)}`);
+      return { googleEnabled: false, error: `Supabase Auth settings недоступен: ${response.status}` };
+    }
     const settings = JSON.parse(body) as JsonRecord;
     const external = settings.external && typeof settings.external === 'object' ? settings.external as JsonRecord : {};
     return { googleEnabled: external.google === true, error: null };
   } catch (error) {
-    return { googleEnabled: false, error: error instanceof Error ? error.message : String(error) };
+    console.error('Unable to read Supabase Auth settings', error);
+    return { googleEnabled: false, error: 'Не удалось проверить настройки Google Auth' };
   }
 }
 
@@ -105,7 +131,10 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
   if (!domainAllowed(email, env)) throw new Error('Этот Google-аккаунт не разрешён для входа');
 
   const existingResponse = await supabaseRequest(env, `marketing_users?auth_user_id=eq.${encodeURIComponent(id)}&select=*`);
-  if (!existingResponse.ok) throw new Error(`Unable to read marketing user: ${await existingResponse.text()}`);
+  if (!existingResponse.ok) {
+    console.error(`Unable to read marketing user: ${existingResponse.status} ${(await existingResponse.text()).slice(0, 500)}`);
+    throw new Error('Unable to read marketing user');
+  }
   const existing = await existingResponse.json() as JsonRecord[];
 
   let row: JsonRecord;
@@ -115,19 +144,23 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
       headers: { prefer: 'return=representation' },
       body: JSON.stringify({ name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, last_seen_at: new Date().toISOString() }),
     });
-    if (!response.ok) throw new Error(`Unable to update marketing user: ${await response.text()}`);
+    if (!response.ok) {
+      console.error(`Unable to update marketing user: ${response.status} ${(await response.text()).slice(0, 500)}`);
+      throw new Error('Unable to update marketing user');
+    }
     row = (await response.json() as JsonRecord[])[0];
   } else {
-    const firstUserResponse = await supabaseRequest(env, 'marketing_users?select=id&limit=1');
-    const firstUsers = firstUserResponse.ok ? await firstUserResponse.json() as JsonRecord[] : [];
-    const role = firstUsers.length === 0 ? 'administrator' : 'viewer';
-    const status = env.AUTH_AUTO_APPROVE === 'false' && role !== 'administrator' ? 'invited' : 'active';
+    const role = isAdminEmail(email, env) ? 'administrator' : 'viewer';
+    const status = role === 'administrator' || env.AUTH_AUTO_APPROVE === 'true' ? 'active' : 'invited';
     const response = await supabaseRequest(env, 'marketing_users', {
       method: 'POST',
       headers: { prefer: 'return=representation' },
       body: JSON.stringify({ auth_user_id: id, name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, role, status, last_seen_at: new Date().toISOString() }),
     });
-    if (!response.ok) throw new Error(`Unable to create marketing user: ${await response.text()}`);
+    if (!response.ok) {
+      console.error(`Unable to create marketing user: ${response.status} ${(await response.text()).slice(0, 500)}`);
+      throw new Error('Unable to create marketing user');
+    }
     row = (await response.json() as JsonRecord[])[0];
   }
 
@@ -169,6 +202,8 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       googleEnabled: settings.googleEnabled,
       oauthMode: 'worker',
       publicKeyConfigured: Boolean(publicSupabaseKey(env)),
+      allowedDomainsConfigured: allowedDomains(env).length > 0,
+      adminEmailsConfigured: adminEmails(env).length > 0,
       diagnostic: settings.error,
     });
   }
@@ -201,6 +236,10 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
     const responseBody = await response.text();
+    if (!response.ok) {
+      console.error(`Unable to refresh auth session: ${response.status} ${responseBody.slice(0, 500)}`);
+      return json({ error: 'Не удалось обновить сессию' }, response.status === 400 ? 401 : response.status);
+    }
     return new Response(responseBody, {
       status: response.status,
       headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -217,7 +256,8 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       if (user.status !== 'active') return json({ error: 'Аккаунт ожидает подтверждения администратора' }, 403);
       return json({ user });
     } catch (error) {
-      return json({ error: error instanceof Error ? error.message : 'Ошибка авторизации' }, 403);
+      console.error('Unable to load authenticated marketing user', error);
+      return json({ error: publicAuthError(error) }, 403);
     }
   }
 
