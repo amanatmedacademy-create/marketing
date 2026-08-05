@@ -16,6 +16,11 @@ interface MetaAdAccount {
   name?: string;
 }
 
+type MetaAccountsPage = {
+  data?: MetaAdAccount[];
+  paging?: { next?: string };
+};
+
 const DEFAULT_REDIRECT_URI = 'https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback';
 const STATE_COOKIE = 'amanat_meta_oauth_state';
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
@@ -96,7 +101,7 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
   const params = new URLSearchParams({ fields: 'id,account_id,name,account_status,currency,timezone_name', limit: '200', access_token: accessToken });
   let next: string | undefined = `https://graph.facebook.com/${graphVersion(env)}/me/adaccounts?${params}`;
   while (next) {
-    const page = await fetchJson<{ data?: MetaAdAccount[]; paging?: { next?: string } }>(next);
+    const page: MetaAccountsPage = await fetchJson<MetaAccountsPage>(next);
     accounts.push(...(page.data || []));
     next = page.paging?.next;
     if (accounts.length >= 1000) break;
