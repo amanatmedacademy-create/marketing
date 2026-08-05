@@ -7,6 +7,14 @@ export interface AppUser {
   status: string;
 }
 
+export type GoogleAuthIntent = 'login' | 'signup';
+
+export interface AuthLoadResult {
+  user: AppUser | null;
+  pending: boolean;
+  message?: string;
+}
+
 interface StoredSession {
   access_token: string;
   refresh_token?: string;
@@ -15,6 +23,7 @@ interface StoredSession {
 }
 
 const STORAGE_KEY = 'amanat_marketing_auth_session';
+const AUTH_INTENT_KEY = 'amanat_marketing_auth_intent';
 
 function readStoredSession(): StoredSession | null {
   try {
@@ -69,6 +78,21 @@ async function refreshSession(session: StoredSession): Promise<StoredSession | n
   return next;
 }
 
+export function consumeGoogleAuthIntent(): GoogleAuthIntent {
+  const params = new URLSearchParams(window.location.search);
+  const queryIntent = params.get('auth_intent');
+  const storedIntent = sessionStorage.getItem(AUTH_INTENT_KEY);
+  const intent: GoogleAuthIntent = queryIntent === 'signup' || storedIntent === 'signup' ? 'signup' : 'login';
+
+  sessionStorage.removeItem(AUTH_INTENT_KEY);
+  if (params.has('auth_intent')) {
+    params.delete('auth_intent');
+    const query = params.toString();
+    history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }
+  return intent;
+}
+
 export async function currentSession(): Promise<StoredSession | null> {
   const callback = parseCallbackSession();
   if (callback) return callback;
@@ -83,12 +107,14 @@ export async function currentSession(): Promise<StoredSession | null> {
   return refreshed;
 }
 
-export async function startGoogleSignIn(): Promise<void> {
-  window.location.assign('/api/auth/google/start');
+export async function startGoogleAuth(intent: GoogleAuthIntent): Promise<void> {
+  sessionStorage.setItem(AUTH_INTENT_KEY, intent);
+  window.location.assign(`/api/auth/google/start?intent=${intent}`);
 }
 
 export async function signOutSession(): Promise<void> {
   writeStoredSession(null);
+  sessionStorage.removeItem(AUTH_INTENT_KEY);
   await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
 }
 
@@ -99,17 +125,23 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   return fetch(input, { ...init, headers });
 }
 
-export async function loadAppUser(): Promise<AppUser> {
-  const response = await authFetch('/api/auth/me');
+export async function loadAppUser(intent: GoogleAuthIntent = 'login'): Promise<AuthLoadResult> {
+  const response = await authFetch(`/api/auth/me?intent=${intent}`);
   const body = await response.text();
-  if (!response.ok) {
+  let payload: { user?: AppUser; pending?: boolean; message?: string; error?: string } = {};
+
+  if (body) {
     try {
-      const parsed = JSON.parse(body) as { error?: string };
-      throw new Error(parsed.error || body || 'Ошибка авторизации');
-    } catch (error) {
-      if (error instanceof Error && error.message !== 'Unexpected end of JSON input') throw error;
-      throw new Error(body || 'Ошибка авторизации');
+      payload = JSON.parse(body) as typeof payload;
+    } catch {
+      if (!response.ok) throw new Error(body);
     }
   }
-  return (JSON.parse(body) as { user: AppUser }).user;
+
+  if (!response.ok) throw new Error(payload.error || body || 'Ошибка авторизации');
+  return {
+    user: payload.user || null,
+    pending: Boolean(payload.pending),
+    message: payload.message,
+  };
 }
