@@ -1,0 +1,37 @@
+.marketing-chat-page{display:flex;flex-direction:column;gap:20px;min-height:calc(100vh - 116px)}
+.marketing-chat-title{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.marketing-chat-title span{display:block;color:#60a5fa;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.marketing-chat-title h1{margin:6px 0 4px;font-size:30px}
+.marketing-chat-title p{margin:0;color:#94a3b8}
+.marketing-chat-title button,.marketing-chat-conversation>header button{display:inline-flex;align-items:center;gap:8px;border:1px solid #243553;background:#111d35;color:#dbeafe;border-radius:10px;padding:10px 14px;cursor:pointer}
+.marketing-chat-shell{display:grid;grid-template-columns:340px minmax(0,1fr);min-height:660px;border:1px solid #1e2d4a;border-radius:16px;overflow:hidden;background:#0b1428}
+.marketing-chat-list{border-right:1px solid #1e2d4a;background:#0d1730;overflow:auto}
+.marketing-chat-search{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid #1e2d4a;position:sticky;top:0;background:#0d1730;z-index:2}
+.marketing-chat-search input{width:100%;border:1px solid #243553;background:#091225;color:#e5edf9;border-radius:10px;padding:10px 12px;outline:none}
+.marketing-chat-list>button{width:100%;display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:10px;padding:13px 14px;border:0;border-bottom:1px solid #16233d;background:transparent;color:#e5edf9;text-align:left;cursor:pointer}
+.marketing-chat-list>button:hover,.marketing-chat-list>button.active{background:#14213b}
+.marketing-chat-list>button>span:nth-child(2){min-width:0;display:flex;flex-direction:column;gap:4px}
+.marketing-chat-list strong,.marketing-chat-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.marketing-chat-list small{color:#8291aa;font-size:12px}
+.marketing-chat-list>button>b{display:grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#2563eb;font-size:11px}
+.marketing-chat-list>button>i{width:9px;height:9px;border-radius:999px;background:#64748b}
+.marketing-chat-list>button>i.status-open{background:#22c55e}
+.marketing-chat-avatar{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#1d4ed8;color:#fff;font-weight:800}
+.marketing-chat-state{padding:24px;color:#94a3b8;text-align:center}
+.marketing-chat-conversation{display:flex;min-width:0;flex-direction:column;position:relative}
+.marketing-chat-conversation>header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid #1e2d4a;background:#0d1730}
+.marketing-chat-conversation>header div{display:flex;flex-direction:column;gap:4px}
+.marketing-chat-conversation>header small{color:#8291aa}
+.marketing-chat-messages{flex:1;display:flex;flex-direction:column;gap:10px;padding:20px;overflow:auto;background:radial-gradient(circle at top right,rgba(37,99,235,.08),transparent 36%),#091225}
+.marketing-chat-messages article{align-self:flex-start;max-width:min(72%,680px);padding:11px 13px;border-radius:14px 14px 14px 4px;background:#16233d;color:#e5edf9}
+.marketing-chat-messages article.outbound{align-self:flex-end;border-radius:14px 14px 4px 14px;background:#1d4ed8}
+.marketing-chat-messages p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.marketing-chat-messages time{display:block;margin-top:5px;color:#b8c4d8;font-size:11px;text-align:right}
+.marketing-chat-compose{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:10px;padding:14px;border-top:1px solid #1e2d4a;background:#0d1730}
+.marketing-chat-compose textarea{resize:none;border:1px solid #243553;background:#091225;color:#e5edf9;border-radius:12px;padding:11px 13px;outline:none}
+.marketing-chat-compose button{display:grid;place-items:center;border:0;border-radius:12px;background:#2563eb;color:#fff;cursor:pointer}
+.marketing-chat-compose button:disabled{opacity:.45;cursor:not-allowed}
+.marketing-chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px;color:#8291aa;text-align:center}
+.marketing-chat-empty strong{color:#dbeafe}
+.marketing-chat-error{padding:10px 14px;background:#4c1d1d;color:#fecaca;border-bottom:1px solid #7f1d1d;font-size:13px}
+@media(max-width:900px){.marketing-chat-shell{grid-template-columns:1fr;min-height:720px}.marketing-chat-list{max-height:260px;border-right:0;border-bottom:1px solid #1e2d4a}.marketing-chat-title{flex-direction:column}.marketing-chat-messages article{max-width:88%}}
