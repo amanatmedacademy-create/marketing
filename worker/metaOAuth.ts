@@ -1,4 +1,5 @@
 import { resolveCompanyId } from './companyContext';
+import { runAllSyncs, type Env as IntegrationEnv, type WorkerExecutionContext } from './integrations';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -107,7 +108,7 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
   return accounts;
 }
 
-async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<void> {
+async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<string[]> {
   const { appSecret } = requireMetaApp(env);
   const companyId = await resolveCompanyId(env);
   const accountIds = accounts.map((account) => account.id || (account.account_id ? `act_${account.account_id}` : '')).filter(Boolean);
@@ -136,6 +137,30 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
   } else {
     await supabase(env, 'integration_credentials', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
   }
+  return accountIds;
+}
+
+async function startInitialMetaSync(
+  env: MetaOAuthEnv,
+  accessToken: string,
+  accountIds: string[],
+  ctx?: WorkerExecutionContext,
+): Promise<void> {
+  const syncEnv = {
+    ...env,
+    META_ACCESS_TOKEN: accessToken,
+    META_AD_ACCOUNT_IDS: accountIds.join(','),
+    META_GRAPH_VERSION: graphVersion(env),
+  } as unknown as IntegrationEnv;
+  const task = runAllSyncs(syncEnv, { source: 'meta', days: 90 }).then(
+    (results) => { console.log('Initial Meta sync completed', results); },
+    (error) => { console.error('Initial Meta sync failed', error); },
+  );
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(task);
+    return;
+  }
+  await task;
 }
 
 function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: string): Response {
@@ -152,7 +177,12 @@ function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: s
   });
 }
 
-export async function handleMetaOAuthRequest(request: Request, env: MetaOAuthEnv, url: URL): Promise<Response | null> {
+export async function handleMetaOAuthRequest(
+  request: Request,
+  env: MetaOAuthEnv,
+  url: URL,
+  ctx?: WorkerExecutionContext,
+): Promise<Response | null> {
   if (url.pathname === '/api/integrations/meta/connect' && request.method === 'GET') {
     const { appId } = requireMetaApp(env);
     const state = crypto.randomUUID().replace(/-/g, '');
@@ -177,7 +207,8 @@ export async function handleMetaOAuthRequest(request: Request, env: MetaOAuthEnv
       if (!state || state !== cookieValue(request, STATE_COOKIE)) throw new Error('OAuth state не совпадает. Повторите подключение.');
       const accessToken = await exchangeCode(env, code);
       const accounts = await listAdAccounts(env, accessToken);
-      await saveMetaCredentials(env, accessToken, accounts);
+      const accountIds = await saveMetaCredentials(env, accessToken, accounts);
+      await startInitialMetaSync(env, accessToken, accountIds, ctx);
       return redirectResult(env, 'connected', String(accounts.length));
     } catch (error) {
       console.error('Meta OAuth callback failed', error);
