@@ -11,6 +11,18 @@ dist/
 .wrangler/
 .dev.vars
 
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
 # прочее
 .DS_Store
 *.log

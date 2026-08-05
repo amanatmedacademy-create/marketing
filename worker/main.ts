@@ -11,6 +11,7 @@ import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleOperationsRequest } from './operations';
+import { handleSalesFunnel } from './salesFunnel';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
@@ -90,6 +91,8 @@ export default {
       if (metaAdsets) return metaAdsets;
       const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url);
       if (adManager) return adManager;
+      const salesFunnel = await handleSalesFunnel(forwardedRequest, runtimeEnv, url);
+      if (salesFunnel) return salesFunnel;
       const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
       if (conversionMatrix) return conversionMatrix;
       const analytics = await handleAnalytics(forwardedRequest, runtimeEnv, url);
