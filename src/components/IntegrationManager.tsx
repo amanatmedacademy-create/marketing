@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
+import { IntegrationCard } from './integrationCards/IntegrationCard';
+import type { CardConnectionStatus, CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
 import {
   marketingApi,
   type IntegrationConfigResponse,
   type IntegrationCredentialSummary,
   type IntegrationProvider,
+  type IntegrationRun,
   type IntegrationStatus,
 } from '../services/api';
 import '../integrations-v2.css';
@@ -23,7 +26,6 @@ type Field = {
 type ProviderDefinition = {
   provider: IntegrationProvider;
   title: string;
-  mark: string;
   description: string;
   fields: Field[];
 };
@@ -32,7 +34,6 @@ const supported: ProviderDefinition[] = [
   {
     provider: 'meta',
     title: 'Meta Ads',
-    mark: 'ME',
     description: 'Facebook и Instagram: кабинеты, кампании, расходы и лиды.',
     fields: [
       { name: 'accessToken', label: 'Access token', placeholder: 'Долгоживущий токен Meta', secret: true, required: true },
@@ -43,7 +44,6 @@ const supported: ProviderDefinition[] = [
   {
     provider: 'tiktok',
     title: 'TikTok Ads',
-    mark: 'TT',
     description: 'Кампании, расходы, объявления и лиды TikTok.',
     fields: [
       { name: 'accessToken', label: 'Access token', placeholder: 'TikTok Business API token', secret: true, required: true },
@@ -53,7 +53,6 @@ const supported: ProviderDefinition[] = [
   {
     provider: 'bitrix',
     title: 'Bitrix24',
-    mark: '24',
     description: 'Лиды, сделки, стадии, визиты и продажи из CRM.',
     fields: [
       { name: 'webhookBaseUrl', label: 'Входящий webhook URL', placeholder: 'https://portal.bitrix24.kz/rest/1/token', required: true },
@@ -63,7 +62,6 @@ const supported: ProviderDefinition[] = [
   {
     provider: 'n8n',
     title: 'n8n',
-    mark: 'N8',
     description: 'Webhooks, сценарии и резервный импорт данных.',
     fields: [
       { name: 'webhookSecret', label: 'Webhook secret', placeholder: 'Минимум 32 случайных символа', secret: true, required: true },
@@ -71,11 +69,11 @@ const supported: ProviderDefinition[] = [
   },
 ];
 
-const planned = [
-  { title: 'WhatsApp Business API', mark: 'WA', description: 'Прямое подключение WABA через Meta Cloud API.' },
-  { title: 'Wazzup', mark: 'WZ', description: 'WhatsApp и Instagram с историей сообщений.' },
-  { title: 'Binotel', mark: 'BI', description: 'Телефония, записи разговоров и пропущенные звонки.' },
-  { title: 'Sipuni', mark: 'SI', description: 'Виртуальная АТС и аналитика звонков.' },
+const planned: Array<{ id: CardIntegrationProvider; title: string; description: string }> = [
+  { id: 'waba', title: 'WhatsApp Business API', description: 'Прямое подключение WABA через Meta Cloud API.' },
+  { id: 'wazzup', title: 'Wazzup', description: 'WhatsApp и Instagram с историей сообщений.' },
+  { id: 'binotel', title: 'Binotel', description: 'Телефония, записи разговоров и пропущенные звонки.' },
+  { id: 'sipuni', title: 'Sipuni', description: 'Виртуальная АТС и аналитика звонков.' },
 ];
 
 const emptyForms = (): FormState => ({ bitrix: {}, meta: {}, tiktok: {}, n8n: {} });
@@ -94,11 +92,33 @@ function isConnected(config?: IntegrationCredentialSummary): boolean {
   return Boolean(config && config.status === 'connected' && !config.lastError);
 }
 
+function cardStatus(config?: IntegrationCredentialSummary, run?: IntegrationRun): CardConnectionStatus {
+  if (run?.status === 'running') return 'syncing';
+  if (config?.lastError || config?.status === 'error' || run?.status === 'failed') return 'error';
+  if (isConnected(config)) return 'connected';
+  if (config?.configured) return 'disconnected';
+  return 'not_connected';
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return 'Нет данных';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Нет данных';
+  return date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T> {
-  return await Promise.race([
-    promise,
-    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error('Сервер интеграций не ответил вовремя')), timeoutMs)),
-  ]);
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error('Сервер интеграций не ответил вовремя')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 export default function IntegrationManager() {
@@ -108,12 +128,42 @@ export default function IntegrationManager() {
   const [configs, setConfigs] = useState<IntegrationConfigResponse>({ providers: [] });
   const [forms, setForms] = useState<FormState>(emptyForms);
   const [editor, setEditor] = useState<ProviderDefinition | null>(null);
+  const [activeCard, setActiveCard] = useState<CardIntegrationProvider | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
   const configMap = useMemo(() => new Map(configs.providers.map((item) => [item.provider, item])), [configs.providers]);
-  const connectedCount = supported.filter((item) => isConnected(configMap.get(item.provider))).length;
+  const runMap = useMemo(() => {
+    const map = new Map<IntegrationProvider, IntegrationRun>();
+    for (const run of status?.runs || []) {
+      if (['meta', 'tiktok', 'bitrix', 'n8n'].includes(run.source) && !map.has(run.source as IntegrationProvider)) {
+        map.set(run.source as IntegrationProvider, run);
+      }
+    }
+    return map;
+  }, [status?.runs]);
+
+  const cards = useMemo<CardIntegrationSummary[]>(() => supported.map((definition) => {
+    const config = configMap.get(definition.provider);
+    const run = runMap.get(definition.provider);
+    return {
+      id: definition.provider,
+      name: definition.title,
+      description: definition.description,
+      status: cardStatus(config, run),
+      lastSyncedAt: run?.finished_at || run?.started_at || config?.lastVerifiedAt || null,
+      stats: [
+        { label: 'Последняя синхронизация', value: formatDate(run?.finished_at || run?.started_at || config?.lastVerifiedAt) },
+        { label: 'Получено', value: String(run?.fetched ?? 0), tone: run?.status === 'failed' ? 'negative' : 'neutral' },
+        { label: 'Записано', value: String(run?.written ?? 0), tone: run?.status === 'success' ? 'positive' : 'neutral' },
+      ],
+      fields: Object.entries(config?.values || {}).map(([label, value]) => ({ label, value })),
+      errorMessage: config?.lastError || run?.error || undefined,
+    };
+  }), [configMap, runMap]);
+
+  const connectedCount = cards.filter((item) => item.status === 'connected' || item.status === 'syncing').length;
 
   const applyConfigs = useCallback((result: IntegrationConfigResponse) => {
     setConfigs(result);
@@ -147,6 +197,11 @@ export default function IntegrationManager() {
 
   const updateField = (provider: IntegrationProvider, name: string, value: string) => {
     setForms((previous) => ({ ...previous, [provider]: { ...previous[provider], [name]: value } }));
+  };
+
+  const openEditor = (provider: IntegrationProvider) => {
+    const definition = supported.find((item) => item.provider === provider);
+    if (definition) setEditor(definition);
   };
 
   const save = async (definition: ProviderDefinition) => {
@@ -207,9 +262,9 @@ export default function IntegrationManager() {
   return <div className="iv2-page">
     <header className="iv2-header">
       <div>
-        <span>INTEGRATIONS V2</span>
+        <span>INTEGRATIONS</span>
         <h1>Интеграции</h1>
-        <p>Новый модуль без MutationObserver, portals и ручного изменения DOM.</p>
+        <p>Подключения рекламных кабинетов, CRM, автоматизации и коммуникаций.</p>
       </div>
       <button type="button" onClick={() => void load()} disabled={loading || Boolean(busy)}>
         {loading ? <LoaderCircle className="spin" size={16}/> : <RefreshCw size={16}/>} Обновить
@@ -217,43 +272,43 @@ export default function IntegrationManager() {
     </header>
 
     <section className="iv2-summary">
-      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {supported.length}</strong></div></article>
+      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {cards.length}</strong></div></article>
       <article><Plug size={22}/><div><span>API</span><strong>{message?.type === 'error' ? 'Ошибка' : loading ? 'Проверка' : 'Работает'}</strong></div></article>
-      <article><Settings size={22}/><div><span>Режим</span><strong>Чистый React</strong></div></article>
+      <article><Settings size={22}/><div><span>Архитектура</span><strong>React без DOM-мутаций</strong></div></article>
     </section>
 
     {message && <div className={`iv2-message iv2-message--${message.type}`}>{message.text}</div>}
 
     <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Настройки открываются в обычном React-окне.</p></div></div>
+      <div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Карточки показывают реальные статусы и последние результаты синхронизации.</p></div></div>
       <div className="iv2-grid">
-        {supported.map((definition) => {
-          const config = configMap.get(definition.provider);
-          const connected = isConnected(config);
-          return <article className="iv2-card" key={definition.provider}>
-            <div className="iv2-card-top"><span className="iv2-mark">{definition.mark}</span><em className={connected ? 'is-connected' : ''}>{connected ? 'Подключено' : config ? 'Нужна проверка' : 'Не подключено'}</em></div>
-            <h3>{definition.title}</h3>
-            <p>{definition.description}</p>
-            {config?.lastError && <small>{config.lastError}</small>}
-            <button type="button" onClick={() => setEditor(definition)} disabled={Boolean(busy)}>{connected ? 'Управление' : 'Настроить'}</button>
-          </article>;
-        })}
+        {cards.map((card) => <IntegrationCard
+          key={card.id}
+          integration={card}
+          active={activeCard === card.id}
+          onSelect={() => setActiveCard(card.id)}
+          onConfigure={() => openEditor(card.id as IntegrationProvider)}
+        />)}
       </div>
     </section>
 
     <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Эти сервисы будут добавлены после стабилизации четырёх основных подключений.</p></div></div>
-      <div className="iv2-grid iv2-grid--planned">
-        {planned.map((item) => <article className="iv2-card iv2-card--planned" key={item.title}>
-          <div className="iv2-card-top"><span className="iv2-mark">{item.mark}</span><em>В разработке</em></div>
-          <h3>{item.title}</h3><p>{item.description}</p><button type="button" disabled>Скоро</button>
-        </article>)}
+      <div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Коммуникационные сервисы подключим после проверки основных источников.</p></div></div>
+      <div className="iv2-grid">
+        {planned.map((item) => <IntegrationCard
+          key={item.id}
+          integration={{ id: item.id, name: item.title, description: item.description, status: 'not_connected', lastSyncedAt: null, stats: [], fields: [] }}
+          active={activeCard === item.id}
+          disabled
+          onSelect={() => setActiveCard(item.id)}
+          onConfigure={() => undefined}
+        />)}
       </div>
     </section>
 
     {editor && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}>
       <section className="iv2-modal" role="dialog" aria-modal="true" aria-label={`Настройка ${editor.title}`}>
-        <header><div><span>{editor.mark}</span><div><h2>{editor.title}</h2><p>{editor.description}</p></div></div><button type="button" onClick={() => setEditor(null)} aria-label="Закрыть"><X size={20}/></button></header>
+        <header><div><div><h2>{editor.title}</h2><p>{editor.description}</p></div></div><button type="button" onClick={() => setEditor(null)} aria-label="Закрыть"><X size={20}/></button></header>
         <div className="iv2-form">
           {editor.fields.map((field) => {
             const config = configMap.get(editor.provider);
