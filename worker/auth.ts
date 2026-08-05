@@ -7,6 +7,7 @@ export type AuthEnv = Env & {
   SUPABASE_ANON_KEY?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   AUTH_ALLOWED_EMAIL_DOMAINS?: string;
+  AUTH_ALLOWED_EMAILS?: string;
   AUTH_ADMIN_EMAILS?: string;
   AUTH_AUTO_APPROVE?: string;
 };
@@ -63,15 +64,19 @@ function allowedDomains(env: AuthEnv): string[] {
   return csvList(env.AUTH_ALLOWED_EMAIL_DOMAINS);
 }
 
+function allowedEmails(env: AuthEnv): string[] {
+  return csvList(env.AUTH_ALLOWED_EMAILS);
+}
+
 function adminEmails(env: AuthEnv): string[] {
   return csvList(env.AUTH_ADMIN_EMAILS);
 }
 
-function domainAllowed(email: string, env: AuthEnv): boolean {
-  const domains = allowedDomains(env);
-  if (!domains.length) return false;
-  const domain = email.split('@').pop()?.toLowerCase() || '';
-  return domains.includes(domain);
+function accountAllowed(email: string, env: AuthEnv): boolean {
+  const normalizedEmail = email.toLowerCase();
+  if (allowedEmails(env).includes(normalizedEmail)) return true;
+  const domain = normalizedEmail.split('@').pop() || '';
+  return allowedDomains(env).includes(domain);
 }
 
 function isAdminEmail(email: string, env: AuthEnv): boolean {
@@ -97,7 +102,9 @@ async function readAuthSettings(env: AuthEnv): Promise<{ googleEnabled: boolean;
   const apiKey = authApiKey(env);
   if (!env.SUPABASE_URL) return { googleEnabled: false, error: 'SUPABASE_URL не настроен' };
   if (!apiKey) return { googleEnabled: false, error: 'Публичный ключ Supabase Auth не настроен' };
-  if (!allowedDomains(env).length) return { googleEnabled: false, error: 'AUTH_ALLOWED_EMAIL_DOMAINS не настроен' };
+  if (!allowedDomains(env).length && !allowedEmails(env).length) {
+    return { googleEnabled: false, error: 'AUTH_ALLOWED_EMAIL_DOMAINS или AUTH_ALLOWED_EMAILS не настроен' };
+  }
 
   try {
     const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/settings`, {
@@ -148,7 +155,7 @@ async function resolveMarketingUser(user: JsonRecord, env: AuthEnv, allowCreate:
   const fallback = { id, email, name, avatarUrl };
 
   if (!id || !email) throw new Error('Google account does not contain a valid user ID or email');
-  if (!domainAllowed(email, env)) throw new Error('Этот Google-аккаунт не разрешён для входа');
+  if (!accountAllowed(email, env)) throw new Error('Этот Google-аккаунт не разрешён для входа');
 
   const existingResponse = await supabaseRequest(env, `marketing_users?auth_user_id=eq.${encodeURIComponent(id)}&select=*`);
   if (!existingResponse.ok) {
@@ -158,10 +165,22 @@ async function resolveMarketingUser(user: JsonRecord, env: AuthEnv, allowCreate:
   const existing = await existingResponse.json() as JsonRecord[];
 
   if (existing[0]) {
+    const existingUser = existing[0];
+    const shouldPromoteAdmin = isAdminEmail(email, env) && existingUser.role !== 'administrator';
+    const shouldActivateAdmin = isAdminEmail(email, env) && existingUser.status !== 'active';
     const response = await supabaseRequest(env, `marketing_users?auth_user_id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify({ name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, last_seen_at: new Date().toISOString() }),
+      body: JSON.stringify({
+        name,
+        email,
+        avatar_url: avatarUrl,
+        provider: 'google',
+        provider_metadata: metadata,
+        last_seen_at: new Date().toISOString(),
+        ...(shouldPromoteAdmin ? { role: 'administrator' } : {}),
+        ...(shouldActivateAdmin ? { status: 'active' } : {}),
+      }),
     });
     if (!response.ok) {
       console.error(`Unable to update marketing user: ${response.status} ${(await response.text()).slice(0, 500)}`);
@@ -215,6 +234,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       oauthMode: 'worker',
       publicKeyConfigured: Boolean(publicSupabaseKey(env)),
       allowedDomainsConfigured: allowedDomains(env).length > 0,
+      allowedEmailsConfigured: allowedEmails(env).length > 0,
       adminEmailsConfigured: adminEmails(env).length > 0,
       diagnostic: settings.error,
     });
