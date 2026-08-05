@@ -73,7 +73,7 @@ export default {
 
     const route = async (): Promise<Response> => {
       if (url.pathname === '/api/integrations/meta/callback') {
-        const callbackResponse = await handleMetaOAuthRequest(request, env, url);
+        const callbackResponse = await handleMetaOAuthRequest(request, env, url, ctx);
         if (callbackResponse) return callbackResponse;
       }
 
@@ -107,7 +107,7 @@ export default {
       if (metaSdkResponse) return metaSdkResponse;
       const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
-      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url);
+      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
       if (metaOAuthResponse) return metaOAuthResponse;
       const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url);
       if (metaReach) return metaReach;
