@@ -4,7 +4,7 @@ import { BarChart3, Bell, Cable, ChartNoAxesCombined, FileText, History, LayoutD
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import IntegrationManager from './components/IntegrationManager';
-import MarketingChatBox from './components/MarketingChatBox';
+import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { AttributionPage, MarketingArchitecturePage } from './components/MarketingModules';
@@ -86,7 +86,7 @@ function Shell() {
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}><div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div><div className="marketing-nav-label">МАРКЕТИНГ</div><nav>{nav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav></aside>
     <main><header className="marketing-topbar"><button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button><div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div><div className="marketing-top-actions"><button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>{user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}<button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Администратор'}</strong><small>{user.role === 'administrator' ? 'Полный доступ' : user.role}</small></div></button></div></header>
-      <div className="marketing-content"><Routes><Route path="/" element={<MarketingDashboardSummary/>}/><Route path="/chat" element={<MarketingChatBox/>}/><Route path="/leads" element={<LeadsPage/>}/><Route path="/calls" element={<Calls/>}/><Route path="/pipeline" element={<SalesFunnelPage/>}/><Route path="/advertising" element={<AdsManagerPage/>}/><Route path="/attribution" element={<AttributionPage/>}/><Route path="/analytics" element={<AnalyticsWorkspace/>}/><Route path="/integrations" element={<IntegrationManager/>}/><Route path="/journal" element={<JournalPage/>}/><Route path="/sync-journal" element={<JournalPage/>}/><Route path="/architecture" element={<MarketingArchitecturePage/>}/></Routes></div>
+      <div className="marketing-content"><Routes><Route path="/" element={<MarketingDashboardSummary/>}/><Route path="/chat" element={<CallCenterChatPage/>}/><Route path="/leads" element={<LeadsPage/>}/><Route path="/calls" element={<Calls/>}/><Route path="/pipeline" element={<SalesFunnelPage/>}/><Route path="/advertising" element={<AdsManagerPage/>}/><Route path="/attribution" element={<AttributionPage/>}/><Route path="/analytics" element={<AnalyticsWorkspace/>}/><Route path="/integrations" element={<IntegrationManager/>}/><Route path="/journal" element={<JournalPage/>}/><Route path="/sync-journal" element={<JournalPage/>}/><Route path="/architecture" element={<MarketingArchitecturePage/>}/></Routes></div>
     </main>{workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
