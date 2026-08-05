@@ -3,6 +3,7 @@ import { handleAdManager } from './adManager';
 import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
+import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
 import { handleMarketingChat } from './marketingChat';
@@ -45,12 +46,32 @@ function withTrustedIdentity(request: Request, role?: string, userId?: string): 
   return new Request(request, { headers });
 }
 
+const AUDIT_BODY_LIMIT = 32 * 1024;
+
+async function captureJsonBody(request: Request): Promise<Record<string, unknown> | null> {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return null;
+  if (!(request.headers.get('content-type') || '').includes('application/json')) return null;
+  try {
+    const text = await request.clone().text();
+    if (!text || text.length > AUDIT_BODY_LIMIT) return null;
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function background(ctx: WorkerExecutionContext | undefined, task: Promise<unknown>): void {
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
+}
+
 export default {
-  async fetch(request: Request, env: MainEnv): Promise<Response> {
+  async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const requestCorrelationId = correlationId(request);
     let forwardedRequest = request;
 
-    try {
+    const route = async (): Promise<Response> => {
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url);
         if (callbackResponse) return callbackResponse;
@@ -76,6 +97,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
+      if (auditApi) return auditApi;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
@@ -104,11 +127,57 @@ export default {
       if (operations) return operations;
 
       return app.fetch(forwardedRequest, runtimeEnv);
+    };
+
+    try {
+      const auditBody = url.pathname.startsWith('/api/') ? await captureJsonBody(request) : null;
+      const plan = url.pathname.startsWith('/api/') ? planAudit(request.method, url.pathname.replace(/\/+$/, '') || '/', auditBody) : null;
+
+      const response = await route();
+
+      if (plan && response.status < 400) {
+        const { ip, userAgent } = requestClient(request);
+        background(ctx, recordAudit(env, {
+          userId: requestUserId(forwardedRequest),
+          action: plan.action,
+          entityType: plan.entityType,
+          entityId: plan.entityId,
+          after: plan.captureBody ? auditBody : null,
+          ip,
+          userAgent,
+          correlationId: requestCorrelationId
+        }));
+      }
+
+      if (url.pathname.startsWith('/api/') && response.status >= 500) {
+        const detail = await response.clone().text().catch(() => '');
+        background(ctx, recordErrorEvent(env, {
+          source: url.pathname.split('/').filter(Boolean)[1] || 'worker',
+          endpoint: `${request.method} ${url.pathname}`,
+          code: String(response.status),
+          message: detail.slice(0, 600) || `HTTP ${response.status}`,
+          correlationId: requestCorrelationId
+        }));
+      }
+
+      const decorated = new Response(response.body, response);
+      decorated.headers.set('x-correlation-id', requestCorrelationId);
+      return decorated;
     } catch (error) {
       console.error(error);
-      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Analytics error' }), {
+      const message = error instanceof Error ? error.message : 'Analytics error';
+      if (url.pathname.startsWith('/api/')) {
+        background(ctx, recordErrorEvent(env, {
+          source: url.pathname.split('/').filter(Boolean)[1] || 'worker',
+          endpoint: `${request.method} ${url.pathname}`,
+          code: '500',
+          message,
+          correlationId: requestCorrelationId
+        }));
+      }
+      return new Response(JSON.stringify({ error: message }), {
         status: 500,
-        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId },
       });
     }
   },
