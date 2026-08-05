@@ -12,12 +12,12 @@ import {
   Settings,
   Video,
 } from 'lucide-react';
-import { AdsWorkspaceWithMeta } from '../ads/AdsWorkspaceWithMeta';
-import { EndToEndAnalyticsWithMeta } from '../analytics/EndToEndAnalyticsWithMeta';
+import { AdsWorkspace } from '../ads/AdsWorkspace';
+import { EndToEndAnalytics } from '../analytics/EndToEndAnalytics';
 import { EmailWorkspace } from '../inbox/EmailWorkspace';
 import { InstagramWorkspace } from '../inbox/InstagramWorkspace';
 import { WhatsAppWorkspace } from '../inbox/WhatsAppWorkspace';
-import { IntegrationsWorkspaceWithMeta } from '../integrations/IntegrationsWorkspaceWithMeta';
+import { IntegrationsWorkspace } from '../integrations/IntegrationsWorkspace';
 
 export type ChannelView =
   | 'whatsapp'
@@ -127,9 +127,9 @@ export function ChannelsView({ view }: { view: ChannelView }) {
   if (view === 'whatsapp') return <WhatsAppWorkspace />;
   if (view === 'instagram') return <InstagramWorkspace />;
   if (view === 'email') return <EmailWorkspace />;
-  if (view === 'ads') return <AdsWorkspaceWithMeta />;
-  if (view === 'analytics') return <EndToEndAnalyticsWithMeta />;
-  if (view === 'integrations') return <IntegrationsWorkspaceWithMeta />;
+  if (view === 'ads') return <AdsWorkspace />;
+  if (view === 'analytics') return <EndToEndAnalytics />;
+  if (view === 'integrations') return <IntegrationsWorkspace />;
 
   const definition = definitions[view];
   const Icon = definition.icon;

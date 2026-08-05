@@ -4,10 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthGate } from './modules/auth/AuthGate';
-import { EntitlementsProvider } from './modules/platform/EntitlementsContext';
-import { ProductShellRuntime } from './modules/platform/ProductShellRuntime';
-import { ActionFeedbackProvider } from './modules/system/ActionFeedback';
-import { startMarketingTelemetry } from './lib/telemetry';
 import './styles.css';
 import './modules.css';
 import './preview-fidelity.css';
@@ -29,8 +25,6 @@ import './modules/auth/user-profile.css';
 import './ui-system.css';
 import './modules/deals/kanban-fix.css';
 import './modules/analytics/end-to-end-analytics.css';
-import './modules/system/action-feedback.css';
-import './modules/platform/product-shell-runtime.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,21 +36,13 @@ const queryClient = new QueryClient({
   },
 });
 
-startMarketingTelemetry();
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <ActionFeedbackProvider>
-          <AuthGate>
-            <EntitlementsProvider>
-              <ProductShellRuntime>
-                <App />
-              </ProductShellRuntime>
-            </EntitlementsProvider>
-          </AuthGate>
-        </ActionFeedbackProvider>
+        <AuthGate>
+          <App />
+        </AuthGate>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,
