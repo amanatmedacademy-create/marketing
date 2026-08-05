@@ -15,3 +15,5 @@ crons = ["15 * * * *", "30 2 * * *"]
 SUPABASE_URL = "https://kysdtmgijkffwtzugonv.supabase.co"
 BITRIX_ENTITY_TYPE_ID = "1"
 BITRIX_SYNC_DAYS = "7"
+META_GRAPH_VERSION = "v23.0"
+META_OAUTH_REDIRECT_URI = "https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback"
