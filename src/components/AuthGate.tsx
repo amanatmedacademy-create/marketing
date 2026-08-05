@@ -41,9 +41,15 @@ function GoogleIcon() {
   </svg>;
 }
 
+function initialAuthMode(): GoogleAuthIntent {
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  return mode === 'register' ? 'signup' : 'login';
+}
+
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<GoogleAuthIntent>(initialAuthMode);
   const [activeIntent, setActiveIntent] = useState<GoogleAuthIntent | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,10 +61,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
     const searchParams = new URLSearchParams(window.location.search);
     const oauthError = searchParams.get('error_description');
-    if (oauthError) {
-      setError(oauthError);
-      history.replaceState({}, document.title, window.location.pathname);
-    }
+    if (oauthError) setError(oauthError);
 
     window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -74,24 +77,33 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     };
 
     const intent = consumeGoogleAuthIntent();
+    if (intent === 'signup') setMode('signup');
+
     currentSession()
       .then(async (session) => {
         if (!active) return;
         setHasSession(Boolean(session));
         if (!session) return;
+
         const result = await loadAppUser(intent);
         if (!active) return;
+
         if (result.pending) {
+          setMode('signup');
           setNotice(result.message || 'Регистрация завершена. Аккаунт ожидает подтверждения администратора.');
           return;
         }
+
         if (result.user) {
           setUser(result.user);
           setError(null);
         }
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+        if (!active) return;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        if (message.includes('Пользователь не зарегистрирован')) setMode('signup');
+        setError(message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -103,12 +115,25 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const startAuth = async (intent: GoogleAuthIntent) => {
-    setActiveIntent(intent);
+  const selectMode = (nextMode: GoogleAuthIntent) => {
+    if (activeIntent) return;
+    setMode(nextMode);
+    setError(null);
+    setNotice(null);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('error_description');
+    url.searchParams.delete('auth_intent');
+    url.searchParams.set('mode', nextMode === 'signup' ? 'register' : 'login');
+    history.replaceState({}, document.title, `${url.pathname}?${url.searchParams.toString()}`);
+  };
+
+  const startAuth = async () => {
+    setActiveIntent(mode);
     setError(null);
     setNotice(null);
     try {
-      await startGoogleAuth(intent);
+      await startGoogleAuth(mode);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       setActiveIntent(null);
@@ -121,9 +146,11 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     setHasSession(false);
     setError(null);
     setNotice(null);
+    setActiveIntent(null);
   };
 
   const context = useMemo(() => user ? { user, signOut } : null, [user]);
+  const isRegistration = mode === 'signup';
 
   if (loading) return <div className="auth-screen auth-screen--loading">
     <div className="auth-loading-card">
@@ -165,29 +192,72 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           </div>
         </div>
       </section>
+
       <section className="auth-login-panel">
         <div className="auth-login-card">
-          <div className="auth-login-icon"><ShieldCheck size={28}/></div>
-          <span className="auth-login-product">AMANAT MED</span>
-          <h2>Доступ к системе</h2>
-          <p>Используйте рабочий Google-аккаунт разрешённого корпоративного домена.</p>
-          {error && <div className="auth-error" role="alert">{error}</div>}
-          {notice && <div className="auth-notice" role="status">{notice}</div>}
-          <div className="auth-actions">
-            <button className="google-login" onClick={() => void startAuth('login')} disabled={activeIntent !== null}>
-              {activeIntent === 'login' ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
-              <span>{activeIntent === 'login' ? 'Открываем Google…' : 'Войти через Google'}</span>
-              {activeIntent !== 'login' && <ArrowRight size={17}/>} 
-            </button>
-            <button className="google-register" onClick={() => void startAuth('signup')} disabled={activeIntent !== null}>
-              {activeIntent === 'signup' ? <LoaderCircle className="spin" size={20}/> : <UserPlus size={20}/>} 
-              <span>{activeIntent === 'signup' ? 'Открываем Google…' : 'Зарегистрироваться через Google'}</span>
-              {activeIntent !== 'signup' && <ArrowRight size={17}/>} 
-            </button>
+          <div className="auth-mode-tabs" role="tablist" aria-label="Авторизация">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isRegistration}
+              className={!isRegistration ? 'active' : ''}
+              onClick={() => selectMode('login')}
+              disabled={activeIntent !== null}
+            >Вход</button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isRegistration}
+              className={isRegistration ? 'active' : ''}
+              onClick={() => selectMode('signup')}
+              disabled={activeIntent !== null}
+            >Регистрация</button>
           </div>
-          <p className="auth-registration-note">После регистрации новый аккаунт получает роль viewer и ожидает подтверждения администратора.</p>
-          {hasSession && (error || notice) && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
-          <div className="auth-security-note"><LockKeyhole size={15}/><span>Пароль Google не передаётся AMANAT MED. Доступ разрешён только корпоративным аккаунтам.</span></div>
+
+          <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void startAuth(); }} aria-busy={activeIntent !== null}>
+            <div className={`auth-login-icon${isRegistration ? ' auth-login-icon--register' : ''}`}>
+              {isRegistration ? <UserPlus size={28}/> : <ShieldCheck size={28}/>} 
+            </div>
+            <span className="auth-login-product">AMANAT MED</span>
+            <h2>{isRegistration ? 'Создать аккаунт' : 'Вход в систему'}</h2>
+            <p className="auth-mode-lead">
+              {isRegistration
+                ? 'Зарегистрируйтесь с разрешённым Google-аккаунтом. Пароль создавать не требуется.'
+                : 'Войдите через Google-аккаунт, который уже зарегистрирован в системе.'}
+            </p>
+
+            {error && <div className="auth-error" role="alert">{error}</div>}
+            {notice && <div className="auth-notice" role="status"><CheckCircle2 size={18}/><span>{notice}</span></div>}
+
+            {isRegistration && <div className="auth-registration-steps">
+              <div><span>1</span><p><b>Выберите Google-аккаунт</b><small>Используйте разрешённый корпоративный или одобренный адрес.</small></p></div>
+              <div><span>2</span><p><b>Подтвердите профиль</b><small>Имя, email и фотография будут получены из Google.</small></p></div>
+              <div><span>3</span><p><b>Получите доступ</b><small>Администратор активируется сразу; остальные аккаунты проходят подтверждение.</small></p></div>
+            </div>}
+
+            <button className="google-login" type="submit" disabled={activeIntent !== null}>
+              {activeIntent === mode ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
+              <span>
+                {activeIntent === mode
+                  ? 'Открываем Google…'
+                  : isRegistration ? 'Зарегистрироваться через Google' : 'Войти через Google'}
+              </span>
+              {activeIntent !== mode && <ArrowRight size={17}/>} 
+            </button>
+
+            <div className="auth-mode-switch">
+              <span>{isRegistration ? 'Уже есть аккаунт?' : 'Ещё нет аккаунта?'}</span>
+              <button type="button" onClick={() => selectMode(isRegistration ? 'login' : 'signup')} disabled={activeIntent !== null}>
+                {isRegistration ? 'Войти' : 'Зарегистрироваться'}
+              </button>
+            </div>
+
+            {hasSession && (error || notice) && <button className="auth-secondary-action" type="button" onClick={() => void signOut()}>
+              Выйти из текущей сессии и выбрать другой аккаунт
+            </button>}
+          </form>
+
+          <div className="auth-security-note"><LockKeyhole size={15}/><span>Пароль Google не передаётся AMANAT MED. Доступ предоставляется только разрешённым аккаунтам.</span></div>
           <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
         </div>
         <p className="auth-support">Проблемы со входом? Обратитесь к администратору системы.</p>
