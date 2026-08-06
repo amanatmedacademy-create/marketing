@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import type { CardConnectionStatus, CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
@@ -17,6 +17,7 @@ type FormState = Record<IntegrationProvider, Record<string, string>>;
 type Field = { name: string; label: string; placeholder: string; secret?: boolean; required?: boolean };
 type ProviderDefinition = { provider: IntegrationProvider; title: string; description: string; fields: Field[] };
 type MetaOAuthStartResponse = { ok?: boolean; authorizationUrl?: string; redirectUri?: string; error?: string };
+type SyncResult = { source?: string; fetched?: number; written?: number; skipped?: boolean; reason?: string };
 
 const supported: ProviderDefinition[] = [
   { provider: 'meta', title: 'Meta Ads', description: 'Facebook и Instagram: кабинеты, кампании, расходы и лиды.', fields: [
@@ -44,6 +45,7 @@ const planned: Array<{ id: CardIntegrationProvider; title: string; description: 
   { id: 'sipuni', title: 'Sipuni', description: 'Виртуальная АТС и аналитика звонков.' },
 ];
 
+const historyPeriods = [7, 30, 90, 180, 365] as const;
 const emptyForms = (): FormState => ({ bitrix: {}, meta: {}, tiktok: {}, n8n: {} });
 
 function errorText(error: unknown): string {
@@ -87,6 +89,7 @@ export default function IntegrationManager() {
   const [forms, setForms] = useState<FormState>(emptyForms);
   const [editor, setEditor] = useState<ProviderDefinition | null>(null);
   const [activeCard, setActiveCard] = useState<CardIntegrationProvider | null>(null);
+  const [historyDays, setHistoryDays] = useState<number>(90);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
@@ -158,8 +161,9 @@ export default function IntegrationManager() {
     ['meta', 'accounts', 'message'].forEach((key) => cleanUrl.searchParams.delete(key));
     window.history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     if (result === 'connected') {
-      setMessage({ type: 'ok', text: `Meta Ads подключена. Доступно рекламных кабинетов: ${accounts}.` });
-      setEditor(null);
+      setMessage({ type: 'ok', text: `Meta Ads подключена. Доступно рекламных кабинетов: ${accounts}. Выберите период и загрузите историю.` });
+      const definition = supported.find((item) => item.provider === 'meta');
+      if (definition) setEditor(definition);
       void load();
     } else setMessage({ type: 'error', text: `Meta OAuth: ${oauthMessage}` });
   }, [load]);
@@ -180,6 +184,23 @@ export default function IntegrationManager() {
       window.location.assign(result.authorizationUrl);
     } catch (error) {
       setMessage({ type: 'error', text: `Meta OAuth: ${errorText(error)}` });
+      setBusy(null);
+    }
+  };
+
+  const loadHistory = async (provider: IntegrationProvider) => {
+    setBusy(`history:${provider}`);
+    setMessage(null);
+    try {
+      const response = await withTimeout(marketingApi.syncIntegrations(provider, historyDays), 180000);
+      const results = response.results as SyncResult[];
+      const result = results.find((item) => item.source === provider) || results[0] || {};
+      if (result.skipped || result.reason) throw new Error(result.reason || 'Импорт пропущен');
+      await load();
+      setMessage({ type: 'ok', text: `${provider === 'meta' ? 'Meta Ads' : provider}: история за ${historyDays} дней загружена. Получено ${result.fetched ?? 0}, записано ${result.written ?? 0}.` });
+    } catch (error) {
+      setMessage({ type: 'error', text: `Загрузка истории: ${errorText(error)}` });
+    } finally {
       setBusy(null);
     }
   };
@@ -226,6 +247,6 @@ export default function IntegrationManager() {
     {message && <div className={`iv2-message iv2-message--${message.type}`}>{message.text}</div>}
     <section className="iv2-section"><div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Карточки показывают реальные статусы и последние результаты синхронизации.</p></div></div><div className="iv2-grid">{cards.map((card) => <IntegrationCard key={card.id} integration={card} active={activeCard === card.id} onSelect={() => setActiveCard(card.id)} onConfigure={() => openEditor(card.id as IntegrationProvider)}/>)}</div></section>
     <section className="iv2-section"><div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Коммуникационные сервисы подключим после проверки основных источников.</p></div></div><div className="iv2-grid">{planned.map((item) => <IntegrationCard key={item.id} integration={{ id: item.id, name: item.title, description: item.description, status: 'not_connected', lastSyncedAt: null, stats: [], fields: [] }} active={activeCard === item.id} disabled onSelect={() => setActiveCard(item.id)} onConfigure={() => undefined}/>)}</div></section>
-    {editor && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}><section className="iv2-modal" role="dialog" aria-modal="true" aria-label={`Настройка ${editor.title}`}><header><div><h2>{editor.title}</h2><p>{editor.description}</p></div><button type="button" onClick={() => setEditor(null)} aria-label="Закрыть"><X size={20}/></button></header>{editor.provider === 'meta' && <div className="iv2-oauth"><div><strong>Рекомендуемый способ</strong><span>Войдите через Facebook. Токен и доступные рекламные кабинеты сохранятся автоматически.</span></div><button className="iv2-facebook" type="button" onClick={() => void startMetaOAuth()} disabled={Boolean(busy)}>{busy === 'oauth:meta' ? <LoaderCircle className="spin" size={17}/> : <Facebook size={17}/>} Войти через Facebook</button></div>}<div className="iv2-form">{editor.provider === 'meta' && <div className="iv2-form-title"><strong>Резервное ручное подключение</strong><span>Используйте только если OAuth недоступен.</span></div>}{editor.fields.map((field) => { const config = configMap.get(editor.provider); const savedSecret = field.secret && config?.secretFields[field.name]; return <label key={field.name}><span>{field.label}{field.required ? ' *' : ''}</span><input type={field.secret ? 'password' : 'text'} value={forms[editor.provider][field.name] || ''} onChange={(event) => updateField(editor.provider, field.name, event.target.value)} placeholder={savedSecret ? 'Секрет уже сохранён. Оставьте пустым, чтобы не менять.' : field.placeholder}/></label>; })}</div><footer>{configMap.get(editor.provider) && <button className="iv2-danger" type="button" onClick={() => void disconnect(editor)} disabled={Boolean(busy)}>Отключить</button>}<div><button type="button" onClick={() => setEditor(null)}>Отмена</button><button className="iv2-primary" type="button" onClick={() => void save(editor)} disabled={Boolean(busy)}>{busy === `save:${editor.provider}` ? <LoaderCircle className="spin" size={16}/> : null} Сохранить и проверить</button></div></footer></section></div>}
+    {editor && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}><section className="iv2-modal" role="dialog" aria-modal="true" aria-label={`Настройка ${editor.title}`}><header><div><h2>{editor.title}</h2><p>{editor.description}</p></div><button type="button" onClick={() => setEditor(null)} aria-label="Закрыть"><X size={20}/></button></header>{editor.provider === 'meta' && <div className="iv2-oauth"><div><strong>Рекомендуемый способ</strong><span>Войдите через Facebook. Токен и доступные рекламные кабинеты сохранятся автоматически.</span></div><button className="iv2-facebook" type="button" onClick={() => void startMetaOAuth()} disabled={Boolean(busy)}>{busy === 'oauth:meta' ? <LoaderCircle className="spin" size={17}/> : <Facebook size={17}/>} Войти через Facebook</button></div>}{editor.provider === 'meta' && isConnected(configMap.get('meta')) && <div className="iv2-history"><div className="iv2-history-head"><div><strong>Загрузка исторических данных</strong><span>Выберите глубину импорта. Повторный запуск обновляет записи без дублей.</span></div><Database size={20}/></div><div className="iv2-history-periods">{historyPeriods.map((days) => <button key={days} type="button" className={historyDays === days ? 'is-active' : ''} onClick={() => setHistoryDays(days)} disabled={Boolean(busy)}>{days} дней</button>)}</div><button className="iv2-primary iv2-history-action" type="button" onClick={() => void loadHistory('meta')} disabled={Boolean(busy)}>{busy === 'history:meta' ? <LoaderCircle className="spin" size={16}/> : <Database size={16}/>} Загрузить историю за {historyDays} дней</button></div>}<div className="iv2-form">{editor.provider === 'meta' && <div className="iv2-form-title"><strong>Резервное ручное подключение</strong><span>Используйте только если OAuth недоступен.</span></div>}{editor.fields.map((field) => { const config = configMap.get(editor.provider); const savedSecret = field.secret && config?.secretFields[field.name]; return <label key={field.name}><span>{field.label}{field.required ? ' *' : ''}</span><input type={field.secret ? 'password' : 'text'} value={forms[editor.provider][field.name] || ''} onChange={(event) => updateField(editor.provider, field.name, event.target.value)} placeholder={savedSecret ? 'Секрет уже сохранён. Оставьте пустым, чтобы не менять.' : field.placeholder}/></label>; })}</div><footer>{configMap.get(editor.provider) && <button className="iv2-danger" type="button" onClick={() => void disconnect(editor)} disabled={Boolean(busy)}>Отключить</button>}<div><button type="button" onClick={() => setEditor(null)}>Отмена</button><button className="iv2-primary" type="button" onClick={() => void save(editor)} disabled={Boolean(busy)}>{busy === `save:${editor.provider}` ? <LoaderCircle className="spin" size={16}/> : null} Сохранить и проверить</button></div></footer></section></div>}
   </div>;
 }
