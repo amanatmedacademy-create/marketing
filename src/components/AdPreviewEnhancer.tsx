@@ -41,6 +41,19 @@ function normalize(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function hostname(value?: string) {
+  if (!value) return 'Рекламное объявление';
+  try { return new URL(value).hostname || value; } catch { return value; }
+}
+
+function parseErrorBody(body: string, fallback: string) {
+  if (!body) return fallback;
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === 'string' && parsed.error ? parsed.error : body;
+  } catch { return body; }
+}
+
 function extractAdId(row: HTMLElement, nameIndex: Map<string, string>): string {
   const text = row.innerText || '';
   const explicit = text.match(/(?:Объявление|Ad)\s*[·:]\s*(\d{5,})/i)?.[1];
@@ -115,6 +128,7 @@ export default function AdPreviewEnhancer() {
       if (!trigger?.dataset.adId) return;
       event.preventDefault();
       event.stopPropagation();
+      setPreview(null);
       setAdId(trigger.dataset.adId);
       setMode('desktop');
     };
@@ -133,7 +147,7 @@ export default function AdPreviewEnhancer() {
     fetch(`/api/analytics/ad-preview?adId=${encodeURIComponent(adId)}&mode=${mode}`, { signal: controller.signal })
       .then(async (response) => {
         const body = await response.text();
-        if (!response.ok) throw new Error(body ? JSON.parse(body).error || body : `HTTP ${response.status}`);
+        if (!response.ok) throw new Error(parseErrorBody(body, `HTTP ${response.status}`));
         return JSON.parse(body) as PreviewResponse;
       })
       .then(setPreview)
@@ -170,7 +184,7 @@ export default function AdPreviewEnhancer() {
           <header><div className="ad-preview-page">AM</div><div><strong>{content.pageId ? `Страница ${content.pageId}` : 'Meta Ads'}</strong><span>Реклама · 🌐</span></div></header>
           {content.message && <p className="ad-preview-message">{content.message}</p>}
           <div className="ad-preview-media">{content.imageUrl || content.thumbnailUrl ? <img src={content.imageUrl || content.thumbnailUrl} alt={content.headline || content.adName}/> : <ImageIcon size={42}/>}</div>
-          <div className="ad-preview-link"><div><span>{content.destinationUrl ? new URL(content.destinationUrl).hostname : 'Рекламное объявление'}</span><strong>{content.headline || content.adName}</strong><p>{content.description || 'Описание не указано'}</p></div>{content.destinationUrl ? <a href={content.destinationUrl} target="_blank" rel="noreferrer">{cta}<ExternalLink size={14}/></a> : <button type="button">{cta}</button>}</div>
+          <div className="ad-preview-link"><div><span>{hostname(content.destinationUrl)}</span><strong>{content.headline || content.adName}</strong><p>{content.description || 'Описание не указано'}</p></div>{content.destinationUrl ? <a href={content.destinationUrl} target="_blank" rel="noreferrer">{cta}<ExternalLink size={14}/></a> : <button type="button">{cta}</button>}</div>
           {preview?.previewError && <small className="ad-preview-warning">Meta не вернула готовый формат превью. Показан контент креатива.</small>}
         </article>}
       </section>
