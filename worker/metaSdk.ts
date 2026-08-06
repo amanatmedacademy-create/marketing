@@ -72,9 +72,22 @@ async function exchangeForLongToken(env: MetaSdkEnv, shortToken: string): Promis
   const result = await fetchMeta<{ access_token?: string }>(`https://graph.facebook.com/${graphVersion(env)}/oauth/access_token?${params}`);
   return result.access_token || shortToken;
 }
+function toMetaAccount(value: JsonRecord): MetaAccount | null {
+  const id = text(value.id) || (text(value.account_id) ? `act_${text(value.account_id)}` : '');
+  if (!id) return null;
+  return {
+    id,
+    account_id: text(value.account_id) || undefined,
+    name: text(value.name) || undefined,
+    account_status: value.account_status == null ? undefined : (typeof value.account_status === 'number' ? value.account_status : text(value.account_status)),
+    currency: text(value.currency) || undefined,
+    timezone_name: text(value.timezone_name) || undefined,
+  };
+}
 async function accounts(env: MetaSdkEnv, accessToken: string): Promise<MetaAccount[]> {
   const params = new URLSearchParams({ fields: 'id,account_id,name,account_status,currency,timezone_name', limit: '200', access_token: accessToken });
-  return await fetchAll(`https://graph.facebook.com/${graphVersion(env)}/me/adaccounts?${params}`) as MetaAccount[];
+  const rows = await fetchAll(`https://graph.facebook.com/${graphVersion(env)}/me/adaccounts?${params}`);
+  return rows.map(toMetaAccount).filter((item): item is MetaAccount => item !== null);
 }
 function supabaseHeaders(env: MetaSdkEnv, prefer: string): HeadersInit {
   return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json', prefer };
