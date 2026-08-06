@@ -1,7 +1,6 @@
 import {
   handleIntegrationRequest,
   runAllSyncs,
-  runScheduledSync,
   type Env,
   type WorkerExecutionContext,
   type WorkerScheduledController,
@@ -15,6 +14,7 @@ import {
 } from './credentials';
 import { detectAdvertisingCurrencies } from './adCurrencies';
 import { handleIntegrationLifecycle } from './integrationLifecycle';
+import { runScheduledMetaSync } from './metaScheduledSync';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -159,6 +159,17 @@ export default {
   },
   async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
     const runtimeEnv = await hydrateIntegrationEnv(env);
-    await runScheduledSync(controller, runtimeEnv, ctx);
+    const days = controller.cron === '30 2 * * *' ? 30 : 3;
+    ctx.waitUntil(Promise.allSettled([
+      runAllSyncs(runtimeEnv, { source: 'bitrix', days }),
+      runAllSyncs(runtimeEnv, { source: 'tiktok', days }),
+      runScheduledMetaSync(controller, runtimeEnv),
+    ]).then((results) => {
+      results.forEach((result, index) => {
+        const source = ['bitrix', 'tiktok', 'meta'][index];
+        if (result.status === 'fulfilled') console.log(`Scheduled ${source} sync completed`, result.value);
+        else console.error(`Scheduled ${source} sync failed`, result.reason);
+      });
+    }));
   },
 };
