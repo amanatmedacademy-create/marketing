@@ -5,13 +5,14 @@ import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
+import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { AttributionPage, MarketingArchitecturePage } from './components/MarketingModules';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
-import { marketingApi, type IntegrationStatus, type MarketingLead } from './services/api';
+import { marketingApi, type IntegrationStatus } from './services/api';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 import './journal.css';
@@ -33,24 +34,11 @@ function useRemoteData<T>(loader: () => Promise<T>, initial: T): LoadState<T> {
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 
-function Heading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
-  return <div className="heading"><span>{eyebrow}</span><h1>{title}</h1><p>{text}</p></div>;
-}
-
 function StateBlock({ loading, error, empty }: { loading: boolean; error: string | null; empty: boolean }) {
   if (loading) return <section className="panel"><h2>Загрузка</h2><p className="note">Получаем данные из Cloudflare API и Supabase.</p></section>;
   if (error) return <section className="panel"><h2>Ошибка подключения</h2><p className="note">{error}</p></section>;
   if (empty) return <section className="panel"><h2>Нет данных</h2><p className="note">Источник подключён, но данные пока отсутствуют.</p></section>;
   return null;
-}
-
-function LeadsPage() {
-  const state = useRemoteData<MarketingLead[]>(() => marketingApi.listLeads({ limit: 500 }), []);
-  return <div className="stack">
-    <Heading eyebrow="1.1 Копия Bitrix24" title="Лиды" text="Единый список лидов, карточки, источники, UTM, менеджеры, стадии и следующие действия." />
-    <StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.length === 0} />
-    {!state.loading && !state.error && state.data.length > 0 && <section className="panel"><h2>Все лиды</h2><div className="table-wrap"><table><thead><tr><th>ID</th><th>Клиент</th><th>Телефон</th><th>Источник</th><th>Кампания</th><th>Менеджер</th><th>Стадия</th><th>Следующее действие</th></tr></thead><tbody>{state.data.map((lead) => <tr key={lead.id}><td>{lead.external_id || lead.id.slice(0, 8)}</td><td><b>{lead.name}</b></td><td>{lead.phone}</td><td>{lead.source || '—'}</td><td>{lead.campaign || lead.utm_campaign || '—'}</td><td>{lead.manager || '—'}</td><td><span className="badge">{lead.stage}</span></td><td>{lead.next_action || '—'}</td></tr>)}</tbody></table></div></section>}
-  </div>;
 }
 
 function JournalPlaceholder({ title, text }: { title: string; text: string }) {
@@ -65,7 +53,7 @@ function JournalPage() {
     { id: 'logs', label: 'Логи', icon: FileText }, { id: 'sync', label: 'Синхронизации', icon: History }, { id: 'audit', label: 'Аудит', icon: ShieldCheck }, { id: 'errors', label: 'Ошибки', icon: TriangleAlert }, { id: 'system', label: 'Системные события', icon: ServerCog },
   ];
   return <div className="stack journal-page">
-    <Heading eyebrow="System journal" title="Журнал" text="Логи, синхронизации, аудит действий, ошибки и системные события IMDS Marketing." />
+    <div className="heading"><span>System journal</span><h1>Журнал</h1><p>Логи, синхронизации, аудит действий, ошибки и системные события IMDS Marketing.</p></div>
     <nav className="journal-tabs" aria-label="Разделы журнала">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span></button>)}</nav>
     {tab === 'sync' && <><StateBlock loading={state.loading} error={state.error} empty={!state.loading && !state.error && state.data.runs.length === 0} />{!state.loading && !state.error && state.data.runs.length > 0 && <section className="panel"><div className="journal-panel-head"><div><h2>Журнал синхронизаций</h2><p>Все запуски обмена с Bitrix24, Meta, TikTok, n8n и другими источниками.</p></div><span>{state.data.runs.length} записей</span></div><div className="table-wrap"><table><thead><tr><th>Источник</th><th>Статус</th><th>Период данных</th><th>Получено</th><th>Записано</th><th>Запущено</th><th>Ошибка</th></tr></thead><tbody>{state.data.runs.map((run) => <tr key={run.id}><td><b>{run.source}</b></td><td><span className={`badge ${run.status === 'success' ? 'badge--green' : ''}`}>{run.status === 'success' ? 'Успешно' : run.status === 'failed' ? 'Ошибка' : run.status === 'running' ? 'Выполняется' : run.status}</span></td><td>{run.date_from || '—'} — {run.date_to || '—'}</td><td>{number(run.fetched)}</td><td>{number(run.written)}</td><td>{dateTime(run.started_at)}</td><td>{run.error || '—'}</td></tr>)}</tbody></table></div></section>}</>}
     {tab === 'logs' && <JournalPlaceholder title="Логи" text="Технические и прикладные события API, webhooks, импортов и фоновых задач." />}
