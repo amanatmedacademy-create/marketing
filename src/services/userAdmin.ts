@@ -12,6 +12,8 @@ export interface ManagedUser {
   avatarUrl: string | null;
   lastSeenAt: string | null;
   createdAt: string;
+  positionId?: string | null;
+  jobTitle?: string | null;
 }
 
 export interface ManagedUserInput {
@@ -38,16 +40,14 @@ export async function fetchManagedUsers(): Promise<ManagedUser[]> {
 
 export async function createManagedUser(input: ManagedUserInput): Promise<ManagedUser> {
   const payload = await api<{ user: ManagedUser }>('/api/admin/users', {
-    method: 'POST',
-    body: JSON.stringify(input),
+    method: 'POST', body: JSON.stringify(input),
   });
   return payload.user;
 }
 
 export async function updateManagedUser(id: string, input: Partial<Omit<ManagedUserInput, 'email'>>): Promise<ManagedUser> {
   const payload = await api<{ user: ManagedUser }>(`/api/admin/users/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(input),
+    method: 'PATCH', body: JSON.stringify(input),
   });
   return payload.user;
 }
