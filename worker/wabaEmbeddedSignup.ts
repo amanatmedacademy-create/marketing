@@ -23,7 +23,7 @@ const graphVersion = (env: WabaEmbeddedSignupEnv): string => {
   const value = text(env.META_GRAPH_VERSION) || 'v23.0';
   return value.startsWith('v') ? value : `v${value}`;
 };
-const encryptionSecret = (env: WabaEmbeddedSignupEnv): string => text(env.INTEGRATION_ENCRYPTION_KEY) || `amanat-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
+const encryptionSecret = (env: WabaEmbeddedSignupEnv): string => text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
 const authenticatedUserId = (request: Request): string => text(request.headers.get('x-amanat-auth-user'));
 
 const supabaseHeaders = (env: WabaEmbeddedSignupEnv, extra: HeadersInit = {}): HeadersInit => ({
@@ -49,14 +49,8 @@ async function encrypt(payload: JsonRecord, secret: string): Promise<{ encrypted
 
 async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<string> {
   if (!env.META_APP_ID || !env.META_APP_SECRET) throw new Error('META_APP_ID или META_APP_SECRET не настроены');
-  const params = new URLSearchParams({
-    client_id: env.META_APP_ID,
-    client_secret: env.META_APP_SECRET,
-    code,
-  });
-  const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/oauth/access_token?${params}`, {
-    headers: { accept: 'application/json' },
-  });
+  const params = new URLSearchParams({ client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, code });
+  const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/oauth/access_token?${params}`, { headers: { accept: 'application/json' } });
   const body = await response.text();
   let parsed: JsonRecord = {};
   try { parsed = record(body ? JSON.parse(body) : {}); } catch { parsed = { error: body }; }
@@ -72,10 +66,7 @@ async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<s
 async function subscribeWaba(env: WabaEmbeddedSignupEnv, accessToken: string, wabaId: string): Promise<void> {
   const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
     method: 'POST',
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      accept: 'application/json',
-    },
+    headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' },
   });
   const body = await response.text();
   let parsed: JsonRecord = {};
@@ -86,14 +77,7 @@ async function subscribeWaba(env: WabaEmbeddedSignupEnv, accessToken: string, wa
   }
 }
 
-async function saveCredential(
-  env: WabaEmbeddedSignupEnv,
-  companyId: string,
-  userId: string,
-  accessToken: string,
-  wabaId: string,
-  phoneNumberId: string,
-): Promise<void> {
+async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, accessToken: string, wabaId: string, phoneNumberId: string): Promise<void> {
   const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env) }, encryptionSecret(env));
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
   const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
@@ -112,25 +96,16 @@ async function saveCredential(
     last_verified_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-
-  const existingResponse = await fetch(`${baseUrl}?${filter}&select=id&limit=1`, {
-    headers: supabaseHeaders(env, { accept: 'application/json' }),
-  });
+  const existingResponse = await fetch(`${baseUrl}?${filter}&select=id&limit=1`, { headers: supabaseHeaders(env, { accept: 'application/json' }) });
   if (!existingResponse.ok) throw new Error(`Supabase WABA lookup: ${existingResponse.status} ${await existingResponse.text()}`);
   const existingRows = await existingResponse.json() as Array<{ id?: string }>;
-
   const response = existingRows[0]?.id
     ? await fetch(`${baseUrl}?id=eq.${encodeURIComponent(existingRows[0].id as string)}`, {
-        method: 'PATCH',
-        headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
-        body: JSON.stringify(payload),
+        method: 'PATCH', headers: supabaseHeaders(env, { prefer: 'return=minimal' }), body: JSON.stringify(payload),
       })
     : await fetch(baseUrl, {
-        method: 'POST',
-        headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
-        body: JSON.stringify(payload),
+        method: 'POST', headers: supabaseHeaders(env, { prefer: 'return=minimal' }), body: JSON.stringify(payload),
       });
-
   if (!response.ok) throw new Error(`Supabase WABA save: ${response.status} ${await response.text()}`);
 }
 
@@ -172,14 +147,12 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
     try {
       const userId = authenticatedUserId(request);
       if (!userId) return json({ error: 'Требуется авторизация пользователя' }, 401);
-
       const payload = record(await request.json());
       const code = text(payload.code);
       const wabaId = text(payload.wabaId);
       const phoneNumberId = text(payload.phoneNumberId);
       if (!code) return json({ error: 'Facebook authorization code не получен' }, 400);
       if (!wabaId || !phoneNumberId) return json({ error: 'Facebook не вернул WABA ID или Phone Number ID' }, 400);
-
       const companyId = await resolveCompanyId(env);
       const accessToken = await exchangeCode(env, code);
       await subscribeWaba(env, accessToken, wabaId);
@@ -190,6 +163,5 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
   }
-
   return null;
 }
