@@ -1,5 +1,6 @@
 import app from './index';
 import { handleAdManager } from './adManager';
+import { handleAdPreview, type AdPreviewEnv } from './adPreview';
 import { handleAnalytics } from './analytics';
 import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
@@ -23,7 +24,7 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & AdPreviewEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -125,6 +126,8 @@ export default {
       if (metaReach) return metaReach;
       const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url);
       if (metaAdsets) return metaAdsets;
+      const adPreview = await handleAdPreview(forwardedRequest, runtimeEnv, url);
+      if (adPreview) return adPreview;
       const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url);
       if (adManager) return adManager;
       const salesFunnel = await handleSalesFunnel(forwardedRequest, runtimeEnv, url);
