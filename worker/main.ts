@@ -8,6 +8,8 @@ import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
+import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
+import { handleMetaCatalogRequest, type MetaCatalogEnv } from './metaCatalog';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaReachSync } from './metaReachSync';
@@ -20,7 +22,7 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & WabaEmbeddedSignupEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -31,6 +33,9 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/oauth-config'
     || pathname === '/api/integrations/meta/sdk-config'
     || pathname === '/api/integrations/meta/sdk-connect'
+    || pathname === '/api/integrations/meta/catalog'
+    || pathname === '/api/integrations/meta/selection'
+    || pathname === '/api/integrations/meta/backfill'
     || pathname === '/api/integrations/meta/reach-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/waba/config'
@@ -109,6 +114,10 @@ export default {
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
       if (metaOAuthResponse) return metaOAuthResponse;
+      const metaCatalogResponse = await handleMetaCatalogRequest(forwardedRequest, runtimeEnv, url);
+      if (metaCatalogResponse) return metaCatalogResponse;
+      const metaBackfillResponse = await handleMetaBackfillRequest(forwardedRequest, runtimeEnv, url);
+      if (metaBackfillResponse) return metaBackfillResponse;
       const metaReach = await handleMetaReachSync(forwardedRequest, runtimeEnv, url);
       if (metaReach) return metaReach;
       const metaAdsets = await handleMetaAdsetMetrics(forwardedRequest, runtimeEnv, url);
