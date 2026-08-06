@@ -52,9 +52,7 @@ export type FunnelDeal = {
   lostAt?: string;
 };
 
-// Temporary compatibility alias for the unified Leads workspace.
 export type FunnelLead = FunnelDeal;
-
 export type FunnelUser = { id: string; fullName: string; role: string };
 export type FunnelContact = { id: string; fullName: string; phone?: string; email?: string; source?: string; description?: string; crmDealId?: string };
 export type FunnelStageEvent = { id: string; dealId: string; pipelineId: string; fromStageId?: string; toStageId: string; actorUserId?: string; reason?: string; createdAt: string };
@@ -79,6 +77,8 @@ export type FunnelWorkspace = {
   events: FunnelStageEvent[];
   stats: FunnelStats;
 };
+
+type FunnelWorkspaceWire = Omit<FunnelWorkspace, 'leads'> & { leads?: FunnelDeal[] };
 
 export type FunnelDealInput = {
   pipelineId?: string;
@@ -128,7 +128,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
-export const fetchFunnelWorkspace = (options: {
+export const fetchFunnelWorkspace = async (options: {
   pipelineId?: string;
   query?: string;
   managerId?: string;
@@ -136,7 +136,7 @@ export const fetchFunnelWorkspace = (options: {
   priority?: FunnelDealPriority | '';
   stageId?: string;
   limit?: number;
-} = {}) => {
+} = {}): Promise<FunnelWorkspace> => {
   const params = new URLSearchParams();
   if (options.pipelineId) params.set('pipelineId', options.pipelineId);
   if (options.query?.trim()) params.set('q', options.query.trim());
@@ -145,7 +145,8 @@ export const fetchFunnelWorkspace = (options: {
   if (options.priority) params.set('priority', options.priority);
   if (options.stageId) params.set('stageId', options.stageId);
   if (options.limit) params.set('limit', String(options.limit));
-  return request<FunnelWorkspace>(`/workspace?${params.toString()}`);
+  const workspace = await request<FunnelWorkspaceWire>(`/workspace?${params.toString()}`);
+  return { ...workspace, leads: workspace.leads || workspace.deals };
 };
 
 export const searchFunnelContacts = (query: string) => {
