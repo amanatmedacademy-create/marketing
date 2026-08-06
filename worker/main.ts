@@ -5,7 +5,8 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
-import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
+import { hydrateIntegrationEnv } from './credentials';
+import { handleInboundSocialWebhook } from './inboundSocial';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
@@ -37,6 +38,18 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/waba/connect';
 }
 
+function requiresMarketingWriteAccess(method: string, pathname: string): boolean {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return false;
+  return pathname === '/api/leads'
+    || pathname.startsWith('/api/leads/')
+    || pathname === '/api/funnel/leads'
+    || pathname.startsWith('/api/funnel/leads/');
+}
+
+function canWriteMarketingData(role: string): boolean {
+  return role === 'administrator' || role === 'marketer';
+}
+
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
   const headers = new Headers(request.headers);
   headers.delete(INTERNAL_ROLE_HEADER);
@@ -44,6 +57,16 @@ function withTrustedIdentity(request: Request, role?: string, userId?: string): 
   if (role) headers.set(INTERNAL_ROLE_HEADER, role);
   if (userId) headers.set(INTERNAL_USER_HEADER, userId);
   return new Request(request, { headers });
+}
+
+function applySecurityHeaders(response: Response): Response {
+  const decorated = new Response(response.body, response);
+  decorated.headers.set('x-content-type-options', 'nosniff');
+  decorated.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  decorated.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  decorated.headers.set('x-frame-options', 'DENY');
+  decorated.headers.set('content-security-policy', "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co https://graph.facebook.com https://business.facebook.com; form-action 'self'");
+  return decorated;
 }
 
 const AUDIT_BODY_LIMIT = 32 * 1024;
@@ -81,22 +104,24 @@ export default {
       if (authResponse) return authResponse;
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
-        const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
-        if (legacyAdmin) {
-          forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
-        } else {
-          const user = await authenticateRequest(request, env);
-          if (!user) return authError();
-          if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
-          if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
-          if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
-          forwardedRequest = withTrustedIdentity(request, user.role, user.id);
+        const user = await authenticateRequest(request, env);
+        if (!user) return authError();
+        if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
+        if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
+        if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') {
+          return authError(403, 'Настройки интеграций доступны только администратору');
         }
+        if (requiresMarketingWriteAccess(request.method, url.pathname) && !canWriteMarketingData(user.role)) {
+          return authError(403, 'Недостаточно прав для изменения маркетинговых данных');
+        }
+        forwardedRequest = withTrustedIdentity(request, user.role, user.id);
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const inboundSocial = await handleInboundSocialWebhook(forwardedRequest, runtimeEnv, url);
+      if (inboundSocial) return inboundSocial;
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
       if (auditApi) return auditApi;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
@@ -160,12 +185,12 @@ export default {
         }));
       }
 
-      const decorated = new Response(response.body, response);
+      const decorated = applySecurityHeaders(response);
       decorated.headers.set('x-correlation-id', requestCorrelationId);
       return decorated;
     } catch (error) {
       console.error(error);
-      const message = error instanceof Error ? error.message : 'Analytics error';
+      const message = error instanceof Error ? error.message : 'Internal server error';
       if (url.pathname.startsWith('/api/')) {
         background(ctx, recordErrorEvent(env, {
           source: url.pathname.split('/').filter(Boolean)[1] || 'worker',
@@ -175,10 +200,10 @@ export default {
           correlationId: requestCorrelationId
         }));
       }
-      return new Response(JSON.stringify({ error: message }), {
+      return applySecurityHeaders(new Response(JSON.stringify({ error: 'Внутренняя ошибка сервиса', correlationId: requestCorrelationId }), {
         status: 500,
         headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId },
-      });
+      }));
     }
   },
 

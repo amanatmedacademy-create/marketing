@@ -2,6 +2,10 @@ export interface MarketingLead {
   id: string;
   external_id?: string | null;
   name: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  social_username?: string | null;
+  name_locked?: boolean;
   phone: string;
   email?: string | null;
   source?: string | null;
@@ -11,6 +15,8 @@ export interface MarketingLead {
   stage: string;
   next_action?: string | null;
   first_message?: string | null;
+  direction?: string | null;
+  city?: string | null;
   utm_source?: string | null;
   utm_medium?: string | null;
   utm_campaign?: string | null;
@@ -20,8 +26,11 @@ export interface MarketingLead {
   adset_id?: string | null;
   ad_id?: string | null;
   lead_created_at?: string | null;
+  first_contact_at?: string | null;
+  qualified_at?: string | null;
   appointment_at?: string | null;
   arrived_at?: string | null;
+  rejected_at?: string | null;
   sold_at?: string | null;
   is_target?: boolean;
   sale_amount?: number;
@@ -33,13 +42,19 @@ export interface MarketingCall {
   id: string;
   external_id?: string | null;
   lead_id?: string | null;
+  conversation_id?: string | null;
   deal_external_id?: string | null;
+  operator_user_id?: string | null;
   operator_name?: string | null;
+  client_name?: string | null;
   client_phone?: string | null;
   source?: string | null;
+  channel?: string | null;
   campaign_id?: string | null;
   ad_id?: string | null;
+  call_status?: 'PENDING' | 'COMPLETED' | 'CANCELLED';
   started_at: string;
+  scheduled_at?: string | null;
   duration_seconds: number;
   recording_url?: string | null;
   transcript?: string | null;
@@ -69,6 +84,7 @@ export interface MarketingCall {
 export interface MarketingCallOperatorSummary {
   operator_name: string;
   calls: number;
+  pending_calls?: number;
   appointments: number;
   average_quality_score?: number | null;
   calls_without_next_action: number;
@@ -124,7 +140,7 @@ export const marketingApi = {
   exchangeRates: () => apiRequest<ExchangeRatesResponse>('/exchange-rates'),
   integrationStatus: () => apiRequest<IntegrationStatus>('/integrations/status'),
   integrationConfigs: () => apiRequest<IntegrationConfigResponse>('/integrations/config'),
-  saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: boolean; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
+  saveIntegrationConfig: (provider: IntegrationProvider, values: Record<string, string>) => apiRequest<{ ok: true; provider: IntegrationCredentialSummary }>(`/integrations/config/${provider}`, { method: 'PUT', body: JSON.stringify(values) }),
   deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
   syncIntegrations: (source: IntegrationProvider | 'all', days: number) => apiRequest<{ ok: boolean; results: unknown[] }>('/integrations/sync', { method: 'POST', body: JSON.stringify({ source, days }) }),

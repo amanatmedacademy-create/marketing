@@ -22,23 +22,9 @@ Authorized redirect URI берётся из Supabase Dashboard → Authenticatio
 https://kysdtmgijkffwtzugonv.supabase.co/auth/v1/callback
 ```
 
-Скопировать Google Client ID и Client Secret.
-
 ## 3. Supabase
 
-Открыть:
-
-```text
-Authentication → Providers → Google
-```
-
-Включить Google provider и вставить Client ID / Client Secret.
-
-Открыть:
-
-```text
-Authentication → URL Configuration
-```
+Включить Google provider и указать Client ID / Client Secret.
 
 Site URL:
 
@@ -55,33 +41,46 @@ http://localhost:5173/**
 
 ## 4. Cloudflare Worker
 
-Добавить публичный Supabase anon key как secret:
+Добавить публичный Supabase anon key:
 
 ```bash
 wrangler secret put SUPABASE_ANON_KEY
 ```
 
-Значение находится в Supabase Dashboard → Project Settings → API → anon/public key.
-
-Не использовать `service_role` key на frontend.
-
-Опциональные переменные:
+Обязательные production-переменные:
 
 ```text
-AUTH_AUTO_APPROVE=true
 AUTH_ALLOWED_EMAIL_DOMAINS=amanatmed.kz,amanat-med-academy.kz
+AUTH_ADMIN_EMAILS=admin@amanatmed.kz
+AUTH_AUTO_APPROVE=false
 ```
 
-- `AUTH_AUTO_APPROVE=true` — новые Google-пользователи получают активный доступ автоматически.
-- `AUTH_AUTO_APPROVE=false` — первый пользователь становится администратором, остальные ожидают подтверждения.
-- `AUTH_ALLOWED_EMAIL_DOMAINS` — разрешает вход только указанным доменам. Пустое значение разрешает любые Google-аккаунты.
+Правила:
 
-## 5. Поведение системы
+- пустой `AUTH_ALLOWED_EMAIL_DOMAINS` блокирует Google-вход;
+- администратор назначается только при точном совпадении email с `AUTH_ADMIN_EMAILS`;
+- новый пользователь без admin allowlist получает роль `viewer`;
+- при `AUTH_AUTO_APPROVE=false` новый пользователь получает статус `invited` и ожидает подтверждения;
+- `AUTH_AUTO_APPROVE=true` следует использовать только при контролируемом корпоративном домене;
+- `service_role` key запрещено передавать во frontend.
 
-- одна кнопка используется и для регистрации, и для входа;
-- при первом Google-входе создаётся запись в `marketing_users`;
-- первый зарегистрированный пользователь получает роль `administrator`;
-- последующие пользователи получают роль `viewer`;
-- заблокированные и неподтверждённые пользователи не получают доступ к API;
-- Cloudflare проверяет Supabase access token на каждом закрытом API-запросе;
-- аналитические данные не выдаются без действительной сессии.
+## 5. Матрица доступа
+
+| Роль | Просмотр аналитики | Изменение лидов | Удаление лидов | Настройки интеграций |
+|---|---:|---:|---:|---:|
+| viewer | да | нет | нет | нет |
+| analyst | да | нет | нет | нет |
+| marketer | да | да | да | нет |
+| administrator | да | да | да | да |
+
+## 6. Проверка после деплоя
+
+1. Открыть `/api/auth/config` и проверить:
+   - `googleEnabled: true`;
+   - `publicKeyConfigured: true`;
+   - `allowedDomainsConfigured: true`;
+   - `adminEmailsConfigured: true`.
+2. Проверить, что внешний Google-аккаунт получает отказ.
+3. Проверить, что новый корпоративный пользователь создаётся как `viewer` и `invited`.
+4. Проверить, что `viewer` получает HTTP 403 на `POST`, `PATCH`, `DELETE /api/leads`.
+5. Проверить, что только administrator открывает настройки интеграций.

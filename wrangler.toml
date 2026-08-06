@@ -13,6 +13,11 @@ crons = ["15 * * * *", "30 2 * * *"]
 
 [vars]
 SUPABASE_URL = "https://kysdtmgijkffwtzugonv.supabase.co"
+APP_ORIGIN = "https://marketing.amanat-med-academy.workers.dev"
+AUTH_ALLOWED_EMAIL_DOMAINS = "amanatmed.kz,amanat-med-academy.kz"
+AUTH_ALLOWED_EMAILS = "amanat.med.academy@gmail.com"
+AUTH_ADMIN_EMAILS = "amanat.med.academy@gmail.com"
+AUTH_AUTO_APPROVE = "false"
 BITRIX_ENTITY_TYPE_ID = "1"
 BITRIX_SYNC_DAYS = "7"
 META_GRAPH_VERSION = "v23.0"
