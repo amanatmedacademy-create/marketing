@@ -1,3 +1,5 @@
+import { resolveCompanyId } from './companyContext';
+
 type JsonRecord = Record<string, unknown>;
 
 export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
@@ -27,10 +29,12 @@ export interface CredentialSecrets {
 interface BaseEnv extends CredentialSecrets {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  DEFAULT_COMPANY_ID?: string;
 }
 
 interface CredentialRow {
   id?: string;
+  company_id: string;
   user_id?: string | null;
   provider: IntegrationProvider;
   encrypted_payload: string;
@@ -163,13 +167,17 @@ async function supabase<T>(env: BaseEnv, path: string, init: RequestInit = {}): 
   return (body ? JSON.parse(body) : null) as T;
 }
 
-async function listRows(env: BaseEnv): Promise<CredentialRow[]> {
-  try { return await supabase<CredentialRow[]>(env, 'integration_credentials?user_id=is.null&select=*&order=provider.asc'); }
-  catch (error) { console.error(error); return []; }
+async function listRows(env: BaseEnv, companyId: string): Promise<CredentialRow[]> {
+  try {
+    return await supabase<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&select=*&order=provider.asc`);
+  } catch (error) {
+    console.error(error);
+    return [];
+  }
 }
 
-async function findRow(env: BaseEnv, provider: IntegrationProvider): Promise<CredentialRow | null> {
-  const rows = await supabase<CredentialRow[]>(env, `integration_credentials?user_id=is.null&provider=eq.${encodeURIComponent(provider)}&select=*&limit=1`);
+async function findRow(env: BaseEnv, companyId: string, provider: IntegrationProvider): Promise<CredentialRow | null> {
+  const rows = await supabase<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}&select=*&limit=1`);
   return rows[0] || null;
 }
 
@@ -203,25 +211,35 @@ function validate(provider: IntegrationProvider, payload: JsonRecord): string[] 
   return providerFields[provider].required.filter((field) => !asString(payload[field]));
 }
 
-async function mergeWithStoredPayload(env: BaseEnv, provider: IntegrationProvider, incoming: JsonRecord, secret: string): Promise<JsonRecord> {
-  const existing = await findRow(env, provider);
+async function mergeWithStoredPayload(
+  env: BaseEnv,
+  companyId: string,
+  provider: IntegrationProvider,
+  incoming: JsonRecord,
+  secret: string,
+): Promise<JsonRecord> {
+  const existing = await findRow(env, companyId, provider);
   if (!existing) return incoming;
   let stored: JsonRecord = {};
-  try { stored = await decryptPayload(existing, secret); }
-  catch (error) { console.error(`Unable to decrypt existing ${provider} credentials`, error); }
+  try {
+    stored = await decryptPayload(existing, secret);
+  } catch (error) {
+    console.error(`Unable to decrypt existing ${provider} credentials`, error);
+  }
   const merged: JsonRecord = { ...stored };
   for (const [key, value] of Object.entries(incoming)) {
-    const text = asString(value);
-    if (text) merged[key] = text;
+    const current = asString(value);
+    if (current) merged[key] = current;
     else if (!providerFields[provider].secrets.includes(key)) merged[key] = value;
   }
   return merged;
 }
 
 export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<T & CredentialSecrets> {
+  const companyId = await resolveCompanyId(env);
   const secret = encryptionSecret(env);
   const result = { ...env } as T & CredentialSecrets;
-  for (const row of await listRows(env)) {
+  for (const row of await listRows(env, companyId)) {
     try {
       const definition = providerFields[row.provider];
       if (!definition) continue;
@@ -240,23 +258,38 @@ export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<
 export async function handleCredentialRequest(request: Request, env: BaseEnv, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/integrations/config')) return null;
   if (!isFrontendAdmin(request, env)) return json({ error: 'Настройки интеграций доступны только администратору' }, 403);
+
+  const companyId = await resolveCompanyId(env);
   const secret = encryptionSecret(env);
   const provider = url.pathname.split('/').pop() as IntegrationProvider;
+
   if (url.pathname === '/api/integrations/config' && request.method === 'GET') {
-    return json({ providers: (await listRows(env)).map(publicSummary), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
+    return json({ providers: (await listRows(env, companyId)).map(publicSummary), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
   }
   if (!providerFields[provider]) return json({ error: 'Неизвестная интеграция' }, 404);
+
   if (request.method === 'PUT') {
     const incoming = asRecord(await request.json());
-    const existing = await findRow(env, provider);
-    const payload = await mergeWithStoredPayload(env, provider, incoming, secret);
+    const existing = await findRow(env, companyId, provider);
+    const payload = await mergeWithStoredPayload(env, companyId, provider, incoming, secret);
     const missing = validate(provider, payload);
     if (missing.length) return json({ error: `Заполните обязательные поля: ${missing.join(', ')}` }, 400);
+
     const encrypted = await encryptPayload(payload, secret);
     const summary = buildSummary(provider, payload);
-    const storedPayload = { provider, user_id: null, encrypted_payload: encrypted.encryptedPayload, iv: encrypted.iv, config_summary: summary, status: 'configured', last_error: null, updated_at: new Date().toISOString() };
+    const storedPayload = {
+      provider,
+      company_id: companyId,
+      user_id: null,
+      encrypted_payload: encrypted.encryptedPayload,
+      iv: encrypted.iv,
+      config_summary: summary,
+      status: 'configured',
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    };
     const rows = existing?.id
-      ? await supabase<CredentialRow[]>(env, `integration_credentials?id=eq.${encodeURIComponent(existing.id)}`, {
+      ? await supabase<CredentialRow[]>(env, `integration_credentials?id=eq.${encodeURIComponent(existing.id)}&company_id=eq.${encodeURIComponent(companyId)}`, {
           method: 'PATCH',
           headers: { prefer: 'return=representation' },
           body: JSON.stringify(storedPayload),
@@ -268,22 +301,31 @@ export async function handleCredentialRequest(request: Request, env: BaseEnv, ur
         });
     return json({ ok: true, provider: publicSummary(rows[0]), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
   }
+
   if (request.method === 'DELETE') {
-    await supabase<unknown>(env, `integration_credentials?user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
+    await supabase<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
       method: 'DELETE',
       headers: { prefer: 'return=minimal' },
     });
     return json({ ok: true, provider });
   }
+
   return json({ error: 'Method not allowed' }, 405);
 }
 
 export async function updateCredentialVerification(env: BaseEnv, provider: IntegrationProvider, ok: boolean, error?: unknown): Promise<void> {
   try {
-    await supabase<unknown>(env, `integration_credentials?user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
+    const companyId = await resolveCompanyId(env);
+    await supabase<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=minimal' },
-      body: JSON.stringify({ status: ok ? 'connected' : 'error', last_verified_at: new Date().toISOString(), last_error: ok ? null : error instanceof Error ? error.message : String(error || 'Ошибка проверки') }),
+      body: JSON.stringify({
+        status: ok ? 'connected' : 'error',
+        last_verified_at: new Date().toISOString(),
+        last_error: ok ? null : error instanceof Error ? error.message : String(error || 'Ошибка проверки'),
+      }),
     });
-  } catch (updateError) { console.error(updateError); }
+  } catch (updateError) {
+    console.error(updateError);
+  }
 }
