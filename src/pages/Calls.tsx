@@ -36,6 +36,13 @@ function formatPhone(value: string): string {
   return `+7 ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9, 11)}`;
 }
 
+function editablePhone(value: string): string {
+  const cleaned = value.replace(/[^\d+()\-\s]/g, '').slice(0, 24);
+  const hasLeadingPlus = cleaned.trimStart().startsWith('+');
+  const withoutExtraPlus = cleaned.replace(/\+/g, '');
+  return `${hasLeadingPlus ? '+' : ''}${withoutExtraPlus}`;
+}
+
 function yesNo(value?: boolean | null) {
   if (value === true) return <span className="call-check call-check--yes"><CheckCircle2 size={14}/> Да</span>;
   if (value === false) return <span className="call-check call-check--no"><XCircle size={14}/> Нет</span>;
@@ -102,22 +109,25 @@ export default function Calls() {
   }), [calls]);
 
   const updateDialNumber = (value: string) => {
-    const normalized = normalizePhone(value);
-    setDialNumber(normalized);
-    setDialState(normalized.replace(/\D/g, '').length >= 10 ? 'ready' : 'idle');
+    const next = editablePhone(value);
+    setDialNumber(next);
+    setDialState(next.replace(/\D/g, '').length >= 10 ? 'ready' : 'idle');
     setDialMessage('');
   };
 
   const appendDigit = (digit: string) => {
     if (digit === '*' || digit === '#') return;
     const current = dialNumber.replace(/\D/g, '');
-    updateDialNumber(`${current}${digit}`);
+    updateDialNumber(`${current ? '+' : ''}${current}${digit}`);
   };
 
-  const removeDigit = () => updateDialNumber(dialNumber.replace(/\D/g, '').slice(0, -1));
+  const removeDigit = () => {
+    const next = dialNumber.replace(/\D/g, '').slice(0, -1);
+    updateDialNumber(next ? `+${next}` : '');
+  };
 
   const openDialer = (phone?: string | null) => {
-    if (phone) updateDialNumber(phone);
+    if (phone) updateDialNumber(formatPhone(normalizePhone(phone)));
     setDialerOpen(true);
     setDialerMinimized(false);
   };
@@ -129,7 +139,9 @@ export default function Calls() {
   };
 
   const startCall = () => {
-    if (dialNumber.replace(/\D/g, '').length < 10) return;
+    const normalized = normalizePhone(dialNumber);
+    if (normalized.replace(/\D/g, '').length < 10) return;
+    setDialNumber(formatPhone(normalized));
     setDialMessage('Телефония пока не подключена. Выберите провайдера в разделе «Интеграции».');
     setDialState('ready');
   };
@@ -215,7 +227,20 @@ export default function Calls() {
 
         <div className="phone-number-screen">
           <small>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Соединение…' : 'Введите номер'}</small>
-          <input inputMode="tel" value={formatPhone(dialNumber)} onChange={(event) => updateDialNumber(event.target.value)} placeholder="+7 701 000 00 00" aria-label="Номер телефона"/>
+          <input
+            inputMode="tel"
+            autoComplete="tel"
+            spellCheck={false}
+            value={dialNumber}
+            onChange={(event) => updateDialNumber(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
+            onBlur={() => {
+              const normalized = normalizePhone(dialNumber);
+              if (normalized) setDialNumber(formatPhone(normalized));
+            }}
+            placeholder="+7 701 000 00 00"
+            aria-label="Номер телефона"
+          />
           <button type="button" onClick={removeDigit} disabled={!dialNumber} title="Удалить цифру"><Delete/></button>
         </div>
 
@@ -229,7 +254,7 @@ export default function Calls() {
           <a className="phone-settings" href="/integrations" title="Настройки телефонии"><Settings/></a>
         </div>
 
-        <div className="phone-call-status"><span>{dialState === 'active' ? 'Звонок идёт' : dialNumber ? formatPhone(dialNumber) : 'Номер не выбран'}</span><small>{muted ? 'Микрофон выключен' : 'Микрофон включён'}</small></div>
+        <div className="phone-call-status"><span>{dialState === 'active' ? 'Звонок идёт' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{muted ? 'Микрофон выключен' : 'Микрофон включён'}</small></div>
 
         {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span><a href="/integrations">Подключить</a></div>}
 
