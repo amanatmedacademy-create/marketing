@@ -14,6 +14,7 @@ import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
 import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
+import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelection';
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
@@ -22,7 +23,7 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv;
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -114,6 +115,8 @@ export default {
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
       if (metaOAuthResponse) return metaOAuthResponse;
+      const metaSelectionResponse = await handleMetaSelectionRequest(forwardedRequest, runtimeEnv, url);
+      if (metaSelectionResponse) return metaSelectionResponse;
       const metaCatalogResponse = await handleMetaCatalogRequest(forwardedRequest, runtimeEnv, url);
       if (metaCatalogResponse) return metaCatalogResponse;
       const metaBackfillResponse = await handleMetaBackfillRequest(forwardedRequest, runtimeEnv, url);
@@ -141,32 +144,16 @@ export default {
     try {
       const auditBody = url.pathname.startsWith('/api/') ? await captureJsonBody(request) : null;
       const plan = url.pathname.startsWith('/api/') ? planAudit(request.method, url.pathname.replace(/\/+$/, '') || '/', auditBody) : null;
-
       const response = await route();
 
       if (plan && response.status < 400) {
         const { ip, userAgent } = requestClient(request);
-        background(ctx, recordAudit(env, {
-          userId: requestUserId(forwardedRequest),
-          action: plan.action,
-          entityType: plan.entityType,
-          entityId: plan.entityId,
-          after: plan.captureBody ? auditBody : null,
-          ip,
-          userAgent,
-          correlationId: requestCorrelationId
-        }));
+        background(ctx, recordAudit(env, { userId: requestUserId(forwardedRequest), action: plan.action, entityType: plan.entityType, entityId: plan.entityId, after: plan.captureBody ? auditBody : null, ip, userAgent, correlationId: requestCorrelationId }));
       }
 
       if (url.pathname.startsWith('/api/') && response.status >= 500) {
         const detail = await response.clone().text().catch(() => '');
-        background(ctx, recordErrorEvent(env, {
-          source: url.pathname.split('/').filter(Boolean)[1] || 'worker',
-          endpoint: `${request.method} ${url.pathname}`,
-          code: String(response.status),
-          message: detail.slice(0, 600) || `HTTP ${response.status}`,
-          correlationId: requestCorrelationId
-        }));
+        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: String(response.status), message: detail.slice(0, 600) || `HTTP ${response.status}`, correlationId: requestCorrelationId }));
       }
 
       const decorated = new Response(response.body, response);
@@ -176,18 +163,9 @@ export default {
       console.error(error);
       const message = error instanceof Error ? error.message : 'Analytics error';
       if (url.pathname.startsWith('/api/')) {
-        background(ctx, recordErrorEvent(env, {
-          source: url.pathname.split('/').filter(Boolean)[1] || 'worker',
-          endpoint: `${request.method} ${url.pathname}`,
-          code: '500',
-          message,
-          correlationId: requestCorrelationId
-        }));
+        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
       }
-      return new Response(JSON.stringify({ error: message }), {
-        status: 500,
-        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId },
-      });
+      return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId } });
     }
   },
 
