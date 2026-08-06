@@ -1,5 +1,6 @@
-import { useMemo, type DragEvent } from 'react';
+import { useMemo, type DragEvent, type MouseEvent } from 'react';
 import { ArrowRight, CircleDollarSign, Clock3, MoreHorizontal, Settings2, UserRound } from 'lucide-react';
+import { OPEN_DEAL_WORKSPACE_EVENT } from './DealWorkspace';
 import type { FunnelDeal, FunnelPipeline, FunnelUser } from '../services/salesFunnel';
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
@@ -31,7 +32,7 @@ function age(value: string): string {
   return `${Math.floor(hours / 24)} д`;
 }
 
-export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users, draggingId, onSelectPipeline, onDraggingChange, onMove, onOpen, onCreatePipeline, onManagePipeline }: Props) {
+export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users, draggingId, onSelectPipeline, onDraggingChange, onMove, onOpen: _onOpen, onCreatePipeline, onManagePipeline }: Props) {
   const pipeline = pipelines.find((item) => item.id === selectedPipelineId) || pipelines.find((item) => item.isDefault) || pipelines[0];
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
@@ -42,6 +43,12 @@ export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users,
       <button className="button button-primary" type="button" onClick={onCreatePipeline}>Создать воронку</button>
     </section>;
   }
+
+  const openWorkspace = (deal: FunnelDeal, event?: MouseEvent) => {
+    event?.stopPropagation();
+    if (draggingId) return;
+    window.dispatchEvent(new CustomEvent(OPEN_DEAL_WORKSPACE_EVENT, { detail: { deal, pipeline, users } }));
+  };
 
   const drop = async (stageId: string) => {
     const deal = deals.find((item) => item.id === draggingId);
@@ -79,7 +86,8 @@ export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users,
             <div className="funnel-v2-column-body">
               {stageDeals.map((deal) => <section className={`funnel-v2-deal priority-${deal.priority.toLowerCase()}`} key={deal.id} draggable
                 onDragStart={(event: DragEvent) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', deal.id); onDraggingChange(deal.id); }}
-                onDragEnd={() => onDraggingChange(null)} onDoubleClick={() => onOpen(deal)}>
+                onDragEnd={() => onDraggingChange(null)} onClick={(event) => openWorkspace(deal, event)} onDoubleClick={(event) => openWorkspace(deal, event)} role="button" tabIndex={0}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openWorkspace(deal); }}>
                 <header><span>{initials(deal.fullName)}</span><div><strong>{deal.fullName}</strong><small>{deal.phone || deal.email || 'Контакт не указан'}</small></div><i>{PRIORITY[deal.priority]}</i></header>
                 <p>{deal.description || deal.nextAction || 'Следующее действие не назначено'}</p>
                 <div className="funnel-v2-deal-owners">
@@ -90,7 +98,7 @@ export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users,
                 {deal.amount > 0 && <div className="funnel-v2-deal-amount"><CircleDollarSign size={14}/><span>{deal.paid ? 'Оплачено' : 'Сумма сделки'}</span><strong>{money.format(deal.amount)}</strong></div>}
                 {deal.nextActionAt && <div className={`funnel-v2-next-action ${new Date(deal.nextActionAt).getTime() < Date.now() && deal.status === 'open' ? 'overdue' : ''}`}><Clock3 size={12}/><span>{deal.nextAction || 'Следующее действие'}</span><time>{new Date(deal.nextActionAt).toLocaleString('ru-KZ')}</time></div>}
                 {deal.lostReason && <div className="funnel-v2-lost">{deal.lostReason}</div>}
-                <footer><button type="button" onClick={() => onOpen(deal)}><MoreHorizontal size={16}/> Открыть</button></footer>
+                <footer><button type="button" onClick={(event) => openWorkspace(deal, event)}><MoreHorizontal size={16}/> Открыть карточку</button></footer>
               </section>)}
               {!stageDeals.length && <div className="funnel-v2-column-empty">Перетащите сделку сюда</div>}
             </div>

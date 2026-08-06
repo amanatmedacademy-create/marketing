@@ -7,6 +7,7 @@ import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, typ
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv } from './credentials';
+import { handleDealWorkspace } from './dealWorkspace';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
@@ -164,6 +165,8 @@ export default {
       if (adPreview) return adPreview;
       const adManager = await handleAdManager(forwardedRequest, runtimeEnv, url);
       if (adManager) return adManager;
+      const dealWorkspace = await handleDealWorkspace(forwardedRequest, runtimeEnv, url);
+      if (dealWorkspace) return dealWorkspace;
       const salesFunnel = await handleSalesFunnel(forwardedRequest, runtimeEnv, url);
       if (salesFunnel) return salesFunnel;
       const callCenter = await handleCallCenterChat(forwardedRequest, runtimeEnv, url);
