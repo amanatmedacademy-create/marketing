@@ -128,6 +128,7 @@ export default function Calls() {
 
   const openDialer = (phone?: string | null) => {
     if (phone) updateDialNumber(formatPhone(normalizePhone(phone)));
+    else updateDialNumber('');
     setDialerOpen(true);
     setDialerMinimized(false);
   };
@@ -161,7 +162,7 @@ export default function Calls() {
     <div className="calls-heading">
       <div><span>QUALITY CONTROL</span><h1>Звонки</h1><p>Внутренняя телефония, история разговоров и контроль качества.</p></div>
       <div className="calls-heading-actions">
-        <button type="button" className="calls-open-dialer" onClick={() => openDialer(selected?.client_phone)}><PhoneCall/> Звонилка</button>
+        <button type="button" className="calls-open-dialer" onClick={() => openDialer()}><PhoneCall/> Звонилка</button>
         <div className="calls-filters">
           <label><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Телефон, оператор, причина"/></label>
           <select value={operator} onChange={(event) => setOperator(event.target.value)}><option>Все операторы</option>{operators.map((row) => <option key={row.operator_name}>{row.operator_name}</option>)}</select>
