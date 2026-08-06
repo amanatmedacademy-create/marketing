@@ -52,6 +52,9 @@ export type FunnelDeal = {
   lostAt?: string;
 };
 
+// Temporary compatibility alias for the unified Leads workspace.
+export type FunnelLead = FunnelDeal;
+
 export type FunnelUser = { id: string; fullName: string; role: string };
 export type FunnelContact = { id: string; fullName: string; phone?: string; email?: string; source?: string; description?: string; crmDealId?: string };
 export type FunnelStageEvent = { id: string; dealId: string; pipelineId: string; fromStageId?: string; toStageId: string; actorUserId?: string; reason?: string; createdAt: string };
@@ -71,6 +74,7 @@ export type FunnelWorkspace = {
   pipelines: FunnelPipeline[];
   selectedPipelineId: string;
   deals: FunnelDeal[];
+  leads: FunnelDeal[];
   users: FunnelUser[];
   events: FunnelStageEvent[];
   stats: FunnelStats;
@@ -131,6 +135,7 @@ export const fetchFunnelWorkspace = (options: {
   diagnostId?: string;
   priority?: FunnelDealPriority | '';
   stageId?: string;
+  limit?: number;
 } = {}) => {
   const params = new URLSearchParams();
   if (options.pipelineId) params.set('pipelineId', options.pipelineId);
@@ -139,6 +144,7 @@ export const fetchFunnelWorkspace = (options: {
   if (options.diagnostId) params.set('diagnostId', options.diagnostId);
   if (options.priority) params.set('priority', options.priority);
   if (options.stageId) params.set('stageId', options.stageId);
+  if (options.limit) params.set('limit', String(options.limit));
   return request<FunnelWorkspace>(`/workspace?${params.toString()}`);
 };
 
