@@ -27,6 +27,7 @@ export type FunnelDeal = {
   id: string;
   pipelineId: string;
   stageId: string;
+  stage?: string;
   marketingLeadId?: string;
   contactId?: string;
   fullName: string;
@@ -128,6 +129,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+function withLegacyStage(deal: FunnelDeal): FunnelDeal {
+  if (deal.stage) return deal;
+  return { ...deal, stage: deal.status === 'won' ? 'COURSE' : deal.status === 'lost' ? 'LOST' : 'NEW' };
+}
+
 export const fetchFunnelWorkspace = async (options: {
   pipelineId?: string;
   query?: string;
@@ -146,7 +152,8 @@ export const fetchFunnelWorkspace = async (options: {
   if (options.stageId) params.set('stageId', options.stageId);
   if (options.limit) params.set('limit', String(options.limit));
   const workspace = await request<FunnelWorkspaceWire>(`/workspace?${params.toString()}`);
-  return { ...workspace, leads: workspace.leads || workspace.deals };
+  const deals = workspace.deals.map(withLegacyStage);
+  return { ...workspace, deals, leads: (workspace.leads || deals).map(withLegacyStage) };
 };
 
 export const searchFunnelContacts = (query: string) => {
