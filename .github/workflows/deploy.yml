@@ -39,7 +39,7 @@ jobs:
 
       - name: Deploy Cloudflare Worker
         run: |
-          echo "Deploying commit ${GITHUB_SHA} to production"
+          echo "Deploying access matrix release ${GITHUB_SHA} to production"
           npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
