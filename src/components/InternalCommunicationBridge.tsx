@@ -53,7 +53,7 @@ function dealContext(anchor: HTMLAnchorElement): PanelContext | null {
   return { mode, phone, name, dealId };
 }
 
-function samePhone(left?: string, right?: string): boolean {
+function samePhone(left?: string | null, right?: string | null): boolean {
   const a = normalizePhone(left || '');
   const b = normalizePhone(right || '');
   return Boolean(a && b && (a === b || a.slice(-10) === b.slice(-10)));
