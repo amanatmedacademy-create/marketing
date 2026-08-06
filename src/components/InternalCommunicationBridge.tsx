@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarClock, CheckCircle2, LoaderCircle, MessageCircle, PhoneCall, Send, X } from 'lucide-react';
 import {
   createChatThread,
@@ -13,9 +14,11 @@ import { createDealWorkspaceActivity } from '../services/dealWorkspace';
 import { marketingApi, type MarketingCall } from '../services/api';
 import '../embedded-communications.css';
 
+export const OPEN_INTERNAL_COMMUNICATION_EVENT = 'amanat:open-internal-communication';
+
 type Mode = 'chat' | 'call';
 
-type PanelContext = {
+export type InternalCommunicationContext = {
   mode: Mode;
   phone: string;
   name: string;
@@ -34,7 +37,20 @@ function displayPhone(value: string): string {
   return `+7 ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
 }
 
-function dealContext(anchor: HTMLAnchorElement): PanelContext | null {
+function validContext(value: unknown): InternalCommunicationContext | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<InternalCommunicationContext>;
+  const phone = normalizePhone(candidate.phone || '');
+  if (!phone || (candidate.mode !== 'chat' && candidate.mode !== 'call')) return null;
+  return {
+    mode: candidate.mode,
+    phone,
+    name: String(candidate.name || 'Клиент').trim() || 'Клиент',
+    dealId: String(candidate.dealId || '').trim(),
+  };
+}
+
+function contextFromLegacyAnchor(anchor: HTMLAnchorElement): InternalCommunicationContext | null {
   const panel = anchor.closest<HTMLElement>('.deal-workspace-panel');
   if (!panel) return null;
 
@@ -47,7 +63,7 @@ function dealContext(anchor: HTMLAnchorElement): PanelContext | null {
   if (!phone) return null;
 
   const text = `${anchor.textContent || ''} ${anchor.getAttribute('title') || ''}`;
-  const mode: Mode = href.includes('wa.me/') || /сообщ|чат|message/i.test(text) ? 'chat' : 'call';
+  const mode: Mode = href.includes('wa.me/') || /сообщ|чат|message|whatsapp/i.test(text) ? 'chat' : 'call';
   const name = panel.querySelector<HTMLHeadingElement>('.deal-workspace-identity h1')?.textContent?.trim() || 'Клиент';
   const dealId = window.location.pathname.match(/\/pipeline\/deal\/([0-9a-f-]{36})/i)?.[1] || '';
   return { mode, phone, name, dealId };
@@ -71,7 +87,7 @@ function duration(seconds: number): string {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 
-function EmbeddedChat({ context }: { context: PanelContext }) {
+function EmbeddedChat({ context }: { context: InternalCommunicationContext }) {
   const [thread, setThread] = useState<ChatThread | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
@@ -88,6 +104,8 @@ function EmbeddedChat({ context }: { context: PanelContext }) {
 
   useEffect(() => {
     let active = true;
+    setThread(null);
+    setMessages([]);
     setLoading(true);
     setError('');
     fetchChatWorkspace()
@@ -148,7 +166,7 @@ function EmbeddedChat({ context }: { context: PanelContext }) {
   </div>;
 }
 
-function EmbeddedCalls({ context }: { context: PanelContext }) {
+function EmbeddedCalls({ context }: { context: InternalCommunicationContext }) {
   const [calls, setCalls] = useState<MarketingCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -159,7 +177,9 @@ function EmbeddedCalls({ context }: { context: PanelContext }) {
 
   useEffect(() => {
     let active = true;
+    setCalls([]);
     setLoading(true);
+    setError('');
     marketingApi.calls({ limit: 500 })
       .then((rows) => {
         if (!active) return;
@@ -173,7 +193,9 @@ function EmbeddedCalls({ context }: { context: PanelContext }) {
   const schedule = async (event: FormEvent) => {
     event.preventDefault();
     if (!context.dealId || !note.trim() || saving) return;
-    setSaving(true); setSaved(false); setError('');
+    setSaving(true);
+    setSaved(false);
+    setError('');
     try {
       await createDealWorkspaceActivity(context.dealId, {
         type: 'task',
@@ -212,13 +234,22 @@ function EmbeddedCalls({ context }: { context: PanelContext }) {
 }
 
 export default function InternalCommunicationBridge() {
-  const [context, setContext] = useState<PanelContext | null>(null);
+  const [context, setContext] = useState<InternalCommunicationContext | null>(null);
+
+  useEffect(() => {
+    const open = (event: Event) => {
+      const next = validContext((event as CustomEvent<InternalCommunicationContext>).detail);
+      if (next) setContext(next);
+    };
+    window.addEventListener(OPEN_INTERNAL_COMMUNICATION_EVENT, open);
+    return () => window.removeEventListener(OPEN_INTERNAL_COMMUNICATION_EVENT, open);
+  }, []);
 
   useEffect(() => {
     const click = (event: MouseEvent) => {
       const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
       if (!anchor) return;
-      const next = dealContext(anchor);
+      const next = contextFromLegacyAnchor(anchor);
       if (!next) return;
       event.preventDefault();
       event.stopPropagation();
@@ -230,27 +261,34 @@ export default function InternalCommunicationBridge() {
 
   useEffect(() => {
     if (!context) return;
+    document.body.classList.add('embedded-communication-open');
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setContext(null); };
     window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('keydown', close);
+      document.body.classList.remove('embedded-communication-open');
+    };
   }, [context]);
 
   const title = useMemo(() => context?.mode === 'chat' ? 'Чат с клиентом' : 'Звонки клиента', [context?.mode]);
-  if (!context) return null;
+  if (!context || typeof document === 'undefined') return null;
 
-  return <div className="embedded-communication-layer" role="dialog" aria-modal="true" aria-label={title}>
-    <button type="button" className="embedded-communication-backdrop" aria-label="Закрыть" onClick={() => setContext(null)}/>
-    <section className="embedded-communication-panel">
-      <header>
-        <div className={`embedded-communication-icon ${context.mode}`}><span>{context.mode === 'chat' ? <MessageCircle/> : <PhoneCall/>}</span></div>
-        <div><small>CRM · {context.mode === 'chat' ? 'ВНУТРЕННИЙ ЧАТ' : 'ТЕЛЕФОНИЯ'}</small><h2>{title}</h2><p>{context.name} · {displayPhone(context.phone)}</p></div>
-        <button type="button" onClick={() => setContext(null)} aria-label="Закрыть"><X/></button>
-      </header>
-      <nav>
-        <button type="button" className={context.mode === 'chat' ? 'active' : ''} onClick={() => setContext((current) => current ? { ...current, mode: 'chat' } : current)}><MessageCircle/> Чат</button>
-        <button type="button" className={context.mode === 'call' ? 'active' : ''} onClick={() => setContext((current) => current ? { ...current, mode: 'call' } : current)}><PhoneCall/> Звонки</button>
-      </nav>
-      {context.mode === 'chat' ? <EmbeddedChat context={context}/> : <EmbeddedCalls context={context}/>} 
-    </section>
-  </div>;
+  return createPortal(
+    <div className="embedded-communication-layer" role="dialog" aria-modal="true" aria-label={title}>
+      <button type="button" className="embedded-communication-backdrop" aria-label="Закрыть" onClick={() => setContext(null)}/>
+      <section className="embedded-communication-panel">
+        <header>
+          <div className={`embedded-communication-icon ${context.mode}`}><span>{context.mode === 'chat' ? <MessageCircle/> : <PhoneCall/>}</span></div>
+          <div><small>CRM · {context.mode === 'chat' ? 'ВНУТРЕННИЙ ЧАТ' : 'ТЕЛЕФОНИЯ'}</small><h2>{title}</h2><p>{context.name} · {displayPhone(context.phone)}</p></div>
+          <button type="button" onClick={() => setContext(null)} aria-label="Закрыть"><X/></button>
+        </header>
+        <nav>
+          <button type="button" className={context.mode === 'chat' ? 'active' : ''} onClick={() => setContext((current) => current ? { ...current, mode: 'chat' } : current)}><MessageCircle/> Чат</button>
+          <button type="button" className={context.mode === 'call' ? 'active' : ''} onClick={() => setContext((current) => current ? { ...current, mode: 'call' } : current)}><PhoneCall/> Звонки</button>
+        </nav>
+        {context.mode === 'chat' ? <EmbeddedChat context={context}/> : <EmbeddedCalls context={context}/>} 
+      </section>
+    </div>,
+    document.body,
+  );
 }
