@@ -19,6 +19,7 @@ import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelecti
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
+import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
@@ -34,6 +35,7 @@ type MainEnv = AuthEnv
   & MetaBackfillEnv
   & MetaSelectionEnv
   & TenantSyncEnv
+  & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
   & { FRONTEND_ADMIN_KEY?: string };
 
@@ -132,6 +134,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const tenantWebhook = await handleTenantWebhookRequest(forwardedRequest, runtimeEnv, url);
+      if (tenantWebhook) return tenantWebhook;
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
       if (auditApi) return auditApi;
       const tenantSync = await handleTenantSyncRequest(forwardedRequest, runtimeEnv, url);
