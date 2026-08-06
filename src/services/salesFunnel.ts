@@ -1,137 +1,98 @@
-// Воронка Продаж: клиент API, порт ropApi из МИС.
-// Auth-заголовок добавляет глобальный fetch-патч в AuthGate.
+export type FunnelStageType = 'open' | 'won' | 'lost';
+export type FunnelDealPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
-export type FunnelLeadStage = 'NEW' | 'QUALIFICATION' | 'APPOINTMENT' | 'DIAGNOSTIC' | 'COURSE' | 'LOST';
-export type FunnelLeadPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-export type FunnelLeadAction = 'WHATSAPP' | 'BOOK' | 'COURSE' | 'LOST' | 'RESTORE';
-
-export type FunnelLead = {
+export type FunnelStage = {
   id: string;
+  pipelineId: string;
+  name: string;
+  color: string;
+  position: number;
+  probability: number;
+  stageType: FunnelStageType;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FunnelPipeline = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  position: number;
+  stages: FunnelStage[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FunnelDeal = {
+  id: string;
+  pipelineId: string;
+  stageId: string;
+  marketingLeadId?: string;
   contactId?: string;
   fullName: string;
   phone?: string;
-  diagnosis?: string;
+  email?: string;
   source: string;
-  priority: FunnelLeadPriority;
-  stage: FunnelLeadStage;
-  diagnostUserId?: string;
+  priority: FunnelDealPriority;
   managerUserId?: string;
+  diagnostUserId?: string;
+  description?: string;
   amount: number;
+  currency: string;
+  status: string;
+  position: number;
   paid: boolean;
-  whatsappCount: number;
   lostReason?: string;
+  nextAction?: string;
+  nextActionAt?: string;
+  stageEnteredAt: string;
   createdAt: string;
   updatedAt: string;
-  closedAt?: string;
+  wonAt?: string;
+  lostAt?: string;
 };
 
-export type FunnelActivity = {
-  id: string;
-  leadId: string;
-  type: string;
-  title: string;
-  details: Record<string, unknown>;
-  actorUserId?: string;
-  createdAt: string;
-};
+export type FunnelUser = { id: string; fullName: string; role: string };
+export type FunnelContact = { id: string; fullName: string; phone?: string; email?: string; source?: string; description?: string; crmDealId?: string };
+export type FunnelStageEvent = { id: string; dealId: string; pipelineId: string; fromStageId?: string; toStageId: string; actorUserId?: string; reason?: string; createdAt: string };
 
-export type FunnelUser = { id: string; fullName: string; role: string; position?: string };
-export type FunnelContact = { id: string; fullName: string; phone?: string; diagnosis?: string };
-
-export type FunnelWorkspaceStats = {
+export type FunnelStats = {
   total: number;
   open: number;
   won: number;
   lost: number;
-  courseAmount: number;
-  byStage: Record<FunnelLeadStage, number>;
-};
-
-export type FunnelWorkspacePagination = {
-  offset: number;
-  limit: number;
-  loaded: number;
-  total: number;
-  hasMore: boolean;
-  nextOffset: number | null;
-  nextCursor?: string | null;
-};
-
-type FunnelWorkspaceWirePagination = Omit<FunnelWorkspacePagination, 'total'> & { total: number | null };
-
-export type FunnelWorkspaceFilters = {
-  query: string;
-  managerId: string;
-  diagnostId: string;
-  priority: FunnelLeadPriority | '';
-  stage: FunnelLeadStage | '';
+  wonAmount: number;
+  weightedAmount: number;
+  overdue: number;
 };
 
 export type FunnelWorkspace = {
-  leads: FunnelLead[];
-  activities: FunnelActivity[];
+  companyId: string;
+  pipelines: FunnelPipeline[];
+  selectedPipelineId: string;
+  deals: FunnelDeal[];
   users: FunnelUser[];
-  contacts: FunnelContact[];
-  stats?: FunnelWorkspaceStats;
-  pagination?: FunnelWorkspacePagination;
-  filters?: FunnelWorkspaceFilters;
+  events: FunnelStageEvent[];
+  stats: FunnelStats;
 };
 
-type FunnelWorkspaceWire = Omit<FunnelWorkspace, 'pagination'> & { pagination?: FunnelWorkspaceWirePagination };
-
-export type FunnelLeadInput = {
-  contactId?: string | null;
+export type FunnelDealInput = {
+  pipelineId?: string;
+  stageId?: string;
+  marketingLeadId?: string | null;
   fullName?: string;
   phone?: string | null;
-  diagnosis?: string | null;
-  source?: string;
-  priority?: FunnelLeadPriority;
-  stage?: FunnelLeadStage;
-  diagnostUserId?: string | null;
+  email?: string | null;
+  source?: string | null;
+  priority?: FunnelDealPriority;
   managerUserId?: string | null;
+  diagnostUserId?: string | null;
+  description?: string | null;
   amount?: number;
   paid?: boolean;
   lostReason?: string | null;
-};
-
-export type FunnelKanbanColumn = {
-  stage: FunnelLeadStage;
-  title: string;
-  subtitle: string;
-  color: string;
-  wipLimit: number;
-  visible: boolean;
-};
-
-export type FunnelKanbanFilters = {
-  sources: string[];
-  priorities: FunnelLeadPriority[];
-  diagnostUserIds: string[];
-  managerUserIds: string[];
-};
-
-export type FunnelKanbanBoard = {
-  id: string;
-  name: string;
-  description?: string;
-  columns: FunnelKanbanColumn[];
-  filters: FunnelKanbanFilters;
-  showTotals: boolean;
-  isDefault: boolean;
-  isActive: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type FunnelKanbanBoardInput = {
-  name: string;
-  description?: string | null;
-  columns: FunnelKanbanColumn[];
-  filters: FunnelKanbanFilters;
-  showTotals: boolean;
-  isDefault?: boolean;
-  sortOrder?: number;
+  nextAction?: string | null;
+  nextActionAt?: string | null;
 };
 
 class FunnelApiError extends Error {
@@ -154,108 +115,47 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const structured = payload && typeof payload === 'object' && !Array.isArray(payload)
       ? payload as { error?: unknown; requestId?: unknown }
       : null;
-    const message = typeof structured?.error === 'string' && structured.error
-      ? structured.error
-      : `API воронки вернул HTTP ${response.status}`;
-    const requestId = typeof structured?.requestId === 'string' ? structured.requestId : undefined;
-    throw new FunnelApiError(message, response.status, requestId);
+    throw new FunnelApiError(
+      typeof structured?.error === 'string' ? structured.error : `API воронки вернул HTTP ${response.status}`,
+      response.status,
+      typeof structured?.requestId === 'string' ? structured.requestId : undefined
+    );
   }
   return payload as T;
 }
 
-const cursorPagesByFilter = new Map<string, Map<number, string>>();
-const totalByFilter = new Map<string, number>();
-const MAX_CURSOR_FILTERS = 20;
-
-function filterKey(options: {
-  limit: number;
+export const fetchFunnelWorkspace = (options: {
+  pipelineId?: string;
   query?: string;
   managerId?: string;
   diagnostId?: string;
-  priority?: FunnelLeadPriority | '';
-  stage?: FunnelLeadStage | '';
-}): string {
-  return JSON.stringify([
-    options.limit,
-    options.query?.trim() || '',
-    options.managerId || '',
-    options.diagnostId || '',
-    options.priority || '',
-    options.stage || ''
-  ]);
-}
-
-function resetCursorFilter(key: string): Map<number, string> {
-  cursorPagesByFilter.delete(key);
-  cursorPagesByFilter.set(key, new Map());
-  totalByFilter.delete(key);
-  while (cursorPagesByFilter.size > MAX_CURSOR_FILTERS) {
-    const oldest = cursorPagesByFilter.keys().next().value as string | undefined;
-    if (!oldest) break;
-    cursorPagesByFilter.delete(oldest);
-    totalByFilter.delete(oldest);
-  }
-  return cursorPagesByFilter.get(key) as Map<number, string>;
-}
-
-export const fetchFunnelWorkspace = async (options: {
-  offset?: number;
-  limit?: number;
-  query?: string;
-  managerId?: string;
-  diagnostId?: string;
-  priority?: FunnelLeadPriority | '';
-  stage?: FunnelLeadStage | '';
-} = {}): Promise<FunnelWorkspace> => {
-  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
-  const limit = Math.min(1000, Math.max(50, Math.trunc(options.limit ?? 500)));
-  const key = filterKey({ ...options, limit });
-  const pages = offset === 0 ? resetCursorFilter(key) : (cursorPagesByFilter.get(key) || new Map<number, string>());
-  const cursor = offset > 0 ? pages.get(offset) : undefined;
+  priority?: FunnelDealPriority | '';
+  stageId?: string;
+} = {}) => {
   const params = new URLSearchParams();
-  if (cursor) params.set('cursor', cursor); else params.set('offset', String(offset));
-  params.set('limit', String(limit));
+  if (options.pipelineId) params.set('pipelineId', options.pipelineId);
   if (options.query?.trim()) params.set('q', options.query.trim());
   if (options.managerId) params.set('managerId', options.managerId);
   if (options.diagnostId) params.set('diagnostId', options.diagnostId);
   if (options.priority) params.set('priority', options.priority);
-  if (options.stage) params.set('stage', options.stage);
-
-  const raw = await request<FunnelWorkspaceWire>(`/workspace?${params.toString()}`);
-  if (!raw.pagination) return raw as FunnelWorkspace;
-
-  const rawPagination = raw.pagination;
-  if (rawPagination.total != null) totalByFilter.set(key, rawPagination.total);
-  const total = rawPagination.total ?? totalByFilter.get(key) ?? offset + rawPagination.loaded + (rawPagination.hasMore ? 1 : 0);
-  const nextOffset = rawPagination.hasMore ? offset + rawPagination.loaded : null;
-  if (nextOffset != null && rawPagination.nextCursor) {
-    const activePages = cursorPagesByFilter.get(key) || pages;
-    activePages.set(nextOffset, rawPagination.nextCursor);
-    cursorPagesByFilter.set(key, activePages);
-  }
-
-  return {
-    ...raw,
-    pagination: {
-      ...rawPagination,
-      offset,
-      total,
-      nextOffset
-    }
-  };
+  if (options.stageId) params.set('stageId', options.stageId);
+  return request<FunnelWorkspace>(`/workspace?${params.toString()}`);
 };
 
-export const searchFunnelContacts = (query: string, limit = 50) => {
+export const searchFunnelContacts = (query: string) => {
   const params = new URLSearchParams();
   if (query.trim()) params.set('q', query.trim());
-  params.set('limit', String(Math.min(100, Math.max(1, Math.trunc(limit)))));
   return request<FunnelContact[]>(`/contacts?${params.toString()}`);
 };
-export const createFunnelLead = (input: FunnelLeadInput) => request<FunnelLead>('/leads', { method: 'POST', body: JSON.stringify(input) });
-export const updateFunnelLead = (id: string, input: FunnelLeadInput) => request<FunnelLead>(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
-export const runFunnelLeadAction = (id: string, action: FunnelLeadAction, lostReason?: string) => request<FunnelLead>(`/leads/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify({ action, lostReason }) });
 
-export const fetchFunnelKanbanBoards = () => request<FunnelKanbanBoard[]>('/boards');
-export const createFunnelKanbanBoard = (input: FunnelKanbanBoardInput) => request<FunnelKanbanBoard>('/boards', { method: 'POST', body: JSON.stringify(input) });
-export const updateFunnelKanbanBoard = (id: string, input: Partial<FunnelKanbanBoardInput>) => request<FunnelKanbanBoard>(`/boards/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
-export const archiveFunnelKanbanBoard = (id: string) => request<void>(`/boards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const createFunnelDeal = (input: FunnelDealInput) => request<FunnelDeal>('/leads', { method: 'POST', body: JSON.stringify(input) });
+export const updateFunnelDeal = (id: string, input: FunnelDealInput) => request<FunnelDeal>(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
+export const moveFunnelDeal = (id: string, input: { pipelineId: string; stageId: string; position?: number; reason?: string }) => request<FunnelDeal>(`/leads/${encodeURIComponent(id)}/move`, { method: 'POST', body: JSON.stringify(input) });
+
+export const createFunnelPipeline = (input: { name: string; isDefault?: boolean }) => request<FunnelPipeline>('/pipelines', { method: 'POST', body: JSON.stringify(input) });
+export const updateFunnelPipeline = (id: string, input: { name?: string; isDefault?: boolean; position?: number }) => request<FunnelPipeline>(`/pipelines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
+export const deleteFunnelPipeline = (id: string) => request<void>(`/pipelines/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+export const createFunnelStage = (input: { pipelineId: string; name: string; color?: string; probability?: number; stageType?: FunnelStageType; afterStageId?: string }) => request<FunnelStage>('/stages', { method: 'POST', body: JSON.stringify(input) });
+export const updateFunnelStage = (id: string, input: { name?: string; color?: string; probability?: number; stageType?: FunnelStageType; position?: number }) => request<FunnelStage>(`/stages/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
+export const deleteFunnelStage = (id: string) => request<void>(`/stages/${encodeURIComponent(id)}`, { method: 'DELETE' });
