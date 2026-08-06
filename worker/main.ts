@@ -6,6 +6,7 @@ import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, typ
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv } from './credentials';
+import { handleInboundSocialWebhook } from './inboundSocial';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaOAuthRequest, type MetaOAuthEnv } from './metaOAuth';
@@ -119,6 +120,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const inboundSocial = await handleInboundSocialWebhook(forwardedRequest, runtimeEnv, url);
+      if (inboundSocial) return inboundSocial;
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
       if (auditApi) return auditApi;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
