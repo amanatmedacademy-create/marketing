@@ -21,6 +21,7 @@ import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
+import { handleVoiceTranscriptionRequest, type VoiceTranscriptionEnv } from './voiceTranscription';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
@@ -40,6 +41,7 @@ type MainEnv = AuthEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
   & WabaMessagingEnv
+  & VoiceTranscriptionEnv
   & { FRONTEND_ADMIN_KEY?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
@@ -174,6 +176,8 @@ export default {
       if (dealWorkspace) return dealWorkspace;
       const salesFunnel = await handleSalesFunnel(forwardedRequest, runtimeEnv, url);
       if (salesFunnel) return salesFunnel;
+      const voiceTranscription = await handleVoiceTranscriptionRequest(forwardedRequest, runtimeEnv, url);
+      if (voiceTranscription) return voiceTranscription;
       const callCenter = await handleCallCenterChat(forwardedRequest, runtimeEnv, url);
       if (callCenter) return callCenter;
       const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
