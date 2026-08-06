@@ -104,7 +104,7 @@ function parentKey(level: Level, row: Identity) {
   return hierarchyKey('adset', row);
 }
 
-function finalize(row: RecordValue) {
+function finalize(row: RecordValue): RecordValue {
   const spend = num(row.spend), impressions = num(row.impressions), clicks = num(row.clicks), linkClicks = num(row.link_clicks);
   const reach = num(row.reach);
   return {
@@ -237,9 +237,9 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
     const id=identity(leaf);
     for(const level of ['platform','account','campaign','adset','ad'] as Level[]){const target=ensureHierarchy(level,id);addMetrics(target,leaf);target.active_days=Math.max(num(target.active_days),num(leaf.active_days));if(level==='ad')target.attribution_level=leaf.attribution_level;}
   }
-  const hierarchy=[...hierarchyMap.values()].map(finalize);
-  const campaigns=hierarchy.filter((row)=>row.level==='campaign').sort((a,b)=>num(b.revenue)-num(a.revenue));
-  const platforms=hierarchy.filter((row)=>row.level==='platform').map((row)=>({...row,platform:row.label,campaigns:campaigns.filter((campaign)=>String(campaign.key).startsWith(`${row.key}|`)).length,leads:num(row.crm_leads),sale_rate:num(row.crm_leads)?num(row.sales)*100/num(row.crm_leads):0}));
+  const hierarchy: RecordValue[]=[...hierarchyMap.values()].map(finalize);
+  const campaigns: RecordValue[]=hierarchy.filter((row)=>row.level==='campaign').sort((a,b)=>num(b.revenue)-num(a.revenue));
+  const platforms: RecordValue[]=hierarchy.filter((row)=>row.level==='platform').map((row): RecordValue=>({...row,platform:row.label,campaigns:campaigns.filter((campaign)=>String(campaign.key).startsWith(`${row.key}|`)).length,leads:num(row.crm_leads),sale_rate:num(row.crm_leads)?num(row.sales)*100/num(row.crm_leads):0}));
 
   const hourly=Array.from({length:24},(_,hour)=>({hour,leads:0,appointments:0,rate:0}));
   const weekdays=Array.from({length:7},(_,day)=>({day,leads:0,appointments:0,rate:0}));

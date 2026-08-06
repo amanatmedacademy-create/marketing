@@ -1,5 +1,6 @@
 export interface MetaOAuthStartEnv {
   META_APP_ID?: string;
+  META_APP_SECRET?: string;
   META_GRAPH_VERSION?: string;
   META_OAUTH_REDIRECT_URI?: string;
 }
@@ -18,7 +19,10 @@ export function handleMetaOAuthStart(request: Request, env: MetaOAuthStartEnv, u
   if (url.pathname !== '/api/integrations/meta/start' || request.method !== 'POST') return null;
 
   const appId = text(env.META_APP_ID);
-  if (!appId) return json({ error: 'META_APP_ID не настроен в Cloudflare' }, 503);
+  const appSecret = text(env.META_APP_SECRET);
+  if (!appId || !appSecret) {
+    return json({ error: 'META_APP_ID или META_APP_SECRET не настроены в Cloudflare' }, 503);
+  }
 
   const versionValue = text(env.META_GRAPH_VERSION) || 'v23.0';
   const version = versionValue.startsWith('v') ? versionValue : `v${versionValue}`;
