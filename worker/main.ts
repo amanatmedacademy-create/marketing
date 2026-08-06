@@ -22,6 +22,7 @@ import { handleSalesFunnel } from './salesFunnel';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
+import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -38,6 +39,7 @@ type MainEnv = AuthEnv
   & TenantSyncEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
+  & WabaMessagingEnv
   & { FRONTEND_ADMIN_KEY?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
@@ -54,6 +56,7 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/backfill'
     || pathname === '/api/integrations/meta/reach-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
+    || pathname === '/api/integrations/meta/conversions'
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect';
 }
@@ -135,6 +138,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const wabaMessaging = await handleWabaMessagingRequest(forwardedRequest, runtimeEnv, url);
+      if (wabaMessaging) return wabaMessaging;
       const tenantWebhook = await handleTenantWebhookRequest(forwardedRequest, runtimeEnv, url);
       if (tenantWebhook) return tenantWebhook;
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
