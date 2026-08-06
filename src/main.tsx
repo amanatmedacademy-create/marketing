@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import MarketingPlatform from './MarketingPlatform';
@@ -29,6 +30,7 @@ function Root() {
   return <>
     <MarketingPlatform />
     <AnalyticsTableColorizer />
+    <AdPreviewEnhancer />
   </>;
 }
 
