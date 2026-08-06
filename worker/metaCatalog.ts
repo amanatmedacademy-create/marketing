@@ -25,6 +25,20 @@ interface CredentialRow {
   config_summary?: JsonRecord;
 }
 
+class MetaApiError extends Error {
+  code: number;
+  status: number;
+
+  constructor(message: string, code = 0, status = 500) {
+    super(message);
+    this.name = 'MetaApiError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const MAX_CREATIVES_PER_ACCOUNT = 1000;
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -32,6 +46,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 const record = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+const number = (value: unknown): number => Number.isFinite(Number(value)) ? Number(value) : 0;
 const csv = (value: unknown): string[] => text(value).split(',').map((item) => item.trim()).filter(Boolean);
 const graphVersion = (env: MetaCatalogEnv): string => {
   const version = text(env.META_GRAPH_VERSION) || 'v23.0';
@@ -40,15 +55,38 @@ const graphVersion = (env: MetaCatalogEnv): string => {
 const accountGraphId = (value: string): string => value.startsWith('act_') ? value : `act_${value}`;
 const accountDbId = (value: string): string => value.replace(/^act_/, '');
 const safeMetaId = (value: string): boolean => /^\d+$/.test(value.replace(/^act_/, ''));
+const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function metaJson<T>(url: string): Promise<T> {
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  if (!items.length) return [];
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function metaJson<T>(url: string, attempt = 0): Promise<T> {
   const response = await fetch(url, { headers: { accept: 'application/json' } });
   const body = await response.text();
   let payload: unknown = {};
   try { payload = body ? JSON.parse(body) : {}; } catch { payload = { error: { message: body } }; }
-  if (!response.ok || record(payload).error) {
-    const error = record(record(payload).error);
-    throw new Error(text(error.message) || `Meta API: ${response.status}`);
+  const error = record(record(payload).error);
+  if (!response.ok || Object.keys(error).length) {
+    const code = number(error.code);
+    const transient = error.is_transient === true || [2, 4, 17, 32, 613].includes(code) || response.status >= 500;
+    if (transient && attempt < 2) {
+      await sleep(600 * (attempt + 1));
+      return metaJson<T>(url, attempt + 1);
+    }
+    throw new MetaApiError(text(error.message) || `Meta API: ${response.status}`, code, response.status);
   }
   return payload as T;
 }
@@ -85,7 +123,7 @@ async function listAccounts(env: MetaCatalogEnv): Promise<MetaAccount[]> {
   const accounts: MetaAccount[] = [];
   const params = new URLSearchParams({
     fields: 'id,account_id,name,account_status,currency,timezone_name',
-    limit: '200',
+    limit: '100',
     access_token: accessToken,
   });
   let next: string | undefined = `https://graph.facebook.com/${version}/me/adaccounts?${params}`;
@@ -109,22 +147,48 @@ async function creativeCount(env: MetaCatalogEnv, accountId: string): Promise<nu
   }
 }
 
-async function listCreatives(env: MetaCatalogEnv, accountId: string): Promise<JsonRecord[]> {
+async function fetchCreativePages(
+  env: MetaCatalogEnv,
+  accountId: string,
+  fields: string,
+  pageSize: number,
+): Promise<JsonRecord[]> {
   const { accessToken, version } = requireMeta(env);
   const rows: JsonRecord[] = [];
   const params = new URLSearchParams({
-    fields: 'id,name,status,effective_status,creative{id,name,title,thumbnail_url,image_url}',
-    limit: '200',
+    fields,
+    limit: String(pageSize),
     access_token: accessToken,
   });
   let next: string | undefined = `https://graph.facebook.com/${version}/${accountGraphId(accountId)}/ads?${params}`;
-  for (let page = 0; next && page < 50; page += 1) {
+  for (let page = 0; next && page < 200; page += 1) {
     const payload: { data?: JsonRecord[]; paging?: { next?: string } } = await metaJson(next);
     rows.push(...(payload.data || []));
-    next = payload.paging?.next;
-    if (rows.length >= 5000) break;
+    next = rows.length >= MAX_CREATIVES_PER_ACCOUNT ? undefined : payload.paging?.next;
   }
-  return rows;
+  return rows.slice(0, MAX_CREATIVES_PER_ACCOUNT);
+}
+
+async function listCreatives(env: MetaCatalogEnv, accountId: string): Promise<JsonRecord[]> {
+  const profiles = [
+    { fields: 'id,name,status,effective_status,creative', pageSize: 50 },
+    { fields: 'id,name,status,effective_status', pageSize: 25 },
+    { fields: 'id,name', pageSize: 10 },
+  ];
+  let lastError: unknown = null;
+  for (const profile of profiles) {
+    try {
+      return await fetchCreativePages(env, accountId, profile.fields, profile.pageSize);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof MetaApiError) || error.code !== 1) throw error;
+      console.warn(`Meta creative catalog query was too large for ${accountId}; retrying with fewer fields`, {
+        fields: profile.fields,
+        pageSize: profile.pageSize,
+      });
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Meta не вернула список креативов');
 }
 
 async function catalog(env: MetaCatalogEnv, url: URL): Promise<Response> {
@@ -139,30 +203,44 @@ async function catalog(env: MetaCatalogEnv, url: URL): Promise<Response> {
   const accessibleIds = new Set(accounts.map((account) => accountGraphId(text(account.id || account.account_id))).filter(safeMetaId));
   const requestedIds = requested.filter((id) => accessibleIds.has(id));
 
-  const counts = await Promise.all(accounts.map(async (account) => {
+  const counts = await mapWithConcurrency(accounts, 3, async (account) => {
     const id = accountGraphId(text(account.id || account.account_id));
     return [id, await creativeCount(env, id)] as const;
-  }));
+  });
   const countMap = new Map(counts);
 
-  const creatives = requestedIds.length
-    ? (await Promise.all(requestedIds.map(async (accountId) => {
-        const rows = await listCreatives(env, accountId);
-        return rows.map((item) => {
-          const creative = record(item.creative);
+  const creativeResults = requestedIds.length
+    ? await mapWithConcurrency(requestedIds, 1, async (accountId) => {
+        try {
+          return { accountId, rows: await listCreatives(env, accountId), error: null as string | null };
+        } catch (error) {
           return {
-            id: text(item.id),
             accountId,
-            name: text(item.name) || `Объявление ${text(item.id)}`,
-            status: text(item.effective_status || item.status) || 'UNKNOWN',
-            creativeId: text(creative.id) || null,
-            creativeName: text(creative.name || creative.title) || null,
-            thumbnailUrl: text(creative.thumbnail_url || creative.image_url) || null,
-            selected: selectedAdIds.includes(text(item.id)),
+            rows: [] as JsonRecord[],
+            error: error instanceof Error ? error.message : String(error),
           };
-        });
-      }))).flat()
+        }
+      })
     : [];
+
+  const failedCreativeLoads = creativeResults.filter((result) => result.error);
+  if (requestedIds.length && failedCreativeLoads.length === requestedIds.length) {
+    throw new Error(failedCreativeLoads[0].error || 'Meta не вернула креативы выбранных кабинетов');
+  }
+
+  const creatives = creativeResults.flatMap(({ accountId, rows }) => rows.map((item) => {
+    const creative = record(item.creative);
+    return {
+      id: text(item.id),
+      accountId,
+      name: text(item.name) || `Объявление ${text(item.id)}`,
+      status: text(item.effective_status || item.status) || 'UNKNOWN',
+      creativeId: text(creative.id) || null,
+      creativeName: text(creative.name || creative.title) || null,
+      thumbnailUrl: text(creative.thumbnail_url || creative.image_url) || null,
+      selected: selectedAdIds.includes(text(item.id)),
+    };
+  }));
 
   return json({
     accounts: accounts.map((account) => {
@@ -182,6 +260,8 @@ async function catalog(env: MetaCatalogEnv, url: URL): Promise<Response> {
     selectedAccountIds,
     selectedAdIds,
     creativeSelectionMode: selectedAdIds.length ? 'selected' : 'all',
+    creativeCatalogLimitPerAccount: MAX_CREATIVES_PER_ACCOUNT,
+    creativeLoadWarnings: failedCreativeLoads.map((result) => ({ accountId: result.accountId, message: result.error })),
   });
 }
 
