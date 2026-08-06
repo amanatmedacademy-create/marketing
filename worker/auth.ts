@@ -1,4 +1,5 @@
 import type { Env } from './integrations';
+import { handleUserAdminRequest } from './userAdmin';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -98,7 +99,7 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
   const id = String(user.id || '');
   const email = String(user.email || '').toLowerCase();
   const metadata = (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) as JsonRecord;
-  const name = String(metadata.full_name || metadata.name || email.split('@')[0] || 'Пользователь');
+  const googleName = String(metadata.full_name || metadata.name || email.split('@')[0] || 'Пользователь');
   const avatarUrl = metadata.avatar_url ? String(metadata.avatar_url) : null;
 
   if (!id || !email) throw new Error('Google account does not contain a valid user ID or email');
@@ -113,28 +114,56 @@ async function upsertMarketingUser(user: JsonRecord, env: AuthEnv): Promise<Auth
     const response = await supabaseRequest(env, `marketing_users?auth_user_id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify({ name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, last_seen_at: new Date().toISOString() }),
+      body: JSON.stringify({
+        email,
+        avatar_url: avatarUrl,
+        provider: 'google',
+        provider_metadata: metadata,
+        last_seen_at: new Date().toISOString(),
+      }),
     });
     if (!response.ok) throw new Error(`Unable to update marketing user: ${await response.text()}`);
     row = (await response.json() as JsonRecord[])[0];
   } else {
-    const firstUserResponse = await supabaseRequest(env, 'marketing_users?select=id&limit=1');
-    const firstUsers = firstUserResponse.ok ? await firstUserResponse.json() as JsonRecord[] : [];
-    const role = firstUsers.length === 0 ? 'administrator' : 'viewer';
-    const status = env.AUTH_AUTO_APPROVE === 'false' && role !== 'administrator' ? 'invited' : 'active';
-    const response = await supabaseRequest(env, 'marketing_users', {
-      method: 'POST',
-      headers: { prefer: 'return=representation' },
-      body: JSON.stringify({ auth_user_id: id, name, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, role, status, last_seen_at: new Date().toISOString() }),
-    });
-    if (!response.ok) throw new Error(`Unable to create marketing user: ${await response.text()}`);
-    row = (await response.json() as JsonRecord[])[0];
+    const invitedResponse = await supabaseRequest(env, `marketing_users?email=ilike.${encodeURIComponent(email)}&auth_user_id=is.null&select=*&limit=1`);
+    if (!invitedResponse.ok) throw new Error(`Unable to read invited user: ${await invitedResponse.text()}`);
+    const invited = await invitedResponse.json() as JsonRecord[];
+
+    if (invited[0]) {
+      const response = await supabaseRequest(env, `marketing_users?id=eq.${encodeURIComponent(String(invited[0].id || ''))}`, {
+        method: 'PATCH',
+        headers: { prefer: 'return=representation' },
+        body: JSON.stringify({
+          auth_user_id: id,
+          email,
+          avatar_url: avatarUrl,
+          provider: 'google',
+          provider_metadata: { ...metadata, manually_linked: true },
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      if (!response.ok) throw new Error(`Unable to activate invited user: ${await response.text()}`);
+      row = (await response.json() as JsonRecord[])[0];
+    } else {
+      const firstUserResponse = await supabaseRequest(env, 'marketing_users?select=id&limit=1');
+      const firstUsers = firstUserResponse.ok ? await firstUserResponse.json() as JsonRecord[] : [];
+      const role = firstUsers.length === 0 ? 'administrator' : 'viewer';
+      const status = env.AUTH_AUTO_APPROVE === 'false' && role !== 'administrator' ? 'invited' : 'active';
+      const response = await supabaseRequest(env, 'marketing_users', {
+        method: 'POST',
+        headers: { prefer: 'return=representation' },
+        body: JSON.stringify({ auth_user_id: id, name: googleName, email, avatar_url: avatarUrl, provider: 'google', provider_metadata: metadata, role, status, last_seen_at: new Date().toISOString() }),
+      });
+      if (!response.ok) throw new Error(`Unable to create marketing user: ${await response.text()}`);
+      row = (await response.json() as JsonRecord[])[0];
+    }
   }
 
   return {
     id: String(row.id || id),
     email,
-    name: String(row.name || name),
+    name: String(row.name || googleName),
     avatarUrl: row.avatar_url ? String(row.avatar_url) : avatarUrl,
     role: String(row.role || 'viewer'),
     status: String(row.status || 'invited'),
@@ -163,6 +192,16 @@ export async function authenticateRequest(request: Request, env: AuthEnv): Promi
 }
 
 export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL): Promise<Response | null> {
+  if (url.pathname.startsWith('/api/admin/users')) {
+    const user = await authenticateRequest(request, env);
+    if (!user) return json({ error: 'Необходим вход через Google' }, 401);
+    if (user.status !== 'active') return json({ error: 'Пользователь не активен' }, 403);
+    const headers = new Headers(request.headers);
+    headers.set('x-amanat-auth-user', user.id);
+    headers.set('x-amanat-auth-role', user.role);
+    return handleUserAdminRequest(new Request(request, { headers }), env, url);
+  }
+
   if (url.pathname === '/api/auth/config' && request.method === 'GET') {
     const settings = await readAuthSettings(env);
     return json({
