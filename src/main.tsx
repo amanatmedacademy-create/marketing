@@ -5,6 +5,7 @@ import AuthGate from './components/AuthGate';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import DealWorkspaceHost from './components/DealWorkspace';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
+import VoiceTranscriptionEnhancer from './components/VoiceTranscriptionEnhancer';
 import MarketingPlatform from './MarketingPlatform';
 import MarketingOS from './pages/MarketingOS';
 import './styles.css';
@@ -36,6 +37,7 @@ function Root() {
     <AdPreviewEnhancer />
     <DealWorkspaceHost />
     <InternalCommunicationBridge />
+    <VoiceTranscriptionEnhancer />
   </>;
 }
 
