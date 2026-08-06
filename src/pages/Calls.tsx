@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Delete, Headphones, Mic, MicOff, PhoneCall, PhoneOff, Search, Settings, XCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock3,
+  Delete,
+  Headphones,
+  Mic,
+  MicOff,
+  Minus,
+  PhoneCall,
+  PhoneOff,
+  Search,
+  Settings,
+  Smartphone,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { marketingApi, type MarketingCall, type MarketingCallOperatorSummary } from '../services/api';
 import '../calls.css';
 
@@ -27,7 +42,12 @@ function yesNo(value?: boolean | null) {
   return <span className="call-check">—</span>;
 }
 
-const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+const keypad = [
+  ['1', ''], ['2', 'ABC'], ['3', 'DEF'],
+  ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
+  ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'],
+  ['*', ''], ['0', '+'], ['#', ''],
+] as const;
 
 type DialState = 'idle' | 'ready' | 'calling' | 'active';
 
@@ -44,6 +64,8 @@ export default function Calls() {
   const [dialMessage, setDialMessage] = useState('');
   const [muted, setMuted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [dialerOpen, setDialerOpen] = useState(false);
+  const [dialerMinimized, setDialerMinimized] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -87,15 +109,28 @@ export default function Calls() {
   };
 
   const appendDigit = (digit: string) => {
+    if (digit === '*' || digit === '#') return;
     const current = dialNumber.replace(/\D/g, '');
     updateDialNumber(`${current}${digit}`);
   };
 
   const removeDigit = () => updateDialNumber(dialNumber.replace(/\D/g, '').slice(0, -1));
 
+  const openDialer = (phone?: string | null) => {
+    if (phone) updateDialNumber(phone);
+    setDialerOpen(true);
+    setDialerMinimized(false);
+  };
+
+  const closeDialer = () => {
+    setDialerOpen(false);
+    setDialerMinimized(false);
+    setDialMessage('');
+  };
+
   const startCall = () => {
     if (dialNumber.replace(/\D/g, '').length < 10) return;
-    setDialMessage('Телефония пока не подключена. Подключите Mango, UIS, Binotel, Zadarma, Sipuni, Asterisk или Bitrix24 в разделе «Интеграции».');
+    setDialMessage('Телефония пока не подключена. Выберите провайдера в разделе «Интеграции».');
     setDialState('ready');
   };
 
@@ -107,45 +142,20 @@ export default function Calls() {
 
   const selectForDial = (call: MarketingCall) => {
     setSelected(call);
-    updateDialNumber(call.client_phone || '');
+    openDialer(call.client_phone || '');
   };
 
   return <div className="calls-page">
     <div className="calls-heading">
       <div><span>QUALITY CONTROL</span><h1>Звонки</h1><p>Внутренняя телефония, история разговоров и контроль качества.</p></div>
-      <div className="calls-filters">
-        <label><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Телефон, оператор, причина"/></label>
-        <select value={operator} onChange={(event) => setOperator(event.target.value)}><option>Все операторы</option>{operators.map((row) => <option key={row.operator_name}>{row.operator_name}</option>)}</select>
+      <div className="calls-heading-actions">
+        <button type="button" className="calls-open-dialer" onClick={() => openDialer(selected?.client_phone)}><PhoneCall/> Звонилка</button>
+        <div className="calls-filters">
+          <label><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Телефон, оператор, причина"/></label>
+          <select value={operator} onChange={(event) => setOperator(event.target.value)}><option>Все операторы</option>{operators.map((row) => <option key={row.operator_name}>{row.operator_name}</option>)}</select>
+        </div>
       </div>
     </div>
-
-    <section className="calls-dialer" aria-label="Звонилка">
-      <div className="calls-dialer-main">
-        <header>
-          <div><PhoneCall/><span><strong>Звонилка</strong><small>Наберите любой номер или выберите его из истории</small></span></div>
-          <a href="/integrations"><Settings/> Подключить телефонию</a>
-        </header>
-        <div className="calls-dialer-number">
-          <select aria-label="Исходящая линия" defaultValue="not-connected">
-            <option value="not-connected">Линия не подключена</option>
-          </select>
-          <label><span>Номер клиента</span><input inputMode="tel" value={formatPhone(dialNumber)} onChange={(event) => updateDialNumber(event.target.value)} placeholder="+7 701 000 00 00"/></label>
-          <button type="button" className="dialer-delete" onClick={removeDigit} disabled={!dialNumber}><Delete/></button>
-        </div>
-        <div className="calls-keypad">{keypad.map((digit) => <button type="button" key={digit} onClick={() => appendDigit(digit)}>{digit}</button>)}</div>
-        <div className="calls-dialer-actions">
-          {dialState !== 'active' ? <button type="button" className="dialer-call" disabled={dialState === 'idle'} onClick={startCall}><PhoneCall/> Позвонить</button> : <button type="button" className="dialer-end" onClick={endCall}><PhoneOff/> Завершить</button>}
-          <button type="button" className="dialer-mute" disabled={dialState !== 'active'} onClick={() => setMuted((value) => !value)}>{muted ? <MicOff/> : <Mic/>}</button>
-          <div className={`dialer-status ${dialState}`}><span>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Соединение…' : 'Готов к набору'}</span><small>{dialNumber ? formatPhone(dialNumber) : 'Введите номер'}</small></div>
-        </div>
-        {dialMessage && <div className="calls-dialer-message"><span>{dialMessage}</span><a href="/integrations">Открыть интеграции</a></div>}
-      </div>
-      <aside>
-        <strong>Последние номера</strong>
-        {calls.slice(0, 5).map((call) => <button type="button" key={call.id} onClick={() => selectForDial(call)}><span>{call.client_phone || 'Без номера'}</span><small>{call.operator_name || 'Не назначен'} · {dateTime(call.started_at)}</small></button>)}
-        {!calls.length && <p>История звонков пока пуста.</p>}
-      </aside>
-    </section>
 
     {loading && <div className="calls-state">Загружаем звонки…</div>}
     {error && <div className="calls-state calls-state--error">{error}</div>}
@@ -187,5 +197,48 @@ export default function Calls() {
         </div>
       </section>
     </>}
+
+    {dialerOpen && <section className={`phone-dialer-widget ${dialerMinimized ? 'minimized' : ''}`} aria-label="Телефонная звонилка">
+      <header className="phone-dialer-header">
+        <div className="phone-dialer-speaker" aria-hidden="true"/>
+        <div><Smartphone/><span><strong>IMDS Phone</strong><small>{dialState === 'active' ? 'Разговор' : 'Готов к работе'}</small></span></div>
+        <nav>
+          <button type="button" title={dialerMinimized ? 'Развернуть' : 'Свернуть'} onClick={() => setDialerMinimized((value) => !value)}><Minus/></button>
+          <button type="button" title="Закрыть" onClick={closeDialer}><X/></button>
+        </nav>
+      </header>
+
+      {!dialerMinimized && <div className="phone-dialer-body">
+        <select className="phone-line-select" aria-label="Исходящая линия" defaultValue="not-connected">
+          <option value="not-connected">Линия не подключена</option>
+        </select>
+
+        <div className="phone-number-screen">
+          <small>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Соединение…' : 'Введите номер'}</small>
+          <input inputMode="tel" value={formatPhone(dialNumber)} onChange={(event) => updateDialNumber(event.target.value)} placeholder="+7 701 000 00 00" aria-label="Номер телефона"/>
+          <button type="button" onClick={removeDigit} disabled={!dialNumber} title="Удалить цифру"><Delete/></button>
+        </div>
+
+        <div className="phone-keypad">{keypad.map(([digit, letters]) => <button type="button" key={digit} onClick={() => appendDigit(digit)}><strong>{digit}</strong>{letters && <small>{letters}</small>}</button>)}</div>
+
+        <div className="phone-call-controls">
+          <button type="button" className="phone-mute" disabled={dialState !== 'active'} onClick={() => setMuted((value) => !value)} title="Микрофон">{muted ? <MicOff/> : <Mic/>}</button>
+          {dialState !== 'active'
+            ? <button type="button" className="phone-start-call" disabled={dialState === 'idle'} onClick={startCall} title="Позвонить"><PhoneCall/></button>
+            : <button type="button" className="phone-end-call" onClick={endCall} title="Завершить"><PhoneOff/></button>}
+          <a className="phone-settings" href="/integrations" title="Настройки телефонии"><Settings/></a>
+        </div>
+
+        <div className="phone-call-status"><span>{dialState === 'active' ? 'Звонок идёт' : dialNumber ? formatPhone(dialNumber) : 'Номер не выбран'}</span><small>{muted ? 'Микрофон выключен' : 'Микрофон включён'}</small></div>
+
+        {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span><a href="/integrations">Подключить</a></div>}
+
+        <div className="phone-recent-numbers">
+          <header><strong>Недавние</strong><span>{Math.min(calls.length, 3)}</span></header>
+          {calls.slice(0, 3).map((call) => <button type="button" key={call.id} onClick={() => openDialer(call.client_phone)}><span>{call.client_phone || 'Без номера'}</span><small>{call.operator_name || 'Не назначен'}</small></button>)}
+          {!calls.length && <p>История пока пуста.</p>}
+        </div>
+      </div>}
+    </section>}
   </div>;
 }
