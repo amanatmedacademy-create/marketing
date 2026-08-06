@@ -6,7 +6,7 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
-import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
+import { hydrateIntegrationEnv } from './credentials';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
@@ -19,12 +19,21 @@ import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelecti
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
-import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
+import { runAllSyncs, type WorkerExecutionContext, type WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & AdPreviewEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv
+  & AdPreviewEnv
+  & MetaOAuthEnv
+  & MetaOAuthStartEnv
+  & MetaSdkEnv
+  & MetaCatalogEnv
+  & MetaBackfillEnv
+  & MetaSelectionEnv
+  & WabaEmbeddedSignupEnv
+  & { FRONTEND_ADMIN_KEY?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -42,6 +51,23 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect';
+}
+
+function secureEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let result = 0;
+  for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return result === 0;
+}
+
+function bearer(request: Request): string {
+  const value = request.headers.get('authorization') || '';
+  return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
+}
+
+function hasLegacyAdminKey(request: Request, env: MainEnv): boolean {
+  const supplied = bearer(request) || request.headers.get('x-admin-key') || '';
+  return Boolean(env.FRONTEND_ADMIN_KEY && supplied && secureEqual(supplied, env.FRONTEND_ADMIN_KEY));
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -72,6 +98,38 @@ function background(ctx: WorkerExecutionContext | undefined, task: Promise<unkno
   if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
 }
 
+function scheduledDays(controller: WorkerScheduledController): number {
+  return controller.cron === '30 2 * * *' ? 30 : 3;
+}
+
+async function runScheduledMetaSync(controller: WorkerScheduledController, env: MetaBackfillEnv): Promise<Record<string, unknown>> {
+  if (!env.META_ACCESS_TOKEN) {
+    return { ok: true, source: 'meta', skipped: true, reason: 'credentials_missing' };
+  }
+
+  const url = new URL('https://internal.invalid/api/integrations/meta/backfill');
+  const request = new Request(url.toString(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ days: scheduledDays(controller) }),
+  });
+  const response = await handleMetaBackfillRequest(request, env, url);
+  if (!response) throw new Error('Scheduled Meta backfill route is unavailable');
+
+  const body = await response.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = body ? JSON.parse(body) as Record<string, unknown> : {};
+  } catch {
+    throw new Error(body || `Scheduled Meta backfill failed: ${response.status}`);
+  }
+  if (!response.ok) {
+    const message = typeof payload.error === 'string' ? payload.error : `Scheduled Meta backfill failed: ${response.status}`;
+    throw new Error(message);
+  }
+  return payload;
+}
+
 export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -88,7 +146,7 @@ export default {
       if (authResponse) return authResponse;
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
-        const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
+        const legacyAdmin = isIntegrationAdminPath(url.pathname) && hasLegacyAdminKey(request, env);
         if (legacyAdmin) {
           forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
         } else {
@@ -173,6 +231,19 @@ export default {
   },
 
   async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
-    await app.scheduled(controller, env, ctx);
+    const runtimeEnv = await hydrateIntegrationEnv(env);
+    const days = scheduledDays(controller);
+    const task = Promise.allSettled([
+      runAllSyncs(runtimeEnv, { source: 'bitrix', days }),
+      runAllSyncs(runtimeEnv, { source: 'tiktok', days }),
+      runScheduledMetaSync(controller, runtimeEnv),
+    ]).then((results) => {
+      const failures = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+      if (failures.length) console.error('Scheduled marketing sync completed with errors', failures);
+      else console.log('Scheduled marketing sync completed', results.map((result) => result.status === 'fulfilled' ? result.value : null));
+    });
+    ctx.waitUntil(task);
   },
 };
