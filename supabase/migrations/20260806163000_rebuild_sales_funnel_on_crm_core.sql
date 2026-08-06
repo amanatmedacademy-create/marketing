@@ -243,7 +243,7 @@ deal_normalized as (
   ) x
 ),
 unique_matches as (
-  select m.id marketing_lead_id, min(d.id) deal_id
+  select m.id marketing_lead_id, min(d.id::text)::uuid deal_id
   from marketing_normalized m
   join deal_normalized d using (normalized)
   where length(m.normalized) >= 10
