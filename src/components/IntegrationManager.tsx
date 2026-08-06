@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Database, Facebook, LoaderCircle, Plug, Re
 import { useAuth } from './AuthGate';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import { MetaSelectionPanel } from './MetaSelectionPanel';
+import WabaEmbeddedSignup from './WabaEmbeddedSignup';
 import type { CardConnectionStatus, CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
 import {
   marketingApi,
@@ -18,6 +19,18 @@ type FormState = Record<IntegrationProvider, Record<string, string>>;
 type Field = { name: string; label: string; placeholder: string; secret?: boolean; required?: boolean };
 type ProviderDefinition = { provider: IntegrationProvider; title: string; description: string; fields: Field[] };
 type MetaOAuthStartResponse = { ok?: boolean; authorizationUrl?: string; redirectUri?: string; error?: string };
+type WabaSignupData = { wabaId?: string; phoneNumberId?: string };
+type WabaConfigResponse = {
+  configured?: boolean;
+  connected?: boolean;
+  connection?: {
+    status?: string;
+    values?: WabaSignupData;
+    lastVerifiedAt?: string | null;
+    lastError?: string | null;
+  } | null;
+  error?: string;
+};
 
 const supported: ProviderDefinition[] = [
   {
@@ -59,7 +72,6 @@ const supported: ProviderDefinition[] = [
 ];
 
 const planned: Array<{ id: CardIntegrationProvider; title: string; description: string }> = [
-  { id: 'waba', title: 'WhatsApp Business API', description: 'Прямое подключение WABA через Meta Cloud API.' },
   { id: 'wazzup', title: 'Wazzup', description: 'WhatsApp и Instagram с историей сообщений.' },
   { id: 'binotel', title: 'Binotel', description: 'Телефония, записи разговоров и пропущенные звонки.' },
   { id: 'sipuni', title: 'Sipuni', description: 'Виртуальная АТС и аналитика звонков.' },
@@ -118,6 +130,8 @@ export default function IntegrationManager() {
   const [configs, setConfigs] = useState<IntegrationConfigResponse>({ providers: [] });
   const [forms, setForms] = useState<FormState>(emptyForms);
   const [editor, setEditor] = useState<ProviderDefinition | null>(null);
+  const [wabaEditorOpen, setWabaEditorOpen] = useState(false);
+  const [wabaConfig, setWabaConfig] = useState<WabaConfigResponse | null>(null);
   const [activeCard, setActiveCard] = useState<CardIntegrationProvider | null>(null);
   const [historyDays, setHistoryDays] = useState<number>(90);
   const [loading, setLoading] = useState(true);
@@ -160,7 +174,31 @@ export default function IntegrationManager() {
     };
   }), [configMap, runMap]);
 
-  const connectedCount = cards.filter((item) => item.status === 'connected' || item.status === 'syncing').length;
+  const wabaCard = useMemo<CardIntegrationSummary>(() => {
+    const connection = wabaConfig?.connection;
+    const values = connection?.values || {};
+    const error = connection?.lastError || (wabaConfig && !wabaConfig.configured ? wabaConfig.error : undefined);
+    const connected = Boolean(wabaConfig?.connected);
+    return {
+      id: 'waba',
+      name: 'WhatsApp Business API',
+      description: 'Прямое подключение WABA через Meta Cloud API.',
+      status: error ? 'error' : connected ? 'connected' : 'not_connected',
+      lastSyncedAt: connection?.lastVerifiedAt || null,
+      stats: connected ? [
+        { label: 'Phone Number ID', value: values.phoneNumberId || 'Подключён' },
+        { label: 'Последняя проверка', value: formatDate(connection?.lastVerifiedAt) },
+      ] : [],
+      fields: [
+        ...(values.wabaId ? [{ label: 'WABA ID', value: values.wabaId }] : []),
+        ...(values.phoneNumberId ? [{ label: 'Phone Number ID', value: values.phoneNumberId }] : []),
+      ],
+      errorMessage: error,
+    };
+  }, [wabaConfig]);
+
+  const availableCards = useMemo(() => [...cards, wabaCard], [cards, wabaCard]);
+  const connectedCount = availableCards.filter((item) => item.status === 'connected' || item.status === 'syncing').length;
 
   const applyConfigs = useCallback((result: IntegrationConfigResponse) => {
     setConfigs(result);
@@ -173,8 +211,29 @@ export default function IntegrationManager() {
     });
   }, []);
 
+  const loadWaba = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/integrations/waba/config', { headers: { accept: 'application/json' } });
+      const body = await response.text();
+      let result: WabaConfigResponse = {};
+      try {
+        result = body ? JSON.parse(body) as WabaConfigResponse : {};
+      } catch {
+        throw new Error(body || `WABA status failed: ${response.status}`);
+      }
+      if (!response.ok && response.status !== 503) {
+        throw new Error(result.error || `WABA status failed: ${response.status}`);
+      }
+      setWabaConfig(result);
+    } catch (error) {
+      setWabaConfig({ configured: false, connected: false, error: errorText(error) });
+    }
+  }, [isAdmin]);
+
   const load = useCallback(async () => {
     setLoading(true);
+    void loadWaba();
     try {
       const [nextStatus, nextConfigs] = await Promise.all([
         withTimeout(marketingApi.integrationStatus()),
@@ -187,7 +246,7 @@ export default function IntegrationManager() {
     } finally {
       setLoading(false);
     }
-  }, [applyConfigs, isAdmin]);
+  }, [applyConfigs, isAdmin, loadWaba]);
 
   useEffect(() => {
     void load();
@@ -226,6 +285,11 @@ export default function IntegrationManager() {
   const openEditor = (provider: IntegrationProvider) => {
     const definition = supported.find((item) => item.provider === provider);
     if (definition) setEditor(definition);
+  };
+
+  const closeWabaEditor = () => {
+    setWabaEditorOpen(false);
+    void loadWaba();
   };
 
   const startMetaOAuth = async () => {
@@ -352,7 +416,7 @@ export default function IntegrationManager() {
     </header>
 
     <section className="iv2-summary">
-      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {cards.length}</strong></div></article>
+      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {availableCards.length}</strong></div></article>
       <article><Plug size={22}/><div><span>API</span><strong>{message?.type === 'error' ? 'Ошибка' : loading ? 'Проверка' : 'Работает'}</strong></div></article>
       <article><Settings size={22}/><div><span>Архитектура</span><strong>React без DOM-мутаций</strong></div></article>
     </section>
@@ -362,18 +426,24 @@ export default function IntegrationManager() {
     <section className="iv2-section">
       <div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Карточки показывают реальные статусы и последние результаты синхронизации.</p></div></div>
       <div className="iv2-grid">
-        {cards.map((card) => <IntegrationCard
+        {availableCards.map((card) => <IntegrationCard
           key={card.id}
           integration={card}
           active={activeCard === card.id}
           onSelect={() => setActiveCard(card.id)}
-          onConfigure={() => openEditor(card.id as IntegrationProvider)}
+          onConfigure={() => {
+            if (card.id === 'waba') {
+              setWabaEditorOpen(true);
+              return;
+            }
+            openEditor(card.id as IntegrationProvider);
+          }}
         />)}
       </div>
     </section>
 
     <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Коммуникационные сервисы подключим после проверки основных источников.</p></div></div>
+      <div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Остальные коммуникационные сервисы подключим после проверки основных источников.</p></div></div>
       <div className="iv2-grid">
         {planned.map((item) => <IntegrationCard
           key={item.id}
@@ -385,6 +455,31 @@ export default function IntegrationManager() {
         />)}
       </div>
     </section>
+
+    {wabaEditorOpen && <div
+      className="iv2-overlay"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeWabaEditor(); }}
+    >
+      <section className="iv2-modal" role="dialog" aria-modal="true" aria-label="Настройка WhatsApp Business API">
+        <header>
+          <div><h2>WhatsApp Business API</h2><p>Прямое подключение через Meta Embedded Signup без сторонних посредников.</p></div>
+          <button type="button" onClick={closeWabaEditor} aria-label="Закрыть"><X size={20}/></button>
+        </header>
+        <div className="iv2-form">
+          <div className="iv2-form-title">
+            <strong>Подключение WABA</strong>
+            <span>Авторизуйтесь через Facebook, выберите бизнес-аккаунт и номер WhatsApp. Webhook подключается автоматически.</span>
+          </div>
+          <WabaEmbeddedSignup />
+        </div>
+        <footer>
+          <div>
+            <button type="button" onClick={closeWabaEditor}>Закрыть</button>
+          </div>
+        </footer>
+      </section>
+    </div>}
 
     {editor && <div
       className="iv2-overlay"
