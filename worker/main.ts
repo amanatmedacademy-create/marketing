@@ -18,8 +18,9 @@ import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelection';
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
+import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
-import { runAllSyncs, type WorkerExecutionContext, type WorkerScheduledController } from './integrations';
+import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
@@ -32,6 +33,7 @@ type MainEnv = AuthEnv
   & MetaCatalogEnv
   & MetaBackfillEnv
   & MetaSelectionEnv
+  & TenantSyncEnv
   & WabaEmbeddedSignupEnv
   & { FRONTEND_ADMIN_KEY?: string };
 
@@ -98,38 +100,6 @@ function background(ctx: WorkerExecutionContext | undefined, task: Promise<unkno
   if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
 }
 
-function scheduledDays(controller: WorkerScheduledController): number {
-  return controller.cron === '30 2 * * *' ? 30 : 3;
-}
-
-async function runScheduledMetaSync(controller: WorkerScheduledController, env: MetaBackfillEnv): Promise<Record<string, unknown>> {
-  if (!env.META_ACCESS_TOKEN) {
-    return { ok: true, source: 'meta', skipped: true, reason: 'credentials_missing' };
-  }
-
-  const url = new URL('https://internal.invalid/api/integrations/meta/backfill');
-  const request = new Request(url.toString(), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ days: scheduledDays(controller) }),
-  });
-  const response = await handleMetaBackfillRequest(request, env, url);
-  if (!response) throw new Error('Scheduled Meta backfill route is unavailable');
-
-  const body = await response.text();
-  let payload: Record<string, unknown> = {};
-  try {
-    payload = body ? JSON.parse(body) as Record<string, unknown> : {};
-  } catch {
-    throw new Error(body || `Scheduled Meta backfill failed: ${response.status}`);
-  }
-  if (!response.ok) {
-    const message = typeof payload.error === 'string' ? payload.error : `Scheduled Meta backfill failed: ${response.status}`;
-    throw new Error(message);
-  }
-  return payload;
-}
-
 export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -164,6 +134,8 @@ export default {
 
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
       if (auditApi) return auditApi;
+      const tenantSync = await handleTenantSyncRequest(forwardedRequest, runtimeEnv, url);
+      if (tenantSync) return tenantSync;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
       if (chatResponse) return chatResponse;
       const wabaResponse = await handleWabaEmbeddedSignupRequest(forwardedRequest, runtimeEnv, url);
@@ -232,18 +204,10 @@ export default {
 
   async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
     const runtimeEnv = await hydrateIntegrationEnv(env);
-    const days = scheduledDays(controller);
-    const task = Promise.allSettled([
-      runAllSyncs(runtimeEnv, { source: 'bitrix', days }),
-      runAllSyncs(runtimeEnv, { source: 'tiktok', days }),
-      runScheduledMetaSync(controller, runtimeEnv),
-    ]).then((results) => {
-      const failures = results
-        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-        .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
-      if (failures.length) console.error('Scheduled marketing sync completed with errors', failures);
-      else console.log('Scheduled marketing sync completed', results.map((result) => result.status === 'fulfilled' ? result.value : null));
-    });
-    ctx.waitUntil(task);
+    ctx.waitUntil(
+      runTenantScheduledSync(controller, runtimeEnv)
+        .then((results) => console.log('Scheduled tenant sync completed', results))
+        .catch((error) => console.error('Scheduled tenant sync failed', error)),
+    );
   },
 };
