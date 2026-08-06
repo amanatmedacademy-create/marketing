@@ -1,5 +1,5 @@
 import { resolveCompanyId } from './companyContext';
-import { runAllSyncs, type Env as IntegrationEnv, type WorkerExecutionContext } from './integrations';
+import type { WorkerExecutionContext } from './integrations';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -108,13 +108,13 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
   return accounts;
 }
 
-async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<string[]> {
+async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<void> {
   const { appSecret } = requireMetaApp(env);
   const companyId = await resolveCompanyId(env);
   const accountIds = accounts.map((account) => account.id || (account.account_id ? `act_${account.account_id}` : '')).filter(Boolean);
   if (!accountIds.length) throw new Error('В Facebook-профиле не найдено доступных рекламных кабинетов');
 
-  const encrypted = await encryptPayload({ accessToken, adAccountIds: accountIds.join(','), graphVersion: graphVersion(env), appSecret }, encryptionSecret(env));
+  const encrypted = await encryptPayload({ accessToken, adAccountIds: accountIds.join(','), selectedAdIds: '', graphVersion: graphVersion(env), appSecret }, encryptionSecret(env));
   const row = {
     provider: 'meta',
     user_id: null,
@@ -122,7 +122,12 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
-      values: { adAccountIds: accountIds.join(','), graphVersion: graphVersion(env), accountNames: accounts.map((account) => account.name || account.id).join(', ') },
+      values: {
+        adAccountIds: accountIds.join(','),
+        selectedAdIds: '',
+        graphVersion: graphVersion(env),
+        accountNames: accounts.map((account) => account.name || account.id).join(', '),
+      },
       secretFields: { accessToken: true, webhookVerifyToken: false, appSecret: true },
     },
     status: 'connected',
@@ -137,30 +142,6 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
   } else {
     await supabase(env, 'integration_credentials', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
   }
-  return accountIds;
-}
-
-async function startInitialMetaSync(
-  env: MetaOAuthEnv,
-  accessToken: string,
-  accountIds: string[],
-  ctx?: WorkerExecutionContext,
-): Promise<void> {
-  const syncEnv = {
-    ...env,
-    META_ACCESS_TOKEN: accessToken,
-    META_AD_ACCOUNT_IDS: accountIds.join(','),
-    META_GRAPH_VERSION: graphVersion(env),
-  } as unknown as IntegrationEnv;
-  const task = runAllSyncs(syncEnv, { source: 'meta', days: 90 }).then(
-    (results) => { console.log('Initial Meta sync completed', results); },
-    (error) => { console.error('Initial Meta sync failed', error); },
-  );
-  if (ctx && typeof ctx.waitUntil === 'function') {
-    ctx.waitUntil(task);
-    return;
-  }
-  await task;
 }
 
 function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: string): Response {
@@ -183,6 +164,8 @@ export async function handleMetaOAuthRequest(
   url: URL,
   ctx?: WorkerExecutionContext,
 ): Promise<Response | null> {
+  void ctx;
+
   if (url.pathname === '/api/integrations/meta/connect' && request.method === 'GET') {
     const { appId } = requireMetaApp(env);
     const state = crypto.randomUUID().replace(/-/g, '');
@@ -207,8 +190,7 @@ export async function handleMetaOAuthRequest(
       if (!state || state !== cookieValue(request, STATE_COOKIE)) throw new Error('OAuth state не совпадает. Повторите подключение.');
       const accessToken = await exchangeCode(env, code);
       const accounts = await listAdAccounts(env, accessToken);
-      const accountIds = await saveMetaCredentials(env, accessToken, accounts);
-      await startInitialMetaSync(env, accessToken, accountIds, ctx);
+      await saveMetaCredentials(env, accessToken, accounts);
       return redirectResult(env, 'connected', String(accounts.length));
     } catch (error) {
       console.error('Meta OAuth callback failed', error);
