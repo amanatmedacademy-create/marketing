@@ -5,7 +5,7 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
-import { hydrateIntegrationEnv, isFrontendAdmin } from './credentials';
+import { hydrateIntegrationEnv } from './credentials';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
@@ -23,7 +23,9 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
-type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv;
+type MainEnv = AuthEnv & MetaOAuthEnv & MetaOAuthStartEnv & MetaSdkEnv & MetaCatalogEnv & MetaBackfillEnv & MetaSelectionEnv & WabaEmbeddedSignupEnv & {
+  FRONTEND_ADMIN_KEY?: string;
+};
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -41,6 +43,25 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect';
+}
+
+function secureEqual(left: string, right: string): boolean {
+  if (!left || !right || left.length !== right.length) return false;
+  let result = 0;
+  for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return result === 0;
+}
+
+function suppliedAdminKey(request: Request): string {
+  const authorization = request.headers.get('authorization') || '';
+  if (authorization.toLowerCase().startsWith('bearer ')) return authorization.slice(7).trim();
+  return (request.headers.get('x-admin-key') || '').trim();
+}
+
+function hasFrontendAdminKey(request: Request, env: MainEnv): boolean {
+  const expected = (env.FRONTEND_ADMIN_KEY || '').trim();
+  const supplied = suppliedAdminKey(request);
+  return Boolean(expected && supplied && secureEqual(supplied, expected));
 }
 
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
@@ -87,7 +108,7 @@ export default {
       if (authResponse) return authResponse;
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
-        const legacyAdmin = isIntegrationAdminPath(url.pathname) && isFrontendAdmin(request, env);
+        const legacyAdmin = isIntegrationAdminPath(url.pathname) && hasFrontendAdminKey(request, env);
         if (legacyAdmin) {
           forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
         } else {
