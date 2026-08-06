@@ -22,10 +22,16 @@ export interface AccessPosition {
   is_system: boolean;
 }
 
-export interface PositionPermission extends AccessGrant {
+export interface PositionPermission {
   position_id: string;
   company_id: string;
   module_id: string;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_export: boolean;
+  can_manage: boolean;
 }
 
 export interface UserAssignment {
@@ -35,10 +41,16 @@ export interface UserAssignment {
   job_title?: string | null;
 }
 
-export interface UserOverride extends NullableAccessGrant {
+export interface UserOverride {
   company_id: string;
   user_id: string;
   module_id: string;
+  can_view: boolean | null;
+  can_create: boolean | null;
+  can_edit: boolean | null;
+  can_delete: boolean | null;
+  can_export: boolean | null;
+  can_manage: boolean | null;
 }
 
 export interface AccessWorkspace {
