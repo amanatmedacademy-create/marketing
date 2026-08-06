@@ -86,6 +86,10 @@ export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
 export interface IntegrationCredentialSummary { provider: IntegrationProvider; configured: boolean; status: string; values: Record<string, string>; secretFields: Record<string, boolean>; updatedAt: string; lastVerifiedAt?: string | null; lastError?: string | null; }
 export interface IntegrationConfigResponse { providers: IntegrationCredentialSummary[]; }
 export interface IntegrationDisconnectResponse { ok: boolean; provider: IntegrationProvider; mode: 'archived' | 'purged'; data?: unknown; }
+export interface MetaCatalogAccount { id: string; accountId: string; name: string; status: string; currency?: string | null; timezone?: string | null; creativeCount: number; selected: boolean; }
+export interface MetaCatalogCreative { id: string; accountId: string; name: string; status: string; creativeId?: string | null; creativeName?: string | null; thumbnailUrl?: string | null; selected: boolean; }
+export interface MetaCatalogResponse { accounts: MetaCatalogAccount[]; creatives: MetaCatalogCreative[]; selectedAccountIds: string[]; selectedAdIds: string[]; creativeSelectionMode: 'selected' | 'all'; }
+export interface MetaBackfillResponse { ok: boolean; source: 'meta'; from: string; to: string; days: number; accounts: number; creativeSelectionMode: 'selected' | 'all'; selectedCreatives: number; fetched: number; written: number; }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -128,4 +132,14 @@ export const marketingApi = {
   deleteIntegrationConfig: (provider: IntegrationProvider, purge = false) => apiRequest<IntegrationDisconnectResponse>(`/integrations/config/${provider}${purge ? '?purge=true' : ''}`, { method: 'DELETE' }),
   testIntegration: (provider: IntegrationProvider) => apiRequest<{ ok: boolean; message?: string; results?: unknown[] }>(`/integrations/test/${provider}`, { method: 'POST', body: '{}' }),
   syncIntegrations: (source: IntegrationProvider | 'all', days: number) => apiRequest<{ ok: boolean; results: unknown[] }>('/integrations/sync', { method: 'POST', body: JSON.stringify({ source, days }) }),
+  metaCatalog: (accountIds: string[] = []) => {
+    const params = new URLSearchParams();
+    if (accountIds.length) params.set('account_ids', accountIds.join(','));
+    return apiRequest<MetaCatalogResponse>(`/integrations/meta/catalog${params.size ? `?${params}` : ''}`);
+  },
+  saveMetaSelection: (selectedAdIds: string[], options?: { prune?: boolean; verified?: boolean }) => apiRequest<{ ok: boolean; selectedAccountIds: string[]; selectedAdIds: string[]; creativeSelectionMode: 'selected' | 'all'; verified: boolean }>('/integrations/meta/selection', {
+    method: 'POST',
+    body: JSON.stringify({ selectedAdIds, prune: options?.prune ?? true, verified: options?.verified ?? false }),
+  }),
+  metaBackfill: (days: number) => apiRequest<MetaBackfillResponse>('/integrations/meta/backfill', { method: 'POST', body: JSON.stringify({ days }) }),
 };
