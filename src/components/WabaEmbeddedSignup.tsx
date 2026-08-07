@@ -145,14 +145,16 @@ export default function WabaEmbeddedSignup() {
     const finishConnection = async () => {
       const code = codeRef.current;
       const identifiers = signupRef.current;
-      if (!code || !identifiers.wabaId || !identifiers.phoneNumberId || submittingRef.current) return;
+      if (!code || !identifiers.wabaId || submittingRef.current) return;
 
       submittingRef.current = true;
       if (missingSessionTimeout !== undefined) {
         window.clearTimeout(missingSessionTimeout);
         missingSessionTimeout = undefined;
       }
-      setMessage('Завершаем подключение WhatsApp Business…');
+      setMessage(identifiers.phoneNumberId
+        ? 'Завершаем подключение WhatsApp Business…'
+        : 'WABA получена. Определяем Phone Number ID через Meta…');
 
       try {
         const result = await fetch('/api/integrations/waba/connect', {
@@ -167,6 +169,9 @@ export default function WabaEmbeddedSignup() {
         const value = await readJson<{ phoneNumberId?: string; error?: string }>(result);
         if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
         const phoneNumberId = value.phoneNumberId || identifiers.phoneNumberId;
+        const next = { ...identifiers, phoneNumberId };
+        signupRef.current = next;
+        setSignup(next);
         setConnected(true);
         setMessage(`WABA подключена${phoneNumberId ? ` · номер ${phoneNumberId}` : ''}`);
       } catch (error) {
@@ -183,13 +188,13 @@ export default function WabaEmbeddedSignup() {
       if (missingSessionTimeout !== undefined) window.clearTimeout(missingSessionTimeout);
       missingSessionTimeout = window.setTimeout(() => {
         const identifiers = signupRef.current;
-        if (!submittingRef.current && codeRef.current && (!identifiers.wabaId || !identifiers.phoneNumberId)) {
+        if (!submittingRef.current && codeRef.current && !identifiers.wabaId) {
           setFailed(true);
           setBusy(false);
-          setMessage('Meta завершила авторизацию, но не передала WABA ID и Phone Number ID. Повторите подключение через Facebook.');
+          setMessage('Meta завершила авторизацию, но не передала WABA ID. Повторите подключение через Facebook.');
           cleanup();
         }
-      }, 10000);
+      }, 15000);
     };
 
     function receive(event: MessageEvent) {
@@ -198,11 +203,11 @@ export default function WabaEmbeddedSignup() {
         const payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
         const data = payload.data || {};
-        const wabaId = typeof data.waba_id === 'string' ? data.waba_id : '';
-        const phoneNumberId = typeof data.phone_number_id === 'string' ? data.phone_number_id : '';
-        if (!wabaId || !phoneNumberId) return;
+        const wabaId = data.waba_id == null ? '' : String(data.waba_id).trim();
+        const phoneNumberId = data.phone_number_id == null ? '' : String(data.phone_number_id).trim();
+        if (!wabaId) return;
 
-        const next = { wabaId, phoneNumberId };
+        const next = { wabaId, ...(phoneNumberId ? { phoneNumberId } : {}) };
         signupRef.current = next;
         setSignup(next);
         if (!codeRef.current) setMessage('Данные WABA получены. Завершаем авторизацию Facebook…');
@@ -227,8 +232,7 @@ export default function WabaEmbeddedSignup() {
         }
 
         codeRef.current = code;
-        const identifiers = signupRef.current;
-        if (!identifiers.wabaId || !identifiers.phoneNumberId) {
+        if (!signupRef.current.wabaId) {
           setMessage('Facebook авторизован. Получаем данные WhatsApp Business…');
           scheduleMissingSessionCheck();
         }
@@ -237,7 +241,10 @@ export default function WabaEmbeddedSignup() {
         config_id: config.configId,
         response_type: 'code',
         override_default_response_type: true,
-        extras: { setup: {} },
+        extras: {
+          setup: {},
+          sessionInfoVersion: '3',
+        },
       });
     } catch (error) {
       setFailed(true);
