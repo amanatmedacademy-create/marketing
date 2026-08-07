@@ -200,8 +200,14 @@ export default function AdPreviewEnhancer() {
     return width >= 100 && height >= 100 ? { width, height } : null;
   }, [preview?.previewHtml]);
 
+  // Desktop-фид Meta рендерит карточку ~500px, хотя iframe объявлен шире —
+  // лишний белый «воздух» справа обрезаем, считая масштаб по ширине карточки.
+  const contentWidth = frame
+    ? (mode === 'desktop' && frame.width > 502 ? 502 : frame.width)
+    : 0;
+
   const scale = frame && stageSize.width > 0 && stageSize.height > 0
-    ? Math.min(stageSize.width / frame.width, stageSize.height / frame.height)
+    ? Math.min(stageSize.width / contentWidth, stageSize.height / frame.height)
     : 1;
 
   const srcDoc = preview?.previewHtml
@@ -226,7 +232,7 @@ export default function AdPreviewEnhancer() {
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
         {!loading && !error && preview?.previewHtml && (frame
-          ? <div className="ad-preview-scalebox" style={{ width: Math.round(frame.width * scale), height: Math.round(frame.height * scale) }}>
+          ? <div className="ad-preview-scalebox" style={{ width: Math.floor(contentWidth * scale), height: Math.floor(frame.height * scale) }}>
               <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={srcDoc}
                 style={{ width: frame.width, height: frame.height, transform: `scale(${scale})` }}/>
             </div>
