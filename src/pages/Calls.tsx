@@ -244,7 +244,7 @@ export default function Calls() {
       </header>
 
       {!dialerMinimized && <div className="phone-dialer-body">
-        <select className="phone-line-select" aria-label="Исходящая линия" value={telephony?.configured ? 'zadarma' : 'not-connected'} readOnly>
+        <select className="phone-line-select" aria-label="Исходящая линия" value={telephony?.configured ? 'zadarma' : 'not-connected'} disabled>
           {telephony?.configured
             ? <option value="zadarma">Zadarma · линия {telephony.extension}</option>
             : <option value="not-connected">Линия не подключена</option>}
