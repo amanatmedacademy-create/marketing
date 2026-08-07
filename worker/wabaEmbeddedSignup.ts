@@ -39,12 +39,26 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(value);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 async function encrypt(payload: JsonRecord, secret: string): Promise<{ encryptedPayload: string; iv: string }> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(payload)));
   return { encryptedPayload: bytesToBase64(new Uint8Array(encrypted)), iv: bytesToBase64(iv) };
+}
+
+async function decrypt(encryptedPayload: string, ivValue: string, secret: string): Promise<JsonRecord> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt']);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(ivValue) }, key, base64ToBytes(encryptedPayload));
+  return record(JSON.parse(new TextDecoder().decode(decrypted)));
 }
 
 function generateRegistrationPin(): string {
@@ -121,7 +135,33 @@ async function registerPhoneNumber(env: WabaEmbeddedSignupEnv, accessToken: stri
   try { parsed = record(body ? JSON.parse(body) : {}); } catch { parsed = { error: body }; }
   if (!response.ok || parsed.success === false || parsed.error) {
     const error = record(parsed.error);
+    const code = Number(error.code || 0);
+    if (code === 133005) {
+      throw new Error('PIN двухэтапной проверки WhatsApp не совпадает. Укажите текущий 6-значный PIN номера или сбросьте его в WhatsApp Manager.');
+    }
     throw new Error(text(error.message) || `Meta phone registration: ${response.status}`);
+  }
+}
+
+async function readExistingRegistrationPin(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<string> {
+  const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
+  const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
+  const response = await fetch(`${baseUrl}?${filter}&select=encrypted_payload,iv&order=updated_at.desc&limit=1`, {
+    headers: supabaseHeaders(env, { accept: 'application/json' }),
+  });
+  if (!response.ok) return '';
+  const rows = await response.json() as JsonRecord[];
+  const row = rows[0];
+  const encryptedPayload = text(row?.encrypted_payload);
+  const iv = text(row?.iv);
+  if (!encryptedPayload || !iv) return '';
+  try {
+    const payload = await decrypt(encryptedPayload, iv, encryptionSecret(env));
+    const pin = text(payload.registrationPin);
+    return /^\d{6}$/.test(pin) ? pin : '';
+  } catch (error) {
+    console.error('Unable to recover WABA registration PIN', error);
+    return '';
   }
 }
 
@@ -199,12 +239,15 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       const code = text(payload.code);
       const wabaId = text(payload.wabaId);
       const suppliedPhoneNumberId = text(payload.phoneNumberId);
+      const suppliedPin = text(payload.pin);
       if (!code) return json({ error: 'Facebook authorization code не получен' }, 400);
       if (!wabaId) return json({ error: 'Facebook не вернул WABA ID' }, 400);
+      if (suppliedPin && !/^\d{6}$/.test(suppliedPin)) return json({ error: 'PIN двухэтапной проверки должен состоять из 6 цифр' }, 400);
       const companyId = await resolveCompanyId(env);
+      const existingPin = await readExistingRegistrationPin(env, companyId, userId);
+      const registrationPin = suppliedPin || existingPin || generateRegistrationPin();
       const accessToken = await exchangeCode(env, code);
       const phoneNumberId = await resolvePhoneNumberId(env, accessToken, wabaId, suppliedPhoneNumberId);
-      const registrationPin = generateRegistrationPin();
       await subscribeWaba(env, accessToken, wabaId);
       await registerPhoneNumber(env, accessToken, phoneNumberId, registrationPin);
       await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId, registrationPin);
