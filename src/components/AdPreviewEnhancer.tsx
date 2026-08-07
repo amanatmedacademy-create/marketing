@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Image as ImageIcon, LoaderCircle, Monitor, Smartphone, X } from 'lucide-react';
 import '../ad-preview.css';
 
@@ -31,6 +31,7 @@ type PreviewResponse = {
 
 type AdIndexRow = { ad_id: string; ad_name: string; creative_name?: string };
 type AdIndexResponse = { rows?: AdIndexRow[] };
+type MetaPreviewFrame = { src: string; width?: number; height?: number };
 
 const modeLabels: Array<{ id: Mode; label: string; icon: typeof Monitor }> = [
   { id: 'desktop', label: 'Desktop', icon: Monitor },
@@ -62,6 +63,69 @@ function parseErrorBody(body: string, fallback: string) {
     const parsed = JSON.parse(body) as { error?: unknown };
     return typeof parsed.error === 'string' && parsed.error ? parsed.error : body;
   } catch { return body; }
+}
+
+function parseFrameDimension(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)(?:px)?$/i);
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function extractMetaPreviewFrame(html?: string): MetaPreviewFrame | null {
+  if (!html || typeof DOMParser === 'undefined') return null;
+  try {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const iframe = document.querySelector('iframe');
+    if (!iframe) return null;
+    const rawSrc = iframe.getAttribute('src') || '';
+    const src = safeExternalUrl(rawSrc.startsWith('//') ? `https:${rawSrc}` : rawSrc);
+    if (!src) return null;
+    return {
+      src,
+      width: parseFrameDimension(iframe.getAttribute('width')),
+      height: parseFrameDimension(iframe.getAttribute('height')),
+    };
+  } catch { return null; }
+}
+
+function FittedMetaPreview({ frame }: { frame: MetaPreviewFrame }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const intrinsicWidth = frame.width || 360;
+  const intrinsicHeight = frame.height || 640;
+  const [size, setSize] = useState({ width: intrinsicWidth, height: intrinsicHeight });
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const measure = () => {
+      const rect = host.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const scale = Math.min(rect.width / intrinsicWidth, rect.height / intrinsicHeight);
+      setSize({
+        width: Math.max(1, Math.floor(intrinsicWidth * scale)),
+        height: Math.max(1, Math.floor(intrinsicHeight * scale)),
+      });
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [intrinsicHeight, intrinsicWidth]);
+
+  return <div className="ad-preview-native-host" ref={hostRef}>
+    <iframe
+      className="ad-preview-native-frame"
+      title="Meta ad preview"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+      referrerPolicy="no-referrer"
+      src={frame.src}
+      style={{ width: size.width, height: size.height }}
+    />
+  </div>;
 }
 
 function extractAdId(row: HTMLElement, nameIndex: Map<string, string>): string {
@@ -176,6 +240,7 @@ export default function AdPreviewEnhancer() {
   const content = preview?.content;
   const destinationUrl = safeExternalUrl(content?.destinationUrl);
   const cta = useMemo(() => content?.callToAction?.replace(/_/g, ' ') || 'Подробнее', [content?.callToAction]);
+  const nativeFrame = useMemo(() => mode === 'desktop' ? null : extractMetaPreviewFrame(preview?.previewHtml), [mode, preview?.previewHtml]);
 
   if (!adId) return null;
 
@@ -194,7 +259,8 @@ export default function AdPreviewEnhancer() {
       <section className={`ad-preview-stage mode-${mode}`}>
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
-        {!loading && !error && preview?.previewHtml && <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={preview.previewHtml}/>} 
+        {!loading && !error && preview?.previewHtml && nativeFrame && <FittedMetaPreview frame={nativeFrame}/>} 
+        {!loading && !error && preview?.previewHtml && !nativeFrame && <iframe className="ad-preview-srcdoc-frame" title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={preview.previewHtml}/>} 
         {!loading && !error && !preview?.previewHtml && content && <article className="ad-preview-fallback">
           <header><div className="ad-preview-page">AM</div><div><strong>{content.pageId ? `Страница ${content.pageId}` : 'Meta Ads'}</strong><span>Реклама · 🌐</span></div></header>
           {content.message && <p className="ad-preview-message">{content.message}</p>}
