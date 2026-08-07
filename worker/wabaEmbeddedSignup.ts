@@ -125,18 +125,26 @@ async function registerPhoneNumber(env: WabaEmbeddedSignupEnv, accessToken: stri
   }
 }
 
-async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, accessToken: string, wabaId: string, phoneNumberId: string, registrationPin: string): Promise<void> {
+async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, connectedByUserId: string, accessToken: string, wabaId: string, phoneNumberId: string, registrationPin: string): Promise<void> {
   const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env), registrationPin }, encryptionSecret(env));
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
-  const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
+  const tenantFilter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.waba`;
   const payload = {
     company_id: companyId,
-    user_id: userId,
+    user_id: null,
     provider: 'waba',
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
-      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env), webhookSubscribed: true, registered: true },
+      values: {
+        wabaId,
+        phoneNumberId,
+        graphVersion: graphVersion(env),
+        webhookSubscribed: true,
+        registered: true,
+        ownership: 'tenant',
+        connectedByUserId,
+      },
       secretFields: { accessToken: true, registrationPin: true },
     },
     status: 'connected',
@@ -144,9 +152,11 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, use
     last_verified_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const existingResponse = await fetch(`${baseUrl}?${filter}&select=id&limit=1`, { headers: supabaseHeaders(env, { accept: 'application/json' }) });
+
+  const existingResponse = await fetch(`${baseUrl}?${tenantFilter}&select=id&limit=1`, { headers: supabaseHeaders(env, { accept: 'application/json' }) });
   if (!existingResponse.ok) throw new Error(`Supabase WABA lookup: ${existingResponse.status} ${await existingResponse.text()}`);
   const existingRows = await existingResponse.json() as Array<{ id?: string }>;
+
   const response = existingRows[0]?.id
     ? await fetch(`${baseUrl}?id=eq.${encodeURIComponent(existingRows[0].id as string)}`, {
         method: 'PATCH', headers: supabaseHeaders(env, { prefer: 'return=minimal' }), body: JSON.stringify(payload),
@@ -155,11 +165,18 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, use
         method: 'POST', headers: supabaseHeaders(env, { prefer: 'return=minimal' }), body: JSON.stringify(payload),
       });
   if (!response.ok) throw new Error(`Supabase WABA save: ${response.status} ${await response.text()}`);
+
+  // Remove legacy per-user WABA credentials after the tenant-owned credential has been saved.
+  const legacyResponse = await fetch(`${baseUrl}?company_id=eq.${encodeURIComponent(companyId)}&user_id=not.is.null&provider=eq.waba`, {
+    method: 'DELETE',
+    headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
+  });
+  if (!legacyResponse.ok) console.error(`Unable to remove legacy user-scoped WABA credentials: ${legacyResponse.status} ${await legacyResponse.text()}`);
 }
 
-async function readConnection(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<JsonRecord | null> {
+async function readConnection(env: WabaEmbeddedSignupEnv, companyId: string): Promise<JsonRecord | null> {
   const response = await fetch(
-    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba&select=status,config_summary,last_verified_at,last_error&limit=1`,
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.waba&select=status,config_summary,last_verified_at,last_error&limit=1`,
     { headers: supabaseHeaders(env, { accept: 'application/json' }) },
   );
   if (!response.ok) throw new Error(`Supabase WABA status: ${response.status} ${await response.text()}`);
@@ -174,7 +191,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
     const userId = authenticatedUserId(request);
     const configured = Boolean(appId && env.META_APP_SECRET && configId);
     const companyId = userId ? await resolveCompanyId(env).catch(() => '') : '';
-    const connection = companyId && userId ? await readConnection(env, companyId, userId).catch(() => null) : null;
+    const connection = companyId ? await readConnection(env, companyId).catch(() => null) : null;
     return json({
       configured,
       appId,
@@ -208,7 +225,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       await subscribeWaba(env, accessToken, wabaId);
       await registerPhoneNumber(env, accessToken, phoneNumberId, registrationPin);
       await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId, registrationPin);
-      return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true, registered: true });
+      return json({ ok: true, companyId, ownership: 'tenant', wabaId, phoneNumberId, webhookSubscribed: true, registered: true });
     } catch (error) {
       console.error('WABA Embedded Signup failed', error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
