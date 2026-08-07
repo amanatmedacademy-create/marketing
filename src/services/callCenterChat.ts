@@ -20,6 +20,16 @@ export type ChatMessage = {
   sentAt: string;
 };
 
+export type WhatsAppTemplate = {
+  id?: string;
+  name: string;
+  language: string;
+  category?: string;
+  status: string;
+  body: string;
+  parameterCount: number;
+};
+
 export type ChatContact = {
   id: string;
   fullName: string;
@@ -78,7 +88,7 @@ export type ChatMessagePage = {
 };
 
 class CallCenterApiError extends Error {
-  constructor(message: string, readonly status?: number, readonly requestId?: string) {
+  constructor(message: string, readonly status?: number, readonly requestId?: string, readonly code?: string) {
     super(message);
     this.name = 'CallCenterApiError';
   }
@@ -92,8 +102,8 @@ async function rawRequest(path: string, init: RequestInit = {}): Promise<Respons
   });
   if (!response.ok) {
     const requestId = response.headers.get('x-request-id') ?? undefined;
-    const payload = await response.json().catch(() => null) as { error?: string } | null;
-    throw new CallCenterApiError(payload?.error || `API колл-центра вернул HTTP ${response.status}`, response.status, requestId);
+    const payload = await response.json().catch(() => null) as { error?: string; code?: string } | null;
+    throw new CallCenterApiError(payload?.error || `API колл-центра вернул HTTP ${response.status}`, response.status, requestId, payload?.code);
   }
   return response;
 }
@@ -132,6 +142,23 @@ export const sendChatMessage = (threadId: string, body: string, senderName: stri
   request<ChatMessage>(`/threads/${encodeURIComponent(threadId)}/messages`, {
     method: 'POST',
     body: JSON.stringify({ body, direction: 'OUTBOUND', senderName, attachment })
+  });
+
+export const fetchWhatsAppTemplates = (threadId: string) =>
+  fetch(`/api/integrations/waba/templates?threadId=${encodeURIComponent(threadId)}`, { cache: 'no-store' })
+    .then(async (response) => {
+      const payload = await response.json().catch(() => null) as { templates?: WhatsAppTemplate[]; error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || `Не удалось загрузить WhatsApp-шаблоны: HTTP ${response.status}`);
+      return payload?.templates || [];
+    });
+
+export const sendWhatsAppTemplate = (threadId: string, template: WhatsAppTemplate, parameters: string[], senderName = 'Оператор') =>
+  request<ChatMessage>(`/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      senderName,
+      template: { name: template.name, languageCode: template.language, parameters }
+    })
   });
 
 export const markChatThreadRead = (threadId: string) =>
