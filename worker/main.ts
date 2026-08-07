@@ -24,6 +24,7 @@ import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebho
 import { handleVoiceTranscriptionRequest, type VoiceTranscriptionEnv } from './voiceTranscription';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
+import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -41,6 +42,7 @@ type MainEnv = AuthEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
   & WabaMessagingEnv
+  & WabaMessagingV2Env
   & VoiceTranscriptionEnv
   & { FRONTEND_ADMIN_KEY?: string };
 
@@ -140,6 +142,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const wabaMessagingV2 = await handleWabaMessagingV2Request(forwardedRequest, runtimeEnv, url);
+      if (wabaMessagingV2) return wabaMessagingV2;
       const wabaMessaging = await handleWabaMessagingRequest(forwardedRequest, runtimeEnv, url);
       if (wabaMessaging) return wabaMessaging;
       const tenantWebhook = await handleTenantWebhookRequest(forwardedRequest, runtimeEnv, url);
