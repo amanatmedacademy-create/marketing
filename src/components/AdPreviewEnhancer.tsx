@@ -212,12 +212,14 @@ export default function AdPreviewEnhancer() {
 
   // В мобильных форматах Meta объявляет высоту меньше фактического контента —
   // внутри поста появляется скролл. Высота вложенного iframe в srcdoc наша,
-  // поэтому удлиняем его (до 25% сверх объявленной) и отключаем прокрутку.
-  const extendable = mode !== 'desktop';
+  // поэтому удлиняем его сверх объявленной и отключаем прокрутку. У Instagram
+  // скрытая часть больше (подпись и шапка аккаунта) — запас выше.
+  const EXTEND_FACTOR: Record<Mode, number> = { desktop: 1, mobile: 1.25, instagram: 1.5 };
+  const extendable = EXTEND_FACTOR[mode] > 1;
   const scaledDeclaredHeight = frame ? frame.height * scale : 0;
   const clipHeight = frame
     ? Math.floor(extendable && stageSize.height > 0
-      ? Math.min(stageSize.height, scaledDeclaredHeight * 1.25)
+      ? Math.min(stageSize.height, scaledDeclaredHeight * EXTEND_FACTOR[mode])
       : scaledDeclaredHeight)
     : 0;
   const renderHeight = frame ? Math.ceil(clipHeight / (scale || 1)) : 0;
