@@ -5,8 +5,16 @@ export interface CompanyContextEnv {
   CURRENT_COMPANY_ID?: string;
 }
 
-type CompanyRow = { id?: string };
-type MembershipRow = { company_id?: string };
+export interface UserCompany {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  status: string;
+}
+
+type CompanyRow = { id?: string; name?: string; slug?: string };
+type MembershipRow = { company_id?: string; role?: string; status?: string };
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -24,16 +32,48 @@ function headers(env: CompanyContextEnv): HeadersInit {
   };
 }
 
-async function activeMembershipCompanyIds(env: CompanyContextEnv, userId: string): Promise<string[]> {
+async function activeMemberships(env: CompanyContextEnv, userId: string): Promise<MembershipRow[]> {
   assertUuid(userId, 'User ID');
   const response = await fetch(
-    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/crm_company_members?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=company_id&order=created_at.asc&limit=10`,
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/crm_company_members?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=company_id,role,status&order=created_at.asc&limit=100`,
     { headers: headers(env) },
   );
   const body = await response.text();
   if (!response.ok) throw new Error(`Company membership context: ${response.status} ${body}`);
-  const rows = (body ? JSON.parse(body) : []) as MembershipRow[];
+  return (body ? JSON.parse(body) : []) as MembershipRow[];
+}
+
+async function activeMembershipCompanyIds(env: CompanyContextEnv, userId: string): Promise<string[]> {
+  const rows = await activeMemberships(env, userId);
   return [...new Set(rows.map((row) => text(row.company_id)).filter((id) => UUID_PATTERN.test(id)))];
+}
+
+export async function listUserCompanies(env: CompanyContextEnv, userId: string): Promise<UserCompany[]> {
+  const memberships = await activeMemberships(env, userId);
+  const ids = [...new Set(memberships.map((row) => text(row.company_id)).filter((id) => UUID_PATTERN.test(id)))];
+  if (!ids.length) return [];
+
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/crm_companies?id=in.(${ids.map(encodeURIComponent).join(',')})&select=id,name,slug&order=name.asc`,
+    { headers: headers(env) },
+  );
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Company list context: ${response.status} ${body}`);
+  const companies = (body ? JSON.parse(body) : []) as CompanyRow[];
+  const membershipMap = new Map(memberships.map((row) => [text(row.company_id), row]));
+
+  return companies.flatMap((company) => {
+    const id = text(company.id);
+    const membership = membershipMap.get(id);
+    if (!id || !membership) return [];
+    return [{
+      id,
+      name: text(company.name) || id,
+      slug: text(company.slug),
+      role: text(membership.role),
+      status: text(membership.status) || 'active',
+    }];
+  });
 }
 
 export async function resolveCompanyId(env: CompanyContextEnv, userId?: string): Promise<string> {
