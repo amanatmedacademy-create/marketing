@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Image as ImageIcon, LoaderCircle, Monitor, Smartphone, X } from 'lucide-react';
 import '../ad-preview.css';
 
@@ -173,9 +173,65 @@ export default function AdPreviewEnhancer() {
     return () => document.removeEventListener('keydown', close);
   }, [adId]);
 
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const node = stageRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setStageSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [adId]);
+
   const content = preview?.content;
   const destinationUrl = safeExternalUrl(content?.destinationUrl);
   const cta = useMemo(() => content?.callToAction?.replace(/_/g, ' ') || 'Подробнее', [content?.callToAction]);
+
+  // Meta отдаёт пост вложенным iframe с фиксированными width/height —
+  // берём натуральный размер и масштабируем под размер сцены модалки.
+  const frame = useMemo(() => {
+    const html = preview?.previewHtml || '';
+    const width = Number(/width="?(\d{2,4})/i.exec(html)?.[1]) || 0;
+    const height = Number(/height="?(\d{2,4})/i.exec(html)?.[1]) || 0;
+    return width >= 100 && height >= 100 ? { width, height } : null;
+  }, [preview?.previewHtml]);
+
+  // Desktop-фид Meta рендерит карточку ~500px, хотя iframe объявлен шире —
+  // лишний белый «воздух» справа обрезаем, считая масштаб по ширине карточки.
+  const contentWidth = frame
+    ? (mode === 'desktop' && frame.width > 502 ? 502 : frame.width)
+    : 0;
+
+  const scale = frame && stageSize.width > 0 && stageSize.height > 0
+    ? Math.min(stageSize.width / contentWidth, stageSize.height / frame.height)
+    : 1;
+
+  // В мобильных форматах Meta объявляет высоту меньше фактического контента —
+  // внутри поста появляется скролл. Высота вложенного iframe в srcdoc наша,
+  // поэтому удлиняем его сверх объявленной и отключаем прокрутку. У Instagram
+  // скрытая часть больше (подпись и шапка аккаунта) — запас выше.
+  const EXTEND_FACTOR: Record<Mode, number> = { desktop: 1, mobile: 1.25, instagram: 1.5 };
+  const extendable = EXTEND_FACTOR[mode] > 1;
+  const scaledDeclaredHeight = frame ? frame.height * scale : 0;
+  const clipHeight = frame
+    ? Math.floor(extendable && stageSize.height > 0
+      ? Math.min(stageSize.height, scaledDeclaredHeight * EXTEND_FACTOR[mode])
+      : scaledDeclaredHeight)
+    : 0;
+  const renderHeight = frame ? Math.ceil(clipHeight / (scale || 1)) : 0;
+
+  const srcDoc = useMemo(() => {
+    const html = preview?.previewHtml || '';
+    if (!html) return '';
+    const adjusted = extendable && frame
+      ? html.replace(/height="?\d{2,4}"?/i, `height="${renderHeight}"`).replace(/<iframe/i, '<iframe scrolling="no"')
+      : html;
+    return `<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}iframe{display:block;border:0}</style>${adjusted}`;
+  }, [preview?.previewHtml, extendable, frame, renderHeight]);
 
   if (!adId) return null;
 
@@ -191,10 +247,15 @@ export default function AdPreviewEnhancer() {
         {modeLabels.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={mode === id ? 'active' : ''} onClick={() => setMode(id)}><Icon size={15}/>{label}</button>)}
       </nav>
 
-      <section className={`ad-preview-stage mode-${mode}`}>
+      <section className={`ad-preview-stage mode-${mode}`} ref={stageRef}>
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
-        {!loading && !error && preview?.previewHtml && <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={preview.previewHtml}/>} 
+        {!loading && !error && preview?.previewHtml && (frame
+          ? <div className="ad-preview-scalebox" style={{ width: Math.floor(contentWidth * scale), height: clipHeight }}>
+              <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={srcDoc}
+                style={{ width: frame.width, height: extendable ? renderHeight : frame.height, transform: `scale(${scale})` }}/>
+            </div>
+          : <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={srcDoc}/>)}
         {!loading && !error && !preview?.previewHtml && content && <article className="ad-preview-fallback">
           <header><div className="ad-preview-page">AM</div><div><strong>{content.pageId ? `Страница ${content.pageId}` : 'Meta Ads'}</strong><span>Реклама · 🌐</span></div></header>
           {content.message && <p className="ad-preview-message">{content.message}</p>}
