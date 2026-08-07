@@ -1,6 +1,7 @@
 name = "marketing"
 main = "worker/securedMain.ts"
 compatibility_date = "2026-07-27"
+keep_vars = true
 
 [assets]
 directory = "./dist"
