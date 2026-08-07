@@ -63,6 +63,30 @@ async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<s
   return accessToken;
 }
 
+async function graphGet(env: WabaEmbeddedSignupEnv, accessToken: string, path: string): Promise<JsonRecord> {
+  const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/${path}`, {
+    headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' },
+  });
+  const body = await response.text();
+  let parsed: JsonRecord = {};
+  try { parsed = record(body ? JSON.parse(body) : {}); } catch { parsed = { error: body }; }
+  if (!response.ok || parsed.error) {
+    const error = record(parsed.error);
+    throw new Error(text(error.message) || `Meta Graph: ${response.status}`);
+  }
+  return parsed;
+}
+
+async function resolvePhoneNumberId(env: WabaEmbeddedSignupEnv, accessToken: string, wabaId: string, suppliedPhoneNumberId: string): Promise<string> {
+  if (suppliedPhoneNumberId) return suppliedPhoneNumberId;
+  const payload = await graphGet(env, accessToken, `${encodeURIComponent(wabaId)}/phone_numbers?fields=id,display_phone_number,verified_name&limit=100`);
+  const rows = Array.isArray(payload.data) ? payload.data.map(record) : [];
+  const ids = rows.map((row) => text(row.id)).filter(Boolean);
+  if (ids.length === 1) return ids[0];
+  if (ids.length === 0) throw new Error('WABA подключена, но Meta не вернула Phone Number ID. Завершите добавление номера в WhatsApp Manager и повторите подключение.');
+  throw new Error('В WABA найдено несколько номеров, а Embedded Signup не указал выбранный Phone Number ID. Повторите подключение и выберите конкретный номер.');
+}
+
 async function subscribeWaba(env: WabaEmbeddedSignupEnv, accessToken: string, wabaId: string): Promise<void> {
   const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
     method: 'POST',
@@ -150,11 +174,12 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       const payload = record(await request.json());
       const code = text(payload.code);
       const wabaId = text(payload.wabaId);
-      const phoneNumberId = text(payload.phoneNumberId);
+      const suppliedPhoneNumberId = text(payload.phoneNumberId);
       if (!code) return json({ error: 'Facebook authorization code не получен' }, 400);
-      if (!wabaId || !phoneNumberId) return json({ error: 'Facebook не вернул WABA ID или Phone Number ID' }, 400);
+      if (!wabaId) return json({ error: 'Facebook не вернул WABA ID' }, 400);
       const companyId = await resolveCompanyId(env);
       const accessToken = await exchangeCode(env, code);
+      const phoneNumberId = await resolvePhoneNumberId(env, accessToken, wabaId, suppliedPhoneNumberId);
       await subscribeWaba(env, accessToken, wabaId);
       await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId);
       return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true });
