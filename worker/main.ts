@@ -6,6 +6,7 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
+import { resolveCompanyId } from './companyContext';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
 import { handleMarketingChat } from './marketingChat';
@@ -42,7 +43,7 @@ type MainEnv = AuthEnv
   & WabaEmbeddedSignupEnv
   & WabaMessagingEnv
   & VoiceTranscriptionEnv
-  & { FRONTEND_ADMIN_KEY?: string };
+  & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -113,6 +114,7 @@ export default {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
     let forwardedRequest = request;
+    let requestEnv: MainEnv = env;
 
     const route = async (): Promise<Response> => {
       if (url.pathname === '/api/integrations/meta/callback') {
@@ -133,12 +135,14 @@ export default {
           if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
           if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
           if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
+          const companyId = await resolveCompanyId(env, user.id);
+          requestEnv = { ...env, CURRENT_COMPANY_ID: companyId };
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
-      const runtimeEnv = await hydrateIntegrationEnv(env);
+      const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
 
       const wabaMessaging = await handleWabaMessagingRequest(forwardedRequest, runtimeEnv, url);
       if (wabaMessaging) return wabaMessaging;
@@ -197,22 +201,23 @@ export default {
 
       if (plan && response.status < 400) {
         const { ip, userAgent } = requestClient(request);
-        background(ctx, recordAudit(env, { userId: requestUserId(forwardedRequest), action: plan.action, entityType: plan.entityType, entityId: plan.entityId, after: plan.captureBody ? auditBody : null, ip, userAgent, correlationId: requestCorrelationId }));
+        background(ctx, recordAudit(requestEnv, { userId: requestUserId(forwardedRequest), action: plan.action, entityType: plan.entityType, entityId: plan.entityId, after: plan.captureBody ? auditBody : null, ip, userAgent, correlationId: requestCorrelationId }));
       }
 
       if (url.pathname.startsWith('/api/') && response.status >= 500) {
         const detail = await response.clone().text().catch(() => '');
-        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: String(response.status), message: detail.slice(0, 600) || `HTTP ${response.status}`, correlationId: requestCorrelationId }));
+        background(ctx, recordErrorEvent(requestEnv, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: String(response.status), message: detail.slice(0, 600) || `HTTP ${response.status}`, correlationId: requestCorrelationId }));
       }
 
       const decorated = new Response(response.body, response);
       decorated.headers.set('x-correlation-id', requestCorrelationId);
+      if (requestEnv.CURRENT_COMPANY_ID) decorated.headers.set('x-company-id', requestEnv.CURRENT_COMPANY_ID);
       return decorated;
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : 'Analytics error';
       if (url.pathname.startsWith('/api/')) {
-        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
+        background(ctx, recordErrorEvent(requestEnv, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
       }
       return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId } });
     }
