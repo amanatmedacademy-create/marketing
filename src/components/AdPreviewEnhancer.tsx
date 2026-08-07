@@ -82,19 +82,22 @@ function extractMetaPreviewFrame(html?: string): MetaPreviewFrame | null {
     const rawSrc = iframe.getAttribute('src') || '';
     const src = safeExternalUrl(rawSrc.startsWith('//') ? `https:${rawSrc}` : rawSrc);
     if (!src) return null;
+    const style = iframe.getAttribute('style') || '';
+    const styleWidth = style.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i)?.[1] || null;
+    const styleHeight = style.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i)?.[1] || null;
     return {
       src,
-      width: parseFrameDimension(iframe.getAttribute('width')),
-      height: parseFrameDimension(iframe.getAttribute('height')),
+      width: parseFrameDimension(iframe.getAttribute('width')) || parseFrameDimension(styleWidth),
+      height: parseFrameDimension(iframe.getAttribute('height')) || parseFrameDimension(styleHeight),
     };
   } catch { return null; }
 }
 
-function FittedMetaPreview({ frame }: { frame: MetaPreviewFrame }) {
+function FittedMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Exclude<Mode, 'desktop'> }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const intrinsicWidth = frame.width || 360;
-  const intrinsicHeight = frame.height || 640;
-  const [size, setSize] = useState({ width: intrinsicWidth, height: intrinsicHeight });
+  const intrinsicWidth = frame.width || (mode === 'instagram' ? 500 : 360);
+  const intrinsicHeight = frame.height || (mode === 'instagram' ? 650 : 640);
+  const [scale, setScale] = useState(1);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -103,11 +106,8 @@ function FittedMetaPreview({ frame }: { frame: MetaPreviewFrame }) {
     const measure = () => {
       const rect = host.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
-      const scale = Math.min(rect.width / intrinsicWidth, rect.height / intrinsicHeight);
-      setSize({
-        width: Math.max(1, Math.floor(intrinsicWidth * scale)),
-        height: Math.max(1, Math.floor(intrinsicHeight * scale)),
-      });
+      const nextScale = Math.min(rect.width / intrinsicWidth, rect.height / intrinsicHeight, 1);
+      setScale(Math.max(0.1, nextScale));
     };
 
     measure();
@@ -117,14 +117,19 @@ function FittedMetaPreview({ frame }: { frame: MetaPreviewFrame }) {
   }, [intrinsicHeight, intrinsicWidth]);
 
   return <div className="ad-preview-native-host" ref={hostRef}>
-    <iframe
-      className="ad-preview-native-frame"
-      title="Meta ad preview"
-      sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-      referrerPolicy="no-referrer"
-      src={frame.src}
-      style={{ width: size.width, height: size.height }}
-    />
+    <div
+      className="ad-preview-native-viewport"
+      style={{ width: intrinsicWidth * scale, height: intrinsicHeight * scale }}
+    >
+      <iframe
+        className="ad-preview-native-frame"
+        title="Meta ad preview"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+        referrerPolicy="no-referrer"
+        src={frame.src}
+        style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${scale})` }}
+      />
+    </div>
   </div>;
 }
 
@@ -259,7 +264,7 @@ export default function AdPreviewEnhancer() {
       <section className={`ad-preview-stage mode-${mode}`}>
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
-        {!loading && !error && preview?.previewHtml && nativeFrame && <FittedMetaPreview frame={nativeFrame}/>} 
+        {!loading && !error && preview?.previewHtml && nativeFrame && mode !== 'desktop' && <FittedMetaPreview frame={nativeFrame} mode={mode}/>} 
         {!loading && !error && preview?.previewHtml && !nativeFrame && <iframe className="ad-preview-srcdoc-frame" title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={preview.previewHtml}/>} 
         {!loading && !error && !preview?.previewHtml && content && <article className="ad-preview-fallback">
           <header><div className="ad-preview-page">AM</div><div><strong>{content.pageId ? `Страница ${content.pageId}` : 'Meta Ads'}</strong><span>Реклама · 🌐</span></div></header>
