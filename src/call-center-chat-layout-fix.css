@@ -1,0 +1,300 @@
+/* Call center viewport/layout polish. Loaded after the base chat styles. */
+
+.marketing-content:has(.callcenter-root){
+  padding-bottom:18px;
+  overflow:hidden;
+}
+
+.callcenter-root{
+  display:flex !important;
+  flex-direction:column;
+  gap:14px !important;
+  height:calc(100dvh - 112px);
+  min-height:0;
+  overflow:hidden;
+}
+
+.callcenter-heading{
+  flex:0 0 auto;
+  padding:0 2px;
+}
+
+.callcenter-heading h1{
+  margin:4px 0 5px;
+  font-size:1.55rem;
+  line-height:1.08;
+}
+
+.callcenter-heading p{
+  font-size:.74rem;
+  line-height:1.35;
+}
+
+.inbox-workspace{
+  position:relative;
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
+  flex-direction:column;
+}
+
+.inbox-workspace-header{
+  flex:0 0 auto;
+  min-height:52px;
+  padding:9px 14px;
+}
+
+.inbox-inline-error{
+  flex:0 0 auto;
+  min-height:32px;
+  margin:7px 12px 0;
+  padding:6px 9px;
+  font-size:.67rem;
+  line-height:1.3;
+}
+
+.inbox-layout{
+  flex:1 1 auto;
+  height:auto !important;
+  min-height:0;
+  grid-template-columns:300px minmax(0,1fr) 286px;
+}
+
+.inbox-left,
+.inbox-center,
+.inbox-right{
+  min-height:0;
+}
+
+.inbox-contact-bar{
+  min-height:52px;
+  padding:7px 11px;
+}
+
+.inbox-contact-avatar{
+  width:34px;
+  height:34px;
+}
+
+.inbox-messages{
+  padding:11px 14px 9px;
+  gap:8px;
+}
+
+.inbox-message{
+  max-width:min(560px,88%);
+  padding:8px 10px;
+}
+
+.inbox-message p{
+  font-size:.74rem;
+}
+
+.inbox-compose{
+  position:relative;
+  z-index:20;
+  flex:0 0 auto;
+  gap:6px;
+  padding:8px 10px 10px;
+  background:linear-gradient(180deg,#0d1730 0%,#0b1529 100%);
+  box-shadow:0 -14px 30px rgba(0,0,0,.16);
+}
+
+.inbox-quick-replies{
+  flex-wrap:nowrap;
+  gap:5px;
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:none;
+}
+
+.inbox-quick-replies::-webkit-scrollbar{
+  display:none;
+}
+
+.inbox-quick-replies button{
+  flex:0 0 auto;
+  max-width:280px;
+  padding:4px 9px;
+  font-size:.61rem;
+}
+
+.inbox-compose>small{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:0;
+  padding:6px 9px;
+  border:1px solid rgba(34,197,94,.24);
+  border-radius:8px;
+  background:rgba(5,46,26,.42);
+  color:#9bd8b1;
+  font-size:.62rem;
+  line-height:1.3;
+}
+
+.inbox-compose>small::before{
+  content:'W';
+  display:grid;
+  place-items:center;
+  width:18px;
+  height:18px;
+  flex:0 0 18px;
+  border-radius:50%;
+  background:#0b5a31;
+  color:#d1fae5;
+  font-size:.55rem;
+  font-weight:900;
+}
+
+.inbox-input-row{
+  align-items:center;
+  gap:6px;
+}
+
+.inbox-icon-button,
+.inbox-ai-button,
+.inbox-send-button{
+  height:38px;
+}
+
+.inbox-icon-button{
+  width:38px;
+  flex-basis:38px;
+}
+
+.inbox-template-wrap .inbox-icon-button{
+  width:auto;
+  min-width:96px;
+  padding:0 11px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border-color:#1f6f4a;
+  background:#0b2a20;
+  color:#9de7bd;
+  font-weight:800;
+}
+
+.inbox-template-wrap .inbox-icon-button::after{
+  content:'Шаблон';
+  font-size:.64rem;
+  letter-spacing:.01em;
+}
+
+.inbox-input-row textarea{
+  min-height:38px;
+  max-height:96px;
+  padding:9px 10px;
+}
+
+.inbox-template-menu{
+  bottom:46px;
+  left:0;
+  width:min(430px,calc(100vw - 48px));
+  max-height:min(430px,55dvh);
+  padding:8px;
+  gap:6px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  border-color:#2a4668;
+  box-shadow:0 24px 70px rgba(0,0,0,.62);
+}
+
+.inbox-template-menu>span{
+  display:block;
+  padding:12px;
+  color:#8fa0b7;
+  font-size:.68rem;
+  text-align:center;
+}
+
+.inbox-template-menu button{
+  padding:10px 11px;
+  border:1px solid #1e2d4a;
+  border-radius:9px;
+  background:#0a1528;
+}
+
+.inbox-template-menu button:hover{
+  border-color:#2f6e9e;
+  background:#10223b;
+}
+
+.inbox-template-menu button strong,
+.inbox-template-menu button small,
+.inbox-template-menu button span{
+  display:block;
+}
+
+.inbox-template-menu button strong{
+  color:#e5edf8;
+  font-size:.7rem;
+}
+
+.inbox-template-menu button small{
+  margin-top:3px;
+  color:#68d391;
+  font-size:.58rem;
+}
+
+.inbox-template-menu button span{
+  margin-top:6px;
+  overflow:hidden;
+  color:#91a2b8;
+  font-size:.64rem;
+  line-height:1.35;
+  display:-webkit-box;
+  -webkit-line-clamp:3;
+  -webkit-box-orient:vertical;
+}
+
+.inbox-right{
+  scrollbar-gutter:stable;
+}
+
+@media(max-width:1100px){
+  .inbox-layout{
+    grid-template-columns:275px minmax(0,1fr);
+  }
+}
+
+@media(max-width:900px){
+  .marketing-content:has(.callcenter-root){
+    padding-bottom:12px;
+  }
+  .callcenter-root{
+    height:calc(100dvh - 98px);
+    gap:10px !important;
+  }
+  .callcenter-heading p{
+    display:none;
+  }
+}
+
+@media(max-width:760px){
+  .callcenter-root{
+    height:calc(100dvh - 94px);
+    min-height:0;
+  }
+  .callcenter-heading{
+    display:none;
+  }
+  .inbox-layout{
+    height:auto !important;
+    min-height:0;
+  }
+  .inbox-template-wrap .inbox-icon-button{
+    min-width:42px;
+    width:42px;
+    padding:0;
+  }
+  .inbox-template-wrap .inbox-icon-button::after{
+    content:'';
+  }
+  .inbox-compose>small{
+    font-size:.59rem;
+  }
+}
