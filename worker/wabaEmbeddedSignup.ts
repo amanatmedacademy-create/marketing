@@ -6,6 +6,7 @@ export interface WabaEmbeddedSignupEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   META_APP_ID?: string;
   META_APP_SECRET?: string;
@@ -166,7 +167,6 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, con
       });
   if (!response.ok) throw new Error(`Supabase WABA save: ${response.status} ${await response.text()}`);
 
-  // Remove legacy per-user WABA credentials after the tenant-owned credential has been saved.
   const legacyResponse = await fetch(`${baseUrl}?company_id=eq.${encodeURIComponent(companyId)}&user_id=not.is.null&provider=eq.waba`, {
     method: 'DELETE',
     headers: supabaseHeaders(env, { prefer: 'return=minimal' }),
@@ -190,7 +190,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
     const configId = text(env.META_WABA_CONFIG_ID);
     const userId = authenticatedUserId(request);
     const configured = Boolean(appId && env.META_APP_SECRET && configId);
-    const companyId = userId ? await resolveCompanyId(env).catch(() => '') : '';
+    const companyId = userId ? await resolveCompanyId(env, userId).catch(() => '') : '';
     const connection = companyId ? await readConnection(env, companyId).catch(() => null) : null;
     return json({
       configured,
@@ -218,7 +218,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       const suppliedPhoneNumberId = text(payload.phoneNumberId);
       if (!code) return json({ error: 'Facebook authorization code не получен' }, 400);
       if (!wabaId) return json({ error: 'Facebook не вернул WABA ID' }, 400);
-      const companyId = await resolveCompanyId(env);
+      const companyId = await resolveCompanyId(env, userId);
       const accessToken = await exchangeCode(env, code);
       const phoneNumberId = await resolvePhoneNumberId(env, accessToken, wabaId, suppliedPhoneNumberId);
       const registrationPin = generateRegistrationPin();
