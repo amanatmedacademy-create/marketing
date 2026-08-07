@@ -47,6 +47,11 @@ async function encrypt(payload: JsonRecord, secret: string): Promise<{ encrypted
   return { encryptedPayload: bytesToBase64(new Uint8Array(encrypted)), iv: bytesToBase64(iv) };
 }
 
+function generateRegistrationPin(): string {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return String(value).padStart(6, '0');
+}
+
 async function exchangeCode(env: WabaEmbeddedSignupEnv, code: string): Promise<string> {
   if (!env.META_APP_ID || !env.META_APP_SECRET) throw new Error('META_APP_ID или META_APP_SECRET не настроены');
   const params = new URLSearchParams({ client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, code });
@@ -101,8 +106,27 @@ async function subscribeWaba(env: WabaEmbeddedSignupEnv, accessToken: string, wa
   }
 }
 
-async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, accessToken: string, wabaId: string, phoneNumberId: string): Promise<void> {
-  const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env) }, encryptionSecret(env));
+async function registerPhoneNumber(env: WabaEmbeddedSignupEnv, accessToken: string, phoneNumberId: string, pin: string): Promise<void> {
+  const response = await fetch(`https://graph.facebook.com/${graphVersion(env)}/${encodeURIComponent(phoneNumberId)}/register`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
+  });
+  const body = await response.text();
+  let parsed: JsonRecord = {};
+  try { parsed = record(body ? JSON.parse(body) : {}); } catch { parsed = { error: body }; }
+  if (!response.ok || parsed.success === false || parsed.error) {
+    const error = record(parsed.error);
+    throw new Error(text(error.message) || `Meta phone registration: ${response.status}`);
+  }
+}
+
+async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, accessToken: string, wabaId: string, phoneNumberId: string, registrationPin: string): Promise<void> {
+  const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env), registrationPin }, encryptionSecret(env));
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
   const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
   const payload = {
@@ -112,8 +136,8 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, use
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
-      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env), webhookSubscribed: true },
-      secretFields: { accessToken: true },
+      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env), webhookSubscribed: true, registered: true },
+      secretFields: { accessToken: true, registrationPin: true },
     },
     status: 'connected',
     last_error: null,
@@ -180,9 +204,11 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       const companyId = await resolveCompanyId(env);
       const accessToken = await exchangeCode(env, code);
       const phoneNumberId = await resolvePhoneNumberId(env, accessToken, wabaId, suppliedPhoneNumberId);
+      const registrationPin = generateRegistrationPin();
       await subscribeWaba(env, accessToken, wabaId);
-      await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId);
-      return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true });
+      await registerPhoneNumber(env, accessToken, phoneNumberId, registrationPin);
+      await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId, registrationPin);
+      return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true, registered: true });
     } catch (error) {
       console.error('WABA Embedded Signup failed', error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
