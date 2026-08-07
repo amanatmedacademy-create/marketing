@@ -91,6 +91,8 @@ export default function WabaEmbeddedSignup() {
   const [connected, setConnected] = useState(false);
   const [signup, setSignup] = useState<SignupData>({});
   const signupRef = useRef<SignupData>({});
+  const codeRef = useRef('');
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -126,19 +128,87 @@ export default function WabaEmbeddedSignup() {
     setFailed(false);
     setMessage(null);
     signupRef.current = {};
+    codeRef.current = '';
+    submittingRef.current = false;
     setSignup({});
 
-    const receive = (event: MessageEvent) => {
+    let missingSessionTimeout: number | undefined;
+
+    const cleanup = () => {
+      window.removeEventListener('message', receive);
+      if (missingSessionTimeout !== undefined) {
+        window.clearTimeout(missingSessionTimeout);
+        missingSessionTimeout = undefined;
+      }
+    };
+
+    const finishConnection = async () => {
+      const code = codeRef.current;
+      const identifiers = signupRef.current;
+      if (!code || !identifiers.wabaId || !identifiers.phoneNumberId || submittingRef.current) return;
+
+      submittingRef.current = true;
+      if (missingSessionTimeout !== undefined) {
+        window.clearTimeout(missingSessionTimeout);
+        missingSessionTimeout = undefined;
+      }
+      setMessage('Завершаем подключение WhatsApp Business…');
+
+      try {
+        const result = await fetch('/api/integrations/waba/connect', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            wabaId: identifiers.wabaId,
+            phoneNumberId: identifiers.phoneNumberId,
+          }),
+        });
+        const value = await readJson<{ phoneNumberId?: string; error?: string }>(result);
+        if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
+        const phoneNumberId = value.phoneNumberId || identifiers.phoneNumberId;
+        setConnected(true);
+        setMessage(`WABA подключена${phoneNumberId ? ` · номер ${phoneNumberId}` : ''}`);
+      } catch (error) {
+        setFailed(true);
+        setMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        submittingRef.current = false;
+        setBusy(false);
+        cleanup();
+      }
+    };
+
+    const scheduleMissingSessionCheck = () => {
+      if (missingSessionTimeout !== undefined) window.clearTimeout(missingSessionTimeout);
+      missingSessionTimeout = window.setTimeout(() => {
+        const identifiers = signupRef.current;
+        if (!submittingRef.current && codeRef.current && (!identifiers.wabaId || !identifiers.phoneNumberId)) {
+          setFailed(true);
+          setBusy(false);
+          setMessage('Meta завершила авторизацию, но не передала WABA ID и Phone Number ID. Повторите подключение через Facebook.');
+          cleanup();
+        }
+      }, 10000);
+    };
+
+    function receive(event: MessageEvent) {
       if (!event.origin.endsWith('facebook.com')) return;
       try {
         const payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
         const data = payload.data || {};
-        const next = { wabaId: data.waba_id, phoneNumberId: data.phone_number_id };
+        const wabaId = typeof data.waba_id === 'string' ? data.waba_id : '';
+        const phoneNumberId = typeof data.phone_number_id === 'string' ? data.phone_number_id : '';
+        if (!wabaId || !phoneNumberId) return;
+
+        const next = { wabaId, phoneNumberId };
         signupRef.current = next;
         setSignup(next);
+        if (!codeRef.current) setMessage('Данные WABA получены. Завершаем авторизацию Facebook…');
+        void finishConnection();
       } catch { /* unrelated message */ }
-    };
+    }
 
     window.addEventListener('message', receive);
     try {
@@ -152,31 +222,17 @@ export default function WabaEmbeddedSignup() {
         if (!code) {
           setBusy(false);
           setMessage('Подключение WhatsApp Business не завершено');
-          window.removeEventListener('message', receive);
+          cleanup();
           return;
         }
 
+        codeRef.current = code;
         const identifiers = signupRef.current;
-        fetch('/api/integrations/waba/connect', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId }),
-        })
-          .then(async (result) => {
-            const value = await readJson<{ phoneNumberId?: string; error?: string }>(result);
-            if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
-            const phoneNumberId = value.phoneNumberId || identifiers.phoneNumberId;
-            setConnected(true);
-            setMessage(`WABA подключена${phoneNumberId ? ` · номер ${phoneNumberId}` : ''}`);
-          })
-          .catch((error) => {
-            setFailed(true);
-            setMessage(error instanceof Error ? error.message : String(error));
-          })
-          .finally(() => {
-            setBusy(false);
-            window.removeEventListener('message', receive);
-          });
+        if (!identifiers.wabaId || !identifiers.phoneNumberId) {
+          setMessage('Facebook авторизован. Получаем данные WhatsApp Business…');
+          scheduleMissingSessionCheck();
+        }
+        void finishConnection();
       }, {
         config_id: config.configId,
         response_type: 'code',
@@ -187,7 +243,7 @@ export default function WabaEmbeddedSignup() {
       setFailed(true);
       setMessage(error instanceof Error ? error.message : String(error));
       setBusy(false);
-      window.removeEventListener('message', receive);
+      cleanup();
     }
   };
 
