@@ -210,9 +210,26 @@ export default function AdPreviewEnhancer() {
     ? Math.min(stageSize.width / contentWidth, stageSize.height / frame.height)
     : 1;
 
-  const srcDoc = preview?.previewHtml
-    ? `<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}iframe{display:block;border:0}</style>${preview.previewHtml}`
-    : '';
+  // В мобильных форматах Meta объявляет высоту меньше фактического контента —
+  // внутри поста появляется скролл. Высота вложенного iframe в srcdoc наша,
+  // поэтому удлиняем его (до 25% сверх объявленной) и отключаем прокрутку.
+  const extendable = mode !== 'desktop';
+  const scaledDeclaredHeight = frame ? frame.height * scale : 0;
+  const clipHeight = frame
+    ? Math.floor(extendable && stageSize.height > 0
+      ? Math.min(stageSize.height, scaledDeclaredHeight * 1.25)
+      : scaledDeclaredHeight)
+    : 0;
+  const renderHeight = frame ? Math.ceil(clipHeight / (scale || 1)) : 0;
+
+  const srcDoc = useMemo(() => {
+    const html = preview?.previewHtml || '';
+    if (!html) return '';
+    const adjusted = extendable && frame
+      ? html.replace(/height="?\d{2,4}"?/i, `height="${renderHeight}"`).replace(/<iframe/i, '<iframe scrolling="no"')
+      : html;
+    return `<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}iframe{display:block;border:0}</style>${adjusted}`;
+  }, [preview?.previewHtml, extendable, frame, renderHeight]);
 
   if (!adId) return null;
 
@@ -232,9 +249,9 @@ export default function AdPreviewEnhancer() {
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
         {!loading && !error && preview?.previewHtml && (frame
-          ? <div className="ad-preview-scalebox" style={{ width: Math.floor(contentWidth * scale), height: Math.floor(frame.height * scale) }}>
+          ? <div className="ad-preview-scalebox" style={{ width: Math.floor(contentWidth * scale), height: clipHeight }}>
               <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={srcDoc}
-                style={{ width: frame.width, height: frame.height, transform: `scale(${scale})` }}/>
+                style={{ width: frame.width, height: extendable ? renderHeight : frame.height, transform: `scale(${scale})` }}/>
             </div>
           : <iframe title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={srcDoc}/>)}
         {!loading && !error && !preview?.previewHtml && content && <article className="ad-preview-fallback">
