@@ -1,8 +1,7 @@
-import { resolveCompanyId } from './companyContext';
-
 type Row = Record<string, unknown>;
 
 type WabaCredential = {
+  companyId: string;
   accessToken: string;
   wabaId: string;
   phoneNumberId: string;
@@ -76,7 +75,8 @@ function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
 async function decryptCredential(env: WabaMessagingEnv, row: Row): Promise<WabaCredential | null> {
   const encrypted = text(row.encrypted_payload);
   const iv = text(row.iv);
-  if (!encrypted || !iv) return null;
+  const companyId = text(row.company_id);
+  if (!encrypted || !iv || !companyId) return null;
   const secret = text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt']);
@@ -86,6 +86,7 @@ async function decryptCredential(env: WabaMessagingEnv, row: Row): Promise<WabaC
   const phoneNumberId = text(payload.phoneNumberId);
   if (!accessToken || !phoneNumberId) return null;
   return {
+    companyId,
     accessToken,
     phoneNumberId,
     wabaId: text(payload.wabaId),
@@ -93,8 +94,9 @@ async function decryptCredential(env: WabaMessagingEnv, row: Row): Promise<WabaC
   };
 }
 
-async function listWabaCredentials(env: WabaMessagingEnv): Promise<WabaCredential[]> {
-  const rows = await db<Row[]>(env, 'integration_credentials?provider=eq.waba&status=eq.connected&select=encrypted_payload,iv');
+async function listWabaCredentials(env: WabaMessagingEnv, companyId?: string): Promise<WabaCredential[]> {
+  const companyFilter = companyId ? `&company_id=eq.${encodeURIComponent(companyId)}` : '';
+  const rows = await db<Row[]>(env, `integration_credentials?provider=eq.waba&status=eq.connected&user_id=is.null${companyFilter}&select=company_id,encrypted_payload,iv`);
   const credentials: WabaCredential[] = [];
   for (const row of rows) {
     try {
@@ -107,12 +109,15 @@ async function listWabaCredentials(env: WabaMessagingEnv): Promise<WabaCredentia
   return credentials;
 }
 
-async function findCredential(env: WabaMessagingEnv, phoneNumberId?: string): Promise<WabaCredential> {
-  const credentials = await listWabaCredentials(env);
-  const selected = phoneNumberId
-    ? credentials.find((item) => item.phoneNumberId === phoneNumberId)
-    : credentials[0];
-  if (!selected) throw new Error('Подключённая WABA не найдена');
+async function findCredential(env: WabaMessagingEnv, options: { phoneNumberId?: string; companyId?: string } = {}): Promise<WabaCredential> {
+  const credentials = await listWabaCredentials(env, options.companyId);
+  const selected = options.phoneNumberId
+    ? credentials.find((item) => item.phoneNumberId === options.phoneNumberId)
+    : credentials.length === 1 ? credentials[0] : undefined;
+  if (!selected) {
+    if (options.companyId && credentials.length > 1) throw new Error('У клиники несколько WABA credentials. Нужен Phone Number ID.');
+    throw new Error('Подключённая WABA для клиники не найдена');
+  }
   return selected;
 }
 
@@ -210,20 +215,20 @@ async function upsertLead(env: WabaMessagingEnv, companyId: string, phone: strin
     updated_at: now,
   };
   const rows = existing[0]?.id
-    ? await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(text(existing[0].id))}&select=*`, { method: 'PATCH', body: JSON.stringify(patch) })
-    : await db<Row[]>(env, 'marketing_leads?select=*', { method: 'POST', body: JSON.stringify({ ...patch, external_id: `waba:${phone}` }) });
+    ? await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(text(existing[0].id))}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(patch) })
+    : await db<Row[]>(env, 'marketing_leads?select=*', { method: 'POST', body: JSON.stringify({ ...patch, external_id: `waba:${companyId}:${phone}` }) });
   if (!rows[0]) throw new Error('Не удалось создать карточку WhatsApp-лида');
   return rows[0];
 }
 
-async function ensureConversation(env: WabaMessagingEnv, lead: Row, phone: string, name: string): Promise<Row> {
+async function ensureConversation(env: WabaMessagingEnv, companyId: string, lead: Row, phone: string, name: string): Promise<Row> {
   const leadId = text(lead.id);
-  const existing = await db<Row[]>(env, `marketing_conversations?lead_id=eq.${encodeURIComponent(leadId)}&channel=eq.WHATSAPP&archived_at=is.null&select=*&order=updated_at.desc&limit=1`);
+  const existing = await db<Row[]>(env, `marketing_conversations?company_id=eq.${encodeURIComponent(companyId)}&lead_id=eq.${encodeURIComponent(leadId)}&channel=eq.WHATSAPP&archived_at=is.null&select=*&order=updated_at.desc&limit=1`);
   if (existing[0]) return existing[0];
   const now = new Date().toISOString();
   const rows = await db<Row[]>(env, 'marketing_conversations?select=*', {
     method: 'POST',
-    body: JSON.stringify({ lead_id: leadId, contact_id: leadId, title: name || phone, phone, channel: 'WHATSAPP', status: 'OPEN', unread_count: 0, last_message_at: now, created_at: now, updated_at: now }),
+    body: JSON.stringify({ company_id: companyId, lead_id: leadId, contact_id: leadId, title: name || phone, phone, channel: 'WHATSAPP', status: 'OPEN', unread_count: 0, last_message_at: now, created_at: now, updated_at: now }),
   });
   if (!rows[0]) throw new Error('Не удалось создать WhatsApp-диалог');
   return rows[0];
@@ -232,7 +237,7 @@ async function ensureConversation(env: WabaMessagingEnv, lead: Row, phone: strin
 async function saveInboundMessage(env: WabaMessagingEnv, credential: WabaCredential, conversation: Row, message: Row, senderName: string): Promise<void> {
   const messageId = text(message.id);
   if (!messageId) return;
-  const duplicate = await db<Row[]>(env, `marketing_messages?external_message_id=eq.${encodeURIComponent(messageId)}&select=id&limit=1`);
+  const duplicate = await db<Row[]>(env, `marketing_messages?company_id=eq.${encodeURIComponent(credential.companyId)}&external_message_id=eq.${encodeURIComponent(messageId)}&select=id&limit=1`);
   if (duplicate.length) return;
   const type = text(message.type);
   const media = record(message[type]);
@@ -246,13 +251,14 @@ async function saveInboundMessage(env: WabaMessagingEnv, credential: WabaCredent
     attachmentName = safeFilename(text(media.filename) || downloaded.filename);
     attachmentMimeType = downloaded.mimeType;
     attachmentSizeBytes = downloaded.bytes.byteLength;
-    attachmentPath = `${text(conversation.id)}/${crypto.randomUUID()}-${attachmentName}`;
+    attachmentPath = `${credential.companyId}/${text(conversation.id)}/${crypto.randomUUID()}-${attachmentName}`;
     await storageUpload(env, attachmentPath, downloaded.bytes, attachmentMimeType);
   }
   const sentAt = new Date(number(message.timestamp) * 1000 || Date.now()).toISOString();
   await db<Row[]>(env, 'marketing_messages?select=id', {
     method: 'POST',
     body: JSON.stringify({
+      company_id: credential.companyId,
       conversation_id: text(conversation.id),
       body: inboundBody(message) || (attachmentName ? `Вложение: ${attachmentName}` : '[WhatsApp сообщение]'),
       direction: 'INBOUND',
@@ -264,11 +270,11 @@ async function saveInboundMessage(env: WabaMessagingEnv, credential: WabaCredent
       attachment_name: attachmentName,
       attachment_mime_type: attachmentMimeType,
       attachment_size_bytes: attachmentSizeBytes,
-      metadata: { whatsapp: message, referral: message.referral || null },
+      metadata: { whatsapp: message, referral: message.referral || null, waba_phone_number_id: credential.phoneNumberId },
       created_at: sentAt,
     }),
   });
-  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(text(conversation.id))}&select=id`, {
+  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(text(conversation.id))}&company_id=eq.${encodeURIComponent(credential.companyId)}&select=id`, {
     method: 'PATCH',
     body: JSON.stringify({ last_message_at: sentAt, updated_at: sentAt, status: 'OPEN', unread_count: number(conversation.unread_count) + 1 }),
   });
@@ -290,7 +296,6 @@ async function handleInboundWebhook(request: Request, env: WabaMessagingEnv): Pr
     if (!secureEqual(supplied, expected)) return json({ error: 'Invalid Meta signature' }, 401);
   }
   const payload = record(JSON.parse(body || '{}'));
-  const companyId = await resolveCompanyId(env);
   let processed = 0;
   const entries = Array.isArray(payload.entry) ? payload.entry.map(record) : [];
   for (const entry of entries) {
@@ -299,7 +304,9 @@ async function handleInboundWebhook(request: Request, env: WabaMessagingEnv): Pr
       const value = record(change.value);
       const metadata = record(value.metadata);
       const phoneNumberId = text(metadata.phone_number_id);
-      const credential = await findCredential(env, phoneNumberId);
+      if (!phoneNumberId) continue;
+      const credential = await findCredential(env, { phoneNumberId });
+      const companyId = credential.companyId;
       const contacts = Array.isArray(value.contacts) ? value.contacts.map(record) : [];
       const contactMap = new Map(contacts.map((contact) => [text(contact.wa_id), text(record(contact.profile).name)]));
       const messages = Array.isArray(value.messages) ? value.messages.map(record) : [];
@@ -308,7 +315,7 @@ async function handleInboundWebhook(request: Request, env: WabaMessagingEnv): Pr
         if (!phone) continue;
         const name = contactMap.get(phone) || phone;
         const lead = await upsertLead(env, companyId, phone, name, message);
-        const conversation = await ensureConversation(env, lead, phone, name);
+        const conversation = await ensureConversation(env, companyId, lead, phone, name);
         await saveInboundMessage(env, credential, conversation, message, name);
         processed += 1;
       }
@@ -334,13 +341,15 @@ async function sendOutboundMessage(env: WabaMessagingEnv, request: Request, thre
   const conversations = await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=*&limit=1`);
   const conversation = conversations[0];
   if (!conversation || text(conversation.channel) !== 'WHATSAPP') return null;
+  const companyId = text(conversation.company_id);
+  if (!companyId) return json({ error: 'У WhatsApp-диалога не определена клиника' }, 409);
   const input = record(await request.json().catch(() => ({})));
   const body = text(input.body);
   const attachment = record(input.attachment);
   if (!body && !text(attachment.base64)) return json({ error: 'Сообщение и вложение отсутствуют' }, 400);
   const phone = text(conversation.phone).replace(/\D/g, '');
   if (!phone) return json({ error: 'В WhatsApp-диалоге не указан телефон' }, 400);
-  const credential = await findCredential(env);
+  const credential = await findCredential(env, { companyId });
   const sentAt = new Date().toISOString();
   let attachmentPath: string | null = null;
   let attachmentName: string | null = null;
@@ -354,7 +363,7 @@ async function sendOutboundMessage(env: WabaMessagingEnv, request: Request, thre
     attachmentName = safeFilename(text(attachment.name) || 'attachment');
     attachmentMimeType = text(attachment.mimeType) || 'application/octet-stream';
     attachmentSizeBytes = bytes.byteLength;
-    attachmentPath = `${threadId}/${crypto.randomUUID()}-${attachmentName}`;
+    attachmentPath = `${companyId}/${threadId}/${crypto.randomUUID()}-${attachmentName}`;
     await storageUpload(env, attachmentPath, bytes.buffer, attachmentMimeType);
     const mediaId = await uploadOutboundMedia(env, credential, attachmentPath, attachmentName, attachmentMimeType);
     whatsappType = attachmentMimeType.startsWith('image/') ? 'image'
@@ -373,6 +382,7 @@ async function sendOutboundMessage(env: WabaMessagingEnv, request: Request, thre
   const rows = await db<Row[]>(env, 'marketing_messages?select=*', {
     method: 'POST',
     body: JSON.stringify({
+      company_id: companyId,
       conversation_id: threadId,
       body: body || (attachmentName ? `Вложение: ${attachmentName}` : ''),
       direction: 'OUTBOUND',
@@ -385,11 +395,11 @@ async function sendOutboundMessage(env: WabaMessagingEnv, request: Request, thre
       attachment_name: attachmentName,
       attachment_mime_type: attachmentMimeType,
       attachment_size_bytes: attachmentSizeBytes,
-      metadata: { whatsapp: result, whatsapp_type: whatsappType },
+      metadata: { whatsapp: result, whatsapp_type: whatsappType, waba_phone_number_id: credential.phoneNumberId },
       created_at: sentAt,
     }),
   });
-  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=id`, {
+  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
     method: 'PATCH', body: JSON.stringify({ last_message_at: sentAt, updated_at: sentAt, status: 'OPEN' }),
   });
   return json(rows[0] || { ok: true }, 201);
@@ -410,10 +420,11 @@ async function handleConversions(request: Request, env: WabaMessagingEnv): Promi
   const leads = await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(leadId)}&select=*&limit=1`);
   const lead = leads[0];
   if (!lead) return json({ error: 'Лид не найден' }, 404);
-  const credential = await findCredential(env).catch(() => null);
+  const companyId = text(lead.company_id);
+  if (!companyId) return json({ error: 'У лида не определена клиника' }, 409);
+  const credential = await findCredential(env, { companyId }).catch(() => null);
   const accessToken = text(env.META_ACCESS_TOKEN) || credential?.accessToken || '';
   if (!accessToken) return json({ error: 'Meta access token не настроен' }, 503);
-  const companyId = await resolveCompanyId(env);
   const eventId = text(input.eventId) || `lead:${leadId}:${eventName}:${Date.now()}`;
   const userData: Row = {};
   const phone = text(lead.phone).replace(/\D/g, '');
@@ -445,10 +456,10 @@ async function handleConversions(request: Request, env: WabaMessagingEnv): Promi
     const response = await graphJson(`https://graph.facebook.com/${graphVersion(env.META_GRAPH_VERSION)}/${encodeURIComponent(datasetId)}/events`, accessToken, {
       method: 'POST', body: JSON.stringify({ data: [event], ...(text(input.testEventCode) ? { test_event_code: text(input.testEventCode) } : {}) }),
     });
-    if (rowId) await db<Row[]>(env, `meta_conversion_events?id=eq.${encodeURIComponent(rowId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ status: 'sent', response, updated_at: new Date().toISOString() }) });
+    if (rowId) await db<Row[]>(env, `meta_conversion_events?id=eq.${encodeURIComponent(rowId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ status: 'sent', response, updated_at: new Date().toISOString() }) });
     return json({ ok: true, eventId, response });
   } catch (error) {
-    if (rowId) await db<Row[]>(env, `meta_conversion_events?id=eq.${encodeURIComponent(rowId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : String(error), updated_at: new Date().toISOString() }) });
+    if (rowId) await db<Row[]>(env, `meta_conversion_events?id=eq.${encodeURIComponent(rowId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : String(error), updated_at: new Date().toISOString() }) });
     throw error;
   }
 }
