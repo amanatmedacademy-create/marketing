@@ -17,6 +17,7 @@ import './integration-catalog.css';
 import './advertising-platform-cards.css';
 import './v36-dashboard-advanced.css';
 import './user-admin.css';
+import './call-center-chat-layout-fix.css';
 
 function Root() {
   const operatingSystem = window.location.pathname === '/operations';
