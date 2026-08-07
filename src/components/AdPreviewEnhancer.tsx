@@ -32,7 +32,7 @@ type PreviewResponse = {
 type AdIndexRow = { ad_id: string; ad_name: string; creative_name?: string };
 type AdIndexResponse = { rows?: AdIndexRow[] };
 type MetaPreviewFrame = { src: string; width?: number; height?: number };
-type Size = { width: number; height: number };
+type PreviewLayout = { width: number; height: number; scale: number };
 
 const modeLabels: Array<{ id: Mode; label: string; icon: typeof Monitor }> = [
   { id: 'desktop', label: 'Desktop', icon: Monitor },
@@ -96,11 +96,10 @@ function extractMetaPreviewFrame(html?: string): MetaPreviewFrame | null {
 
 function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mode }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const screenRef = useRef<HTMLDivElement>(null);
-  const intrinsicWidth = frame.width || (mode === 'desktop' ? 900 : mode === 'instagram' ? 500 : 360);
-  const intrinsicHeight = frame.height || (mode === 'desktop' ? 680 : mode === 'instagram' ? 760 : 720);
-  const [deviceSize, setDeviceSize] = useState<Size>({ width: mode === 'desktop' ? 520 : 360, height: mode === 'desktop' ? 360 : 700 });
-  const [contentScale, setContentScale] = useState(1);
+  const isDesktop = mode === 'desktop';
+  const intrinsicWidth = frame.width || (isDesktop ? 900 : mode === 'instagram' ? 500 : 360);
+  const intrinsicHeight = frame.height || (isDesktop ? 680 : mode === 'instagram' ? 760 : 720);
+  const [layout, setLayout] = useState<PreviewLayout>({ width: isDesktop ? 580 : 420, height: isDesktop ? 520 : 680, scale: 1 });
 
   useEffect(() => {
     const host = hostRef.current;
@@ -110,58 +109,29 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
       const rect = host.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
 
-      if (mode === 'desktop') {
-        const aspect = 1.55;
-        let width = Math.min(rect.width, 1040);
-        let height = width / aspect;
-        if (height > rect.height) {
-          height = rect.height;
-          width = Math.min(rect.width, height * aspect);
-        }
-        setDeviceSize({ width: Math.max(300, Math.floor(width)), height: Math.max(230, Math.floor(height)) });
-        return;
-      }
+      const border = isDesktop ? 2 : 16;
+      const chrome = isDesktop ? 36 : 52;
+      const maxWidth = isDesktop ? 590 : 440;
+      const minWidth = isDesktop ? 320 : 280;
+      const width = Math.max(minWidth, Math.min(rect.width - 2, maxWidth));
+      const screenWidth = Math.max(1, width - border);
+      const scale = Math.max(0.1, Math.min(screenWidth / intrinsicWidth, isDesktop ? 1.15 : 1.25));
+      const naturalHeight = Math.ceil(intrinsicHeight * scale + chrome + border);
+      const height = Math.max(isDesktop ? 240 : 360, Math.min(rect.height - 2, naturalHeight));
 
-      const aspect = mode === 'instagram' ? 0.53 : 0.515;
-      let height = Math.min(rect.height, 780);
-      let width = height * aspect;
-      if (width > rect.width) {
-        width = rect.width;
-        height = width / aspect;
-      }
-      setDeviceSize({ width: Math.max(250, Math.floor(width)), height: Math.max(500, Math.floor(height)) });
+      setLayout({ width: Math.floor(width), height: Math.floor(height), scale });
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);
     return () => observer.disconnect();
-  }, [mode]);
-
-  useEffect(() => {
-    const screen = screenRef.current;
-    if (!screen) return;
-
-    const measure = () => {
-      const rect = screen.getBoundingClientRect();
-      if (!rect.width) return;
-      const maxScale = mode === 'desktop' ? 1.35 : 1.05;
-      const nextScale = Math.min(rect.width / intrinsicWidth, maxScale);
-      setContentScale(Math.max(0.1, nextScale));
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(screen);
-    return () => observer.disconnect();
-  }, [deviceSize, intrinsicWidth, mode]);
-
-  const isDesktop = mode === 'desktop';
+  }, [intrinsicHeight, intrinsicWidth, isDesktop]);
 
   return <div className="ad-preview-device-host" ref={hostRef}>
     <div
       className={`ad-preview-device ${isDesktop ? 'device-desktop' : 'device-phone'} mode-${mode}`}
-      style={{ width: deviceSize.width, height: deviceSize.height }}
+      style={{ width: layout.width, height: layout.height }}
     >
       {isDesktop ? <div className="ad-preview-desktop-chrome">
         <div className="ad-preview-window-dots"><i/><i/><i/></div>
@@ -171,10 +141,10 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
         <span className="ad-preview-phone-speaker"/>
         <span className="ad-preview-phone-status">● ●</span>
       </div>}
-      <div className="ad-preview-device-screen" ref={screenRef}>
+      <div className="ad-preview-device-screen">
         <div
           className="ad-preview-native-content"
-          style={{ width: intrinsicWidth * contentScale, height: intrinsicHeight * contentScale }}
+          style={{ width: intrinsicWidth * layout.scale, height: intrinsicHeight * layout.scale }}
         >
           <iframe
             className="ad-preview-native-frame"
@@ -182,7 +152,7 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
             referrerPolicy="no-referrer"
             src={frame.src}
-            style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${contentScale})` }}
+            style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${layout.scale})` }}
           />
         </div>
       </div>
