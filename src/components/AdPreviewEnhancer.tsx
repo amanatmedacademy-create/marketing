@@ -32,11 +32,12 @@ type PreviewResponse = {
 type AdIndexRow = { ad_id: string; ad_name: string; creative_name?: string };
 type AdIndexResponse = { rows?: AdIndexRow[] };
 type MetaPreviewFrame = { src: string; width?: number; height?: number };
+type Size = { width: number; height: number };
 
 const modeLabels: Array<{ id: Mode; label: string; icon: typeof Monitor }> = [
   { id: 'desktop', label: 'Desktop', icon: Monitor },
-  { id: 'mobile', label: 'Mobile', icon: Smartphone },
   { id: 'instagram', label: 'Instagram', icon: ImageIcon },
+  { id: 'mobile', label: 'Mobile', icon: Smartphone },
 ];
 
 function normalize(value: string) {
@@ -93,11 +94,13 @@ function extractMetaPreviewFrame(html?: string): MetaPreviewFrame | null {
   } catch { return null; }
 }
 
-function FittedMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Exclude<Mode, 'desktop'> }) {
+function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mode }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const intrinsicWidth = frame.width || (mode === 'instagram' ? 500 : 360);
-  const intrinsicHeight = frame.height || (mode === 'instagram' ? 650 : 640);
-  const [scale, setScale] = useState(1);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const intrinsicWidth = frame.width || (mode === 'desktop' ? 900 : mode === 'instagram' ? 500 : 360);
+  const intrinsicHeight = frame.height || (mode === 'desktop' ? 680 : mode === 'instagram' ? 760 : 720);
+  const [deviceSize, setDeviceSize] = useState<Size>({ width: mode === 'desktop' ? 520 : 360, height: mode === 'desktop' ? 360 : 700 });
+  const [contentScale, setContentScale] = useState(1);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -106,29 +109,84 @@ function FittedMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Exc
     const measure = () => {
       const rect = host.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
-      const nextScale = Math.min(rect.width / intrinsicWidth, rect.height / intrinsicHeight, 1);
-      setScale(Math.max(0.1, nextScale));
+
+      if (mode === 'desktop') {
+        const aspect = 1.55;
+        let width = Math.min(rect.width, 1040);
+        let height = width / aspect;
+        if (height > rect.height) {
+          height = rect.height;
+          width = Math.min(rect.width, height * aspect);
+        }
+        setDeviceSize({ width: Math.max(300, Math.floor(width)), height: Math.max(230, Math.floor(height)) });
+        return;
+      }
+
+      const aspect = mode === 'instagram' ? 0.53 : 0.515;
+      let height = Math.min(rect.height, 780);
+      let width = height * aspect;
+      if (width > rect.width) {
+        width = rect.width;
+        height = width / aspect;
+      }
+      setDeviceSize({ width: Math.max(250, Math.floor(width)), height: Math.max(500, Math.floor(height)) });
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);
     return () => observer.disconnect();
-  }, [intrinsicHeight, intrinsicWidth]);
+  }, [mode]);
 
-  return <div className="ad-preview-native-host" ref={hostRef}>
+  useEffect(() => {
+    const screen = screenRef.current;
+    if (!screen) return;
+
+    const measure = () => {
+      const rect = screen.getBoundingClientRect();
+      if (!rect.width) return;
+      const maxScale = mode === 'desktop' ? 1.35 : 1.05;
+      const nextScale = Math.min(rect.width / intrinsicWidth, maxScale);
+      setContentScale(Math.max(0.1, nextScale));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(screen);
+    return () => observer.disconnect();
+  }, [deviceSize, intrinsicWidth, mode]);
+
+  const isDesktop = mode === 'desktop';
+
+  return <div className="ad-preview-device-host" ref={hostRef}>
     <div
-      className="ad-preview-native-viewport"
-      style={{ width: intrinsicWidth * scale, height: intrinsicHeight * scale }}
+      className={`ad-preview-device ${isDesktop ? 'device-desktop' : 'device-phone'} mode-${mode}`}
+      style={{ width: deviceSize.width, height: deviceSize.height }}
     >
-      <iframe
-        className="ad-preview-native-frame"
-        title="Meta ad preview"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-        referrerPolicy="no-referrer"
-        src={frame.src}
-        style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${scale})` }}
-      />
+      {isDesktop ? <div className="ad-preview-desktop-chrome">
+        <div className="ad-preview-window-dots"><i/><i/><i/></div>
+        <div className="ad-preview-address">Meta Ads Preview</div>
+      </div> : <div className="ad-preview-phone-chrome">
+        <span className="ad-preview-phone-time">9:41</span>
+        <span className="ad-preview-phone-speaker"/>
+        <span className="ad-preview-phone-status">● ●</span>
+      </div>}
+      <div className="ad-preview-device-screen" ref={screenRef}>
+        <div
+          className="ad-preview-native-content"
+          style={{ width: intrinsicWidth * contentScale, height: intrinsicHeight * contentScale }}
+        >
+          <iframe
+            className="ad-preview-native-frame"
+            title="Meta ad preview"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            referrerPolicy="no-referrer"
+            src={frame.src}
+            style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${contentScale})` }}
+          />
+        </div>
+      </div>
+      {!isDesktop && <div className="ad-preview-phone-home"><span/></div>}
     </div>
   </div>;
 }
@@ -245,7 +303,7 @@ export default function AdPreviewEnhancer() {
   const content = preview?.content;
   const destinationUrl = safeExternalUrl(content?.destinationUrl);
   const cta = useMemo(() => content?.callToAction?.replace(/_/g, ' ') || 'Подробнее', [content?.callToAction]);
-  const nativeFrame = useMemo(() => mode === 'desktop' ? null : extractMetaPreviewFrame(preview?.previewHtml), [mode, preview?.previewHtml]);
+  const nativeFrame = useMemo(() => extractMetaPreviewFrame(preview?.previewHtml), [preview?.previewHtml]);
 
   if (!adId) return null;
 
@@ -264,7 +322,7 @@ export default function AdPreviewEnhancer() {
       <section className={`ad-preview-stage mode-${mode}`}>
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
-        {!loading && !error && preview?.previewHtml && nativeFrame && mode !== 'desktop' && <FittedMetaPreview frame={nativeFrame} mode={mode}/>} 
+        {!loading && !error && preview?.previewHtml && nativeFrame && <DeviceMetaPreview frame={nativeFrame} mode={mode}/>} 
         {!loading && !error && preview?.previewHtml && !nativeFrame && <iframe className="ad-preview-srcdoc-frame" title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" srcDoc={preview.previewHtml}/>} 
         {!loading && !error && !preview?.previewHtml && content && <article className="ad-preview-fallback">
           <header><div className="ad-preview-page">AM</div><div><strong>{content.pageId ? `Страница ${content.pageId}` : 'Meta Ads'}</strong><span>Реклама · 🌐</span></div></header>
