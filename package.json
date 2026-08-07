@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false && tsc -p tsconfig.worker.json --pretty false",
     "deploy": "bun run build && wrangler deploy",
-    "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
+    "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY",
+    "cf:secret:meta-system-user-id": "wrangler secret put META_SYSTEM_USER_ID",
+    "cf:secret:meta-system-user-token": "wrangler secret put META_SYSTEM_USER_ACCESS_TOKEN",
+    "cf:secrets:waba-tech-provider": "wrangler secret put META_SYSTEM_USER_ID && wrangler secret put META_SYSTEM_USER_ACCESS_TOKEN"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
