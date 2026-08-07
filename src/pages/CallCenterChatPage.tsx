@@ -3,15 +3,18 @@ import {
   createChatThread,
   fetchChatMessages,
   fetchChatWorkspace,
+  fetchWhatsAppTemplates,
   getChatAttachmentUrl,
   markChatThreadRead,
   sendChatMessage,
+  sendWhatsAppTemplate,
   updateChatThread,
   type ChatAttachmentInput,
   type ChatMessage,
   type ChatStatus,
   type ChatThread,
-  type ChatUser
+  type ChatUser,
+  type WhatsAppTemplate
 } from '../services/callCenterChat';
 import '../call-center-chat.css';
 
@@ -74,6 +77,15 @@ function bytesLabel(value?: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} МБ`;
 }
 
+function outboundStatusLabel(status: string): string {
+  const normalized = status.toUpperCase();
+  if (normalized === 'READ') return '✓✓ Прочитано';
+  if (normalized === 'DELIVERED') return '✓✓ Доставлено';
+  if (normalized === 'FAILED') return 'Не доставлено';
+  if (normalized === 'SENT') return '✓ Отправлено';
+  return normalized || 'Отправлено';
+}
+
 function messagesAreEqual(current: ChatMessage[], next: ChatMessage[]): boolean {
   if (current.length !== next.length) return false;
   return current.every((message, index) => {
@@ -122,6 +134,8 @@ export function CallCenterChatPage() {
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [newThread, setNewThread] = useState<NewThreadDraft>(emptyThreadDraft);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsAppTemplate[]>([]);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('list');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -272,6 +286,7 @@ export function CallCenterChatPage() {
     setSelectedId(threadId);
     setMobilePanel('chat');
     setTemplatesOpen(false);
+    setWhatsappTemplates([]);
     setAttachment(null);
     setActionError('');
   };
@@ -293,6 +308,54 @@ export function CallCenterChatPage() {
       void refreshLive();
     } catch (nextError) {
       setActionError(nextError instanceof Error ? nextError.message : 'Не удалось отправить сообщение');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const openTemplates = async () => {
+    if (!selected) return;
+    if (selected.channel !== 'WHATSAPP') {
+      setTemplatesOpen((current) => !current);
+      return;
+    }
+    if (templatesOpen) {
+      setTemplatesOpen(false);
+      return;
+    }
+    setTemplatesOpen(true);
+    if (whatsappTemplates.length) return;
+    setTemplateLoading(true);
+    setActionError('');
+    try {
+      setWhatsappTemplates(await fetchWhatsAppTemplates(selected.id));
+    } catch (nextError) {
+      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить WhatsApp-шаблоны');
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
+  const sendTemplate = async (template: WhatsAppTemplate) => {
+    if (!selected || sending) return;
+    const parameters: string[] = [];
+    for (let index = 1; index <= template.parameterCount; index += 1) {
+      const value = window.prompt(`Значение для {{${index}}} в шаблоне ${template.name}:`, '')?.trim() || '';
+      if (!value) return;
+      parameters.push(value);
+    }
+    setSending(true);
+    setActionError('');
+    try {
+      const saved = await sendWhatsAppTemplate(selected.id, template, parameters, 'Оператор');
+      setMessages((current) => current.some((message) => message.id === saved.id) ? current : [...current, saved]);
+      setThreads((current) => current.map((thread) => thread.id === selected.id
+        ? { ...thread, lastMessageAt: saved.sentAt, lastMessage: saved, status: 'OPEN' as const }
+        : thread));
+      setTemplatesOpen(false);
+      void refreshLive();
+    } catch (nextError) {
+      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось отправить WhatsApp-шаблон');
     } finally {
       setSending(false);
     }
@@ -438,7 +501,7 @@ export function CallCenterChatPage() {
                     <header><strong>{message.senderName || (message.direction === 'OUTBOUND' ? 'Оператор' : selectedContact?.fullName || 'Клиент')}</strong></header>
                     <p>{message.body}</p>
                     {message.hasAttachment && <a className="inbox-attachment" href={getChatAttachmentUrl(message.id)} target="_blank" rel="noreferrer"><span>📎</span><div><strong>{message.attachmentName || 'Вложение'}</strong><small>{message.attachmentMimeType || 'Файл'} {bytesLabel(message.attachmentSizeBytes)}</small></div></a>}
-                    <footer><time>{formatMessageTime(message.sentAt)}</time><span>{message.direction === 'OUTBOUND' ? '✓✓' : message.readAt ? 'Прочитано' : 'Новое'}</span></footer>
+                    <footer><time>{formatMessageTime(message.sentAt)}</time><span>{message.direction === 'OUTBOUND' ? outboundStatusLabel(message.status) : message.readAt ? 'Прочитано' : 'Новое'}</span></footer>
                   </article>
                 </div>;
               })}
@@ -448,11 +511,12 @@ export function CallCenterChatPage() {
 
             <form className="inbox-compose" onSubmit={(event) => void send(event)}>
               <div className="inbox-quick-replies">{QUICK_REPLIES.slice(0, 3).map((reply) => <button type="button" key={reply} onClick={() => setText(reply)}>{reply}</button>)}</div>
+              {selected.channel === 'WHATSAPP' && <small>Если клиент не писал последние 24 часа, отправьте одобренный шаблон через кнопку ▤.</small>}
               {attachment && <div className="inbox-attachment-draft"><span>📎</span><div><strong>{attachment.name}</strong><small>{attachment.mimeType} · {bytesLabel(attachment.sizeBytes)}</small></div><button type="button" onClick={() => setAttachment(null)}>×</button></div>}
               <div className="inbox-input-row">
                 <input ref={fileInputRef} type="file" hidden accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,.docx" onChange={(event) => void chooseFile(event)} />
                 <button className="inbox-icon-button" type="button" onClick={() => fileInputRef.current?.click()} title="Прикрепить файл">📎</button>
-                <div className="inbox-template-wrap"><button className="inbox-icon-button" type="button" onClick={() => setTemplatesOpen((current) => !current)} title="Шаблоны">▤</button>{templatesOpen && <div className="inbox-template-menu">{QUICK_REPLIES.map((reply) => <button type="button" key={reply} onClick={() => { setText(reply); setTemplatesOpen(false); }}>{reply}</button>)}</div>}</div>
+                <div className="inbox-template-wrap"><button className="inbox-icon-button" type="button" onClick={() => void openTemplates()} title={selected.channel === 'WHATSAPP' ? 'Одобренные WhatsApp-шаблоны' : 'Шаблоны'}>▤</button>{templatesOpen && <div className="inbox-template-menu">{selected.channel === 'WHATSAPP' ? <>{templateLoading && <span>Загрузка шаблонов…</span>}{!templateLoading && !whatsappTemplates.length && <span>Одобренных шаблонов нет</span>}{whatsappTemplates.map((template) => <button type="button" key={`${template.name}:${template.language}`} onClick={() => void sendTemplate(template)}><strong>{template.name}</strong><small>{template.language} · {template.category || 'template'}</small><span>{template.body}</span></button>)}</> : QUICK_REPLIES.map((reply) => <button type="button" key={reply} onClick={() => { setText(reply); setTemplatesOpen(false); }}>{reply}</button>)}</div>}</div>
                 <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Напишите сообщение." rows={1} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
                 <button className="inbox-ai-button" type="button" onClick={makeAiDraft} title="Подготовить ответ по контексту">AI</button>
                 <button className="inbox-send-button" disabled={sending || (!text.trim() && !attachment)}>{sending ? '…' : '➤'}</button>
