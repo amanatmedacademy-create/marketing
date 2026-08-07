@@ -1,8 +1,9 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
+import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 
-type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string };
+type SecuredEnv = AuthEnv & ZadarmaTelephonyEnv & { FRONTEND_ADMIN_KEY?: string };
 
 function secureEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
@@ -37,6 +38,8 @@ export default {
         if (denied) return denied;
       }
     }
+    const telephonyResponse = await handleZadarmaTelephony(request, env, url);
+    if (telephonyResponse) return telephonyResponse;
     return app.fetch(request, env, ctx);
   },
 

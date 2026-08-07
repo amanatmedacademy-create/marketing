@@ -16,6 +16,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { marketingApi, type MarketingCall, type MarketingCallOperatorSummary } from '../services/api';
+import { telephonyApi, type TelephonyStatus } from '../services/telephony';
 import '../calls.css';
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
@@ -43,6 +44,10 @@ function editablePhone(value: string): string {
   return `${hasLeadingPlus ? '+' : ''}${withoutExtraPlus}`;
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function yesNo(value?: boolean | null) {
   if (value === true) return <span className="call-check call-check--yes"><CheckCircle2 size={14}/> Да</span>;
   if (value === false) return <span className="call-check call-check--no"><XCircle size={14}/> Нет</span>;
@@ -66,6 +71,7 @@ export default function Calls() {
   const [operator, setOperator] = useState('Все операторы');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
   const [dialNumber, setDialNumber] = useState('');
   const [dialState, setDialState] = useState<DialState>('idle');
   const [dialMessage, setDialMessage] = useState('');
@@ -86,6 +92,9 @@ export default function Calls() {
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : 'Ошибка загрузки'))
       .finally(() => active && setLoading(false));
+    telephonyApi.status()
+      .then((status) => { if (active) setTelephony(status); })
+      .catch(() => { if (active) setTelephony(null); });
     return () => { active = false; };
   }, []);
 
@@ -139,12 +148,25 @@ export default function Calls() {
     setDialMessage('');
   };
 
-  const startCall = () => {
+  const startCall = async () => {
     const normalized = normalizePhone(dialNumber);
     if (normalized.replace(/\D/g, '').length < 10) return;
     setDialNumber(formatPhone(normalized));
-    setDialMessage('Телефония пока не подключена. Выберите провайдера в разделе «Интеграции».');
-    setDialState('ready');
+    if (!telephony?.configured) {
+      setDialMessage('Zadarma пока не настроена. Добавьте API key, API secret и внутренний номер АТС в Cloudflare.');
+      setDialState('ready');
+      return;
+    }
+    setDialState('calling');
+    setDialMessage('Отправляем вызов в Zadarma…');
+    try {
+      const result = await telephonyApi.startCall(normalized);
+      setDialMessage(`Вызов отправлен. Ответьте на линии ${result.extension}, затем Zadarma соединит вас с ${formatPhone(normalized)}.`);
+      setDialState('ready');
+    } catch (reason) {
+      setDialMessage(errorText(reason));
+      setDialState('ready');
+    }
   };
 
   const endCall = () => {
@@ -214,7 +236,7 @@ export default function Calls() {
     {dialerOpen && <section className={`phone-dialer-widget ${dialerMinimized ? 'minimized' : ''}`} aria-label="Телефонная звонилка">
       <header className="phone-dialer-header">
         <div className="phone-dialer-speaker" aria-hidden="true"/>
-        <div><Smartphone/><span><strong>IMDS Phone</strong><small>{dialState === 'active' ? 'Разговор' : 'Готов к работе'}</small></span></div>
+        <div><Smartphone/><span><strong>IMDS Phone</strong><small>{telephony?.configured ? 'Zadarma подключена' : 'Линия не настроена'}</small></span></div>
         <nav>
           <button type="button" title={dialerMinimized ? 'Развернуть' : 'Свернуть'} onClick={() => setDialerMinimized((value) => !value)}><Minus/></button>
           <button type="button" title="Закрыть" onClick={closeDialer}><X/></button>
@@ -222,12 +244,14 @@ export default function Calls() {
       </header>
 
       {!dialerMinimized && <div className="phone-dialer-body">
-        <select className="phone-line-select" aria-label="Исходящая линия" defaultValue="not-connected">
-          <option value="not-connected">Линия не подключена</option>
+        <select className="phone-line-select" aria-label="Исходящая линия" value={telephony?.configured ? 'zadarma' : 'not-connected'} disabled>
+          {telephony?.configured
+            ? <option value="zadarma">Zadarma · линия {telephony.extension}</option>
+            : <option value="not-connected">Линия не подключена</option>}
         </select>
 
         <div className="phone-number-screen">
-          <small>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Соединение…' : 'Введите номер'}</small>
+          <small>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Отправляем вызов…' : 'Введите номер'}</small>
           <input
             inputMode="tel"
             autoComplete="tel"
@@ -250,14 +274,14 @@ export default function Calls() {
         <div className="phone-call-controls">
           <button type="button" className="phone-mute" disabled={dialState !== 'active'} onClick={() => setMuted((value) => !value)} title="Микрофон">{muted ? <MicOff/> : <Mic/>}</button>
           {dialState !== 'active'
-            ? <button type="button" className="phone-start-call" disabled={dialState === 'idle'} onClick={startCall} title="Позвонить"><PhoneCall/></button>
+            ? <button type="button" className="phone-start-call" disabled={dialState === 'idle' || dialState === 'calling'} onClick={() => void startCall()} title="Позвонить"><PhoneCall/></button>
             : <button type="button" className="phone-end-call" onClick={endCall} title="Завершить"><PhoneOff/></button>}
           <a className="phone-settings" href="/integrations" title="Настройки телефонии"><Settings/></a>
         </div>
 
-        <div className="phone-call-status"><span>{dialState === 'active' ? 'Звонок идёт' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{muted ? 'Микрофон выключен' : 'Микрофон включён'}</small></div>
+        <div className="phone-call-status"><span>{dialState === 'calling' ? 'Запрос в Zadarma' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{telephony?.configured ? `Callback · ${telephony.extension}` : 'Телефония не настроена'}</small></div>
 
-        {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span><a href="/integrations">Подключить</a></div>}
+        {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span>{!telephony?.configured && <a href="/integrations">Подключить</a>}</div>}
 
         <div className="phone-recent-numbers">
           <header><strong>Недавние</strong><span>{Math.min(calls.length, 3)}</span></header>
