@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CalendarCheck2, CheckCircle2, Facebook, KeyRound, LoaderCircle, RotateCw, Send } from 'lucide-react';
+import WabaClinicBookingSetup from './WabaClinicBookingSetup';
 
 type FacebookLoginResponse = { status?: string; authResponse?: { code?: string } };
 type FacebookSdk = {
@@ -8,71 +9,38 @@ type FacebookSdk = {
 };
 type FacebookWindow = Window & typeof globalThis & { FB?: FacebookSdk; fbAsyncInit?: () => void };
 type SignupData = { wabaId?: string; phoneNumberId?: string };
-type WabaConnection = {
-  status?: string;
-  values?: SignupData;
-  lastVerifiedAt?: string | null;
-  lastError?: string | null;
-};
-type WabaConfig = {
-  configured?: boolean;
-  appId?: string;
-  version?: string;
-  configId?: string;
-  connected?: boolean;
-  connection?: WabaConnection | null;
-  error?: string;
-};
-type FlowsConfig = {
-  configured?: boolean;
-  endpointUrl?: string;
-  phoneNumberId?: string;
-  publicKeyUploaded?: boolean;
-  signatureStatus?: string | null;
-  uploadedAt?: string | null;
-  error?: string;
-};
+type WabaConnection = { status?: string; values?: SignupData; lastVerifiedAt?: string | null; lastError?: string | null };
+type WabaConfig = { configured?: boolean; appId?: string; version?: string; configId?: string; connected?: boolean; connection?: WabaConnection | null; error?: string };
+type FlowsConfig = { configured?: boolean; endpointUrl?: string; phoneNumberId?: string; publicKeyUploaded?: boolean; signatureStatus?: string | null; uploadedAt?: string | null; error?: string };
 type ClinicFlowConfig = {
   configured?: boolean;
   flowId?: string | null;
   name?: string;
   status?: string | null;
+  schemaVersion?: number;
+  requiredSchemaVersion?: number;
   endpointUrl?: string;
   updatedAt?: string | null;
   validationErrors?: unknown[];
   error?: string;
 };
-type ClinicTemplateConfig = {
-  configured?: boolean;
-  templateId?: string | null;
-  name?: string;
-  language?: string;
-  category?: string;
-  status?: string | null;
-  error?: string;
-};
+type ClinicTemplateConfig = { configured?: boolean; templateId?: string | null; name?: string; language?: string; category?: string; status?: string | null; error?: string };
 
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.text();
-  try {
-    return (body ? JSON.parse(body) : {}) as T;
-  } catch {
-    throw new Error(`Некорректный ответ WABA: HTTP ${response.status}`);
-  }
+  try { return (body ? JSON.parse(body) : {}) as T; }
+  catch { throw new Error(`Некорректный ответ WABA: HTTP ${response.status}`); }
 }
 
 async function loadSdk(config: WabaConfig): Promise<FacebookSdk> {
   if (!config.appId || !config.version) throw new Error('Facebook App для WABA не настроен');
   const target = window as FacebookWindow;
-
   const initialize = (): FacebookSdk => {
     if (!target.FB) throw new Error('Facebook SDK недоступен');
     target.FB.init({ appId: config.appId as string, cookie: true, xfbml: false, version: config.version as string });
     return target.FB;
   };
-
   if (target.FB) return initialize();
-
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (callback: () => void) => {
@@ -82,23 +50,15 @@ async function loadSdk(config: WabaConfig): Promise<FacebookSdk> {
       callback();
     };
     const timeout = window.setTimeout(() => finish(() => reject(new Error('Facebook SDK не загрузился за 15 секунд'))), 15000);
-    const ready = () => finish(() => {
-      try { resolve(initialize()); } catch (error) { reject(error); }
-    });
-
+    const ready = () => finish(() => { try { resolve(initialize()); } catch (error) { reject(error); } });
     const previous = target.fbAsyncInit;
-    target.fbAsyncInit = () => {
-      previous?.();
-      ready();
-    };
-
+    target.fbAsyncInit = () => { previous?.(); ready(); };
     const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
     if (existing) {
       existing.addEventListener('load', ready, { once: true });
       existing.addEventListener('error', () => finish(() => reject(new Error('Не удалось загрузить Facebook SDK'))), { once: true });
       return;
     }
-
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.async = true;
@@ -127,9 +87,7 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       const value = await readJson<ClinicFlowConfig>(response);
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setClinic(value);
-    } catch {
-      setClinic(null);
-    }
+    } catch { setClinic(null); }
   };
 
   const loadTemplate = async () => {
@@ -139,9 +97,7 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       const value = await readJson<ClinicTemplateConfig>(response);
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setTemplate(value);
-    } catch {
-      setTemplate(null);
-    }
+    } catch { setTemplate(null); }
   };
 
   const load = async () => {
@@ -153,82 +109,56 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       setConfig(value);
       setError('');
       await Promise.all([loadClinic(), loadTemplate()]);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    }
+    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : String(nextError)); }
   };
 
   useEffect(() => { void load(); }, [connected]);
 
   const setup = async () => {
-    setBusy(true);
-    setError('');
+    setBusy(true); setError('');
     try {
-      const response = await fetch('/api/integrations/waba/flows/setup', {
-        method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: '{}',
-      });
+      const response = await fetch('/api/integrations/waba/flows/setup', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: '{}' });
       const value = await readJson<FlowsConfig>(response);
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setConfig(value);
       await Promise.all([loadClinic(), loadTemplate()]);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    } finally {
-      setBusy(false);
-    }
+    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : String(nextError)); }
+    finally { setBusy(false); }
   };
 
   const createClinicTemplate = async () => {
-    setTemplateBusy(true);
-    setError('');
+    setTemplateBusy(true); setError('');
     try {
-      const response = await fetch('/api/integrations/waba/flows/clinic/template', {
-        method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: '{}',
-      });
+      const response = await fetch('/api/integrations/waba/flows/clinic/template', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: '{}' });
       const value = await readJson<ClinicTemplateConfig>(response);
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setTemplate(value);
       await loadTemplate();
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    } finally {
-      setTemplateBusy(false);
-    }
+    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : String(nextError)); }
+    finally { setTemplateBusy(false); }
   };
 
   const createClinicFlow = async () => {
-    setClinicBusy(true);
-    setError('');
+    setClinicBusy(true); setError('');
     try {
-      const response = await fetch('/api/integrations/waba/flows/clinic/create', {
-        method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: '{}',
-      });
+      const response = await fetch('/api/integrations/waba/flows/clinic/create', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: '{}' });
       const value = await readJson<ClinicFlowConfig>(response);
       if (!response.ok) {
-        const details = Array.isArray(value.validationErrors) && value.validationErrors.length
-          ? ` ${JSON.stringify(value.validationErrors).slice(0, 1200)}`
-          : '';
+        const details = Array.isArray(value.validationErrors) && value.validationErrors.length ? ` ${JSON.stringify(value.validationErrors).slice(0, 1200)}` : '';
         throw new Error(`${value.error || `HTTP ${response.status}`}${details}`);
       }
       setClinic(value);
       await loadClinic();
       await createClinicTemplate();
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    } finally {
-      setClinicBusy(false);
-    }
+    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : String(nextError)); }
+    finally { setClinicBusy(false); }
   };
 
   if (!connected) return null;
   const valid = config?.signatureStatus === 'VALID';
   const clinicPublished = clinic?.status === 'PUBLISHED' && Boolean(clinic.flowId);
+  const requiredSchema = clinic?.requiredSchemaVersion || 2;
+  const clinicCurrent = clinicPublished && (clinic?.schemaVersion || 1) >= requiredSchema;
   const templateApproved = template?.status === 'APPROVED';
 
   return <div className="waba-flows-setup" style={{ display: 'grid', gap: 8, marginTop: 10 }}>
@@ -237,12 +167,14 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       {busy ? 'Настраиваем WhatsApp Flows…' : valid ? 'Шифрование WhatsApp Flows настроено' : config?.configured ? 'Обновить ключ WhatsApp Flows' : 'Настроить WhatsApp Flows'}
     </button>
 
-    <button type="button" className="connections-button" onClick={() => void createClinicFlow()} disabled={!valid || busy || clinicBusy || templateBusy || clinicPublished}>
-      {clinicBusy ? <LoaderCircle size={16} className="spin"/> : clinicPublished ? <CheckCircle2 size={16}/> : <CalendarCheck2 size={16}/>} {' '}
-      {clinicBusy ? 'Создаём Flow записи…' : clinicPublished ? 'Flow «Запись в клинику» опубликован' : 'Создать Flow «Запись в клинику»'}
+    <WabaClinicBookingSetup enabled={valid}/>
+
+    <button type="button" className="connections-button" onClick={() => void createClinicFlow()} disabled={!valid || busy || clinicBusy || templateBusy || clinicCurrent}>
+      {clinicBusy ? <LoaderCircle size={16} className="spin"/> : clinicCurrent ? <CheckCircle2 size={16}/> : <CalendarCheck2 size={16}/>} {' '}
+      {clinicBusy ? 'Создаём Flow записи…' : clinicCurrent ? 'Flow записи с расписанием опубликован' : clinicPublished ? 'Обновить Flow: филиалы → врачи → слоты' : 'Создать Flow «Запись в клинику»'}
     </button>
 
-    {clinicPublished && <button type="button" className="connections-button" onClick={() => void createClinicTemplate()} disabled={busy || clinicBusy || templateBusy || templateApproved}>
+    {clinicCurrent && <button type="button" className="connections-button" onClick={() => void createClinicTemplate()} disabled={busy || clinicBusy || templateBusy || templateApproved}>
       {templateBusy ? <LoaderCircle size={16} className="spin"/> : templateApproved ? <CheckCircle2 size={16}/> : <Send size={16}/>} {' '}
       {templateBusy ? 'Создаём шаблон отправки…' : templateApproved ? 'Шаблон записи одобрен Meta' : template?.configured ? `Обновить статус шаблона · ${template.status || 'PENDING'}` : 'Создать шаблон отправки Flow'}
     </button>}
@@ -250,8 +182,8 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
     {!valid && <small className="meta-oauth-message">Сначала настройте шифрование Flows и дождитесь статуса Public key: VALID.</small>}
     {config?.endpointUrl && <small className="meta-oauth-message">Flow Endpoint: {config.endpointUrl}</small>}
     {config?.configured && <small className="meta-oauth-message">Public key: {valid ? 'VALID' : config.signatureStatus || 'загружен, ожидает проверки Meta'}</small>}
-    {clinicPublished && <small className="meta-oauth-message">Clinic Flow ID: {clinic?.flowId} · PUBLISHED. Заявки автоматически попадают в IMDS Marketing Leads.</small>}
-    {template?.configured && <small className="meta-oauth-message">Шаблон: {template.name} · {template.language} · {template.status || 'PENDING'}. После APPROVED он появится в меню «Шаблон» в WhatsApp-чате.</small>}
+    {clinicPublished && <small className="meta-oauth-message">Clinic Flow ID: {clinic.flowId} · schema v{clinic.schemaVersion || 1}/{requiredSchema}. Запись создаётся сразу после повторной проверки свободного слота.</small>}
+    {template?.configured && <small className="meta-oauth-message">Шаблон: {template.name} · {template.language} · {template.status || 'PENDING'}. После APPROVED он появится в меню «Шаблон».</small>}
     {error && <small className="meta-oauth-message"><AlertCircle size={14}/> {error}</small>}
   </div>;
 }
@@ -277,95 +209,42 @@ export default function WabaEmbeddedSignup() {
         signupRef.current = values;
         setSignup(values);
         setConnected(Boolean(config.connected));
-        if (config.connected) {
-          setMessage(`WABA подключена${values.phoneNumberId ? ` · номер ${values.phoneNumberId}` : ''}`);
-        } else if (!config.configured) {
-          setFailed(true);
-          setMessage(config.error || 'WABA Embedded Signup не настроен');
-        }
+        if (config.connected) setMessage(`WABA подключена${values.phoneNumberId ? ` · номер ${values.phoneNumberId}` : ''}`);
+        else if (!config.configured) { setFailed(true); setMessage(config.error || 'WABA Embedded Signup не настроен'); }
       })
-      .catch((error) => {
-        if (!active) return;
-        setFailed(true);
-        setMessage(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      .catch((error) => { if (active) { setFailed(true); setMessage(error instanceof Error ? error.message : String(error)); } })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
   const connect = async () => {
     if (busy) return;
-    setBusy(true);
-    setFailed(false);
-    setMessage(null);
-    signupRef.current = {};
-    codeRef.current = '';
-    submittingRef.current = false;
-    setSignup({});
-
+    setBusy(true); setFailed(false); setMessage(null); signupRef.current = {}; codeRef.current = ''; submittingRef.current = false; setSignup({});
     let missingSessionTimeout: number | undefined;
-
-    const cleanup = () => {
-      window.removeEventListener('message', receive);
-      if (missingSessionTimeout !== undefined) {
-        window.clearTimeout(missingSessionTimeout);
-        missingSessionTimeout = undefined;
-      }
-    };
-
+    const cleanup = () => { window.removeEventListener('message', receive); if (missingSessionTimeout !== undefined) window.clearTimeout(missingSessionTimeout); };
     const finishConnection = async () => {
       const code = codeRef.current;
       const identifiers = signupRef.current;
       if (!code || !identifiers.wabaId || submittingRef.current) return;
-
       submittingRef.current = true;
-      if (missingSessionTimeout !== undefined) {
-        window.clearTimeout(missingSessionTimeout);
-        missingSessionTimeout = undefined;
-      }
-      setMessage(identifiers.phoneNumberId
-        ? 'Завершаем подключение WhatsApp Business…'
-        : 'WABA получена. Определяем Phone Number ID через Meta…');
-
+      if (missingSessionTimeout !== undefined) window.clearTimeout(missingSessionTimeout);
+      setMessage(identifiers.phoneNumberId ? 'Завершаем подключение WhatsApp Business…' : 'WABA получена. Определяем Phone Number ID через Meta…');
       try {
-        const result = await fetch('/api/integrations/waba/connect', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId }),
-        });
+        const result = await fetch('/api/integrations/waba/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId }) });
         const value = await readJson<{ phoneNumberId?: string; error?: string }>(result);
         if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
         const phoneNumberId = value.phoneNumberId || identifiers.phoneNumberId;
         const next = { ...identifiers, phoneNumberId };
-        signupRef.current = next;
-        setSignup(next);
-        setConnected(true);
-        setMessage(`WABA подключена${phoneNumberId ? ` · номер ${phoneNumberId}` : ''}`);
-      } catch (error) {
-        setFailed(true);
-        setMessage(error instanceof Error ? error.message : String(error));
-      } finally {
-        submittingRef.current = false;
-        setBusy(false);
-        cleanup();
-      }
+        signupRef.current = next; setSignup(next); setConnected(true); setMessage(`WABA подключена${phoneNumberId ? ` · номер ${phoneNumberId}` : ''}`);
+      } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : String(error)); }
+      finally { submittingRef.current = false; setBusy(false); cleanup(); }
     };
-
     const scheduleMissingSessionCheck = () => {
       if (missingSessionTimeout !== undefined) window.clearTimeout(missingSessionTimeout);
       missingSessionTimeout = window.setTimeout(() => {
-        const identifiers = signupRef.current;
-        if (!submittingRef.current && codeRef.current && !identifiers.wabaId) {
-          setFailed(true);
-          setBusy(false);
-          setMessage('Meta завершила авторизацию, но не передала WABA ID. Повторите подключение через Facebook.');
-          cleanup();
-        }
+        if (!submittingRef.current && codeRef.current && !signupRef.current.wabaId) { setFailed(true); setBusy(false); setMessage('Meta завершила авторизацию, но не передала WABA ID. Повторите подключение через Facebook.'); cleanup(); }
       }, 15000);
     };
-
     function receive(event: MessageEvent) {
       if (!event.origin.endsWith('facebook.com')) return;
       try {
@@ -375,49 +254,26 @@ export default function WabaEmbeddedSignup() {
         const wabaId = data.waba_id == null ? '' : String(data.waba_id).trim();
         const phoneNumberId = data.phone_number_id == null ? '' : String(data.phone_number_id).trim();
         if (!wabaId) return;
-
         const next = { wabaId, ...(phoneNumberId ? { phoneNumberId } : {}) };
-        signupRef.current = next;
-        setSignup(next);
+        signupRef.current = next; setSignup(next);
         if (!codeRef.current) setMessage('Данные WABA получены. Завершаем авторизацию Facebook…');
         void finishConnection();
-      } catch { /* unrelated message */ }
+      } catch { /* unrelated postMessage */ }
     }
-
     window.addEventListener('message', receive);
     try {
       const response = await fetch('/api/integrations/waba/config', { headers: { accept: 'application/json' } });
       const config = await readJson<WabaConfig>(response);
       if (!response.ok || !config.configured || !config.configId) throw new Error(config.error || 'WABA Embedded Signup не настроен');
-
       const sdk = await loadSdk(config);
       sdk.login((loginResponse) => {
         const code = loginResponse.authResponse?.code;
-        if (!code) {
-          setBusy(false);
-          setMessage('Подключение WhatsApp Business не завершено');
-          cleanup();
-          return;
-        }
-
+        if (!code) { setBusy(false); setMessage('Подключение WhatsApp Business не завершено'); cleanup(); return; }
         codeRef.current = code;
-        if (!signupRef.current.wabaId) {
-          setMessage('Facebook авторизован. Получаем данные WhatsApp Business…');
-          scheduleMissingSessionCheck();
-        }
+        if (!signupRef.current.wabaId) { setMessage('Facebook авторизован. Получаем данные WhatsApp Business…'); scheduleMissingSessionCheck(); }
         void finishConnection();
-      }, {
-        config_id: config.configId,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: { setup: {}, sessionInfoVersion: '3' },
-      });
-    } catch (error) {
-      setFailed(true);
-      setMessage(error instanceof Error ? error.message : String(error));
-      setBusy(false);
-      cleanup();
-    }
+      }, { config_id: config.configId, response_type: 'code', override_default_response_type: true, extras: { setup: {}, sessionInfoVersion: '3' } });
+    } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : String(error)); setBusy(false); cleanup(); }
   };
 
   return <div className="waba-signup-actions">
@@ -426,7 +282,7 @@ export default function WabaEmbeddedSignup() {
       {loading ? 'Проверяем подключение…' : busy ? 'Загружаем Facebook…' : connected ? 'Переподключить WABA' : failed ? 'Повторить подключение' : 'Подключить через Facebook'}
     </button>
     {message && <small className="meta-oauth-message">{failed && <AlertCircle size={14}/>} {message}</small>}
-    {connected && signup.phoneNumberId && <small className="meta-oauth-message">Webhook и сообщения активированы. WhatsApp Flows можно настроить ниже.</small>}
+    {connected && signup.phoneNumberId && <small className="meta-oauth-message">Webhook и сообщения активированы. Ниже настраиваются Flows, филиалы, врачи и расписание.</small>}
     <WabaFlowsSetup connected={connected}/>
   </div>;
 }
