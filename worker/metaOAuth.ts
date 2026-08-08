@@ -66,11 +66,12 @@ function base64Url(bytes: Uint8Array): string {
   return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-function base64UrlBytes(value: string): Uint8Array {
+function base64UrlBytes(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
