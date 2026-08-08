@@ -64,7 +64,8 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/meta/conversions'
     || pathname === '/api/integrations/waba/config'
-    || pathname === '/api/integrations/waba/connect';
+    || pathname === '/api/integrations/waba/connect'
+    || pathname === '/api/integrations/waba/disconnect';
 }
 
 function secureEqual(left: string, right: string): boolean {
