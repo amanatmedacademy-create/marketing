@@ -181,6 +181,30 @@ export async function handleClinicBookingExchange(env: WabaClinicBookingEnv, com
   return null;
 }
 
+async function appointmentDisplayNames(
+  env: WabaClinicBookingEnv,
+  companyId: string,
+  branchId: string,
+  doctorId: string,
+): Promise<{ branchName: string; doctorName: string }> {
+  const [branchRows, doctorRows] = await Promise.all([
+    db<Row[]>(env, `waba_clinic_branches?id=eq.${encodeURIComponent(branchId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,name&limit=1`),
+    db<Row[]>(env, `waba_clinic_doctors?id=eq.${encodeURIComponent(doctorId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,name&limit=1`),
+  ]);
+  return {
+    branchName: text(branchRows[0]?.name) || 'Филиал',
+    doctorName: text(doctorRows[0]?.name) || 'Врач',
+  };
+}
+
+async function existingAppointmentByFlowToken(env: WabaClinicBookingEnv, companyId: string, flowToken: string): Promise<Row | null> {
+  if (!flowToken) return null;
+  const rows = await db<Row[]>(env,
+    `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&flow_token=eq.${encodeURIComponent(flowToken)}&select=id,branch_id,doctor_id,starts_at,ends_at,status&limit=1`,
+  );
+  return rows[0] || null;
+}
+
 export async function createClinicAppointment(
   env: WabaClinicBookingEnv,
   companyId: string,
@@ -189,6 +213,17 @@ export async function createClinicAppointment(
   conversationId: string,
   flowToken: string,
 ): Promise<{ appointmentId: string; startsAt: string; endsAt: string; branchName: string; doctorName: string }> {
+  const existing = await existingAppointmentByFlowToken(env, companyId, flowToken);
+  if (existing) {
+    const names = await appointmentDisplayNames(env, companyId, text(existing.branch_id), text(existing.doctor_id));
+    return {
+      appointmentId: text(existing.id),
+      startsAt: text(existing.starts_at),
+      endsAt: text(existing.ends_at),
+      ...names,
+    };
+  }
+
   const branchId = text(data.branch_id);
   const doctorId = text(data.doctor_id);
   const startsAt = text(data.slot_id);
@@ -221,9 +256,8 @@ export async function createClinicAppointment(
     updated_at: new Date().toISOString(),
   };
   try {
-    const rows = await db<Row[]>(env, 'waba_clinic_appointments?on_conflict=company_id,flow_token&select=id,starts_at,ends_at', {
+    const rows = await db<Row[]>(env, 'waba_clinic_appointments?select=id,starts_at,ends_at', {
       method: 'POST',
-      headers: { prefer: 'resolution=merge-duplicates,return=representation' },
       body: JSON.stringify(payload),
     });
     return {
@@ -235,11 +269,70 @@ export async function createClinicAppointment(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('waba_clinic_appointments_flow_token_uidx')) {
+      const retry = await existingAppointmentByFlowToken(env, companyId, flowToken);
+      if (retry) {
+        const names = await appointmentDisplayNames(env, companyId, text(retry.branch_id), text(retry.doctor_id));
+        return {
+          appointmentId: text(retry.id),
+          startsAt: text(retry.starts_at),
+          endsAt: text(retry.ends_at),
+          ...names,
+        };
+      }
+    }
     if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) {
       throw new Error('Это время только что заняли. Вернитесь и выберите другой слот.');
     }
     throw error;
   }
+}
+
+const APPOINTMENT_STATUSES = new Set(['BOOKED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
+
+async function setAppointmentStatus(
+  request: Request,
+  env: WabaClinicBookingEnv,
+  companyId: string,
+  id: string,
+  nextStatus: string,
+): Promise<Response> {
+  if (!id || !APPOINTMENT_STATUSES.has(nextStatus)) return json({ error: 'Некорректный статус записи' }, 400);
+  const rows = await db<Row[]>(env,
+    `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone&limit=1`,
+  );
+  const current = rows[0];
+  if (!current) return json({ error: 'Запись не найдена' }, 404);
+
+  const previousStatus = text(current.status).toUpperCase() || 'BOOKED';
+  const metadata = record(current.metadata);
+  const priorHistory = Array.isArray(metadata.status_history) ? metadata.status_history : [];
+  const changedAt = new Date().toISOString();
+  const changedBy = text(request.headers.get('x-amanat-auth-user')) || null;
+  const nextMetadata = {
+    ...metadata,
+    status_history: [
+      ...priorHistory,
+      { from: previousStatus, to: nextStatus, at: changedAt, by: changedBy },
+    ].slice(-50),
+  };
+  const updated = await db<Row[]>(env,
+    `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status: nextStatus, metadata: nextMetadata, updated_at: changedAt }),
+    },
+  );
+
+  const leadId = text(current.lead_id);
+  if (leadId && (nextStatus === 'BOOKED' || nextStatus === 'CONFIRMED')) {
+    await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(leadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage: 'Запись', updated_at: changedAt }),
+    }).catch((error) => console.error('Unable to sync lead stage from appointment status', error));
+  }
+
+  return json({ ok: true, item: updated[0] || null });
 }
 
 export async function handleClinicBookingAdminRequest(request: Request, env: WabaClinicBookingEnv, url: URL, companyId: string): Promise<Response | null> {
@@ -250,7 +343,7 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
     const branchRows = await db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const doctorRows = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const scheduleRows = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=weekday.asc,start_time.asc`);
-    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED)&select=id,branch_id,doctor_id,starts_at,ends_at,patient_name,phone,status&order=starts_at.asc&limit=100`);
+    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED)&select=id,branch_id,doctor_id,lead_id,conversation_id,starts_at,ends_at,patient_name,phone,status,metadata,created_at,updated_at&order=starts_at.asc&limit=100`);
     return json({ branches: branchRows, doctors: doctorRows, schedules: scheduleRows, upcoming });
   }
 
@@ -293,6 +386,9 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
       if (!table || !id) return json({ error: 'Некорректный объект' }, 400);
       await db<Row[]>(env, `${table}?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ active: Boolean(body.active), updated_at: new Date().toISOString() }) });
       return json({ ok: true });
+    }
+    if (action === 'set_appointment_status') {
+      return setAppointmentStatus(request, env, companyId, text(body.id), text(body.status).toUpperCase());
     }
     return json({ error: 'Неизвестное действие' }, 400);
   }
