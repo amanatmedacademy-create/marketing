@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-do
 import { BarChart3, Bell, Cable, ChartNoAxesCombined, LayoutDashboard, LockKeyhole, Menu, MessageCircle, MessageSquareText, PhoneCall, Search, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
+import CompanySwitcher from './components/CompanySwitcher';
 import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
@@ -50,6 +51,7 @@ function Shell() {
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div>
         <div className="marketing-top-actions">
+          <CompanySwitcher />
           <button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
