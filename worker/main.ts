@@ -168,7 +168,7 @@ export default {
       if (wabaResponse) return wabaResponse;
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url);
       if (metaSdkResponse) return metaSdkResponse;
-      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
+      const metaOAuthStartResponse = await handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
       if (metaOAuthResponse) return metaOAuthResponse;
