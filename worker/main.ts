@@ -23,6 +23,7 @@ import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } f
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
 import { handleVoiceTranscriptionRequest, type VoiceTranscriptionEnv } from './voiceTranscription';
 import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './wabaEmbeddedSignup';
+import { handleWabaFlowsRequest, type WabaFlowsEnv } from './wabaFlows';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
@@ -41,6 +42,7 @@ type MainEnv = AuthEnv
   & TenantSyncEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
+  & WabaFlowsEnv
   & WabaMessagingEnv
   & WabaMessagingV2Env
   & VoiceTranscriptionEnv
@@ -62,7 +64,9 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/meta/conversions'
     || pathname === '/api/integrations/waba/config'
-    || pathname === '/api/integrations/waba/connect';
+    || pathname === '/api/integrations/waba/connect'
+    || pathname === '/api/integrations/waba/flows/config'
+    || pathname === '/api/integrations/waba/flows/setup';
 }
 
 function secureEqual(left: string, right: string): boolean {
@@ -142,6 +146,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const wabaFlows = await handleWabaFlowsRequest(forwardedRequest, runtimeEnv, url);
+      if (wabaFlows) return wabaFlows;
       const wabaMessagingV2 = await handleWabaMessagingV2Request(forwardedRequest, runtimeEnv, url);
       if (wabaMessagingV2) return wabaMessagingV2;
       const wabaMessaging = await handleWabaMessagingRequest(forwardedRequest, runtimeEnv, url);
