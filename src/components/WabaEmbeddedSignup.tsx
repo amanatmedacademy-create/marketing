@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Facebook, LoaderCircle, RotateCw, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Facebook, LoaderCircle, RotateCw, ShieldCheck, Unplug } from 'lucide-react';
 
 type FacebookLoginResponse = { status?: string; authResponse?: { code?: string } };
 type FacebookSdk = {
@@ -69,6 +69,7 @@ export default function WabaEmbeddedSignup() {
   const [failed, setFailed] = useState(false);
   const [connected, setConnected] = useState(false);
   const [techProviderMode, setTechProviderMode] = useState(false);
+  const [registrationPin, setRegistrationPin] = useState('');
   const [signup, setSignup] = useState<SignupData>({});
   const signupRef = useRef<SignupData>({});
   const codeRef = useRef('');
@@ -95,6 +96,11 @@ export default function WabaEmbeddedSignup() {
 
   const connect = async () => {
     if (busy) return;
+    if (registrationPin && !/^\d{6}$/.test(registrationPin)) {
+      setFailed(true);
+      setMessage('PIN двухэтапной проверки должен состоять из 6 цифр');
+      return;
+    }
     setBusy(true); setFailed(false); setMessage(null); signupRef.current = {}; codeRef.current = ''; submittingRef.current = false; setSignup({});
     let missingSessionTimeout: number | undefined;
     const cleanup = () => { window.removeEventListener('message', receive); if (missingSessionTimeout !== undefined) { window.clearTimeout(missingSessionTimeout); missingSessionTimeout = undefined; } };
@@ -105,7 +111,7 @@ export default function WabaEmbeddedSignup() {
       if (missingSessionTimeout !== undefined) { window.clearTimeout(missingSessionTimeout); missingSessionTimeout = undefined; }
       setMessage(identifiers.phoneNumberId ? 'Завершаем подключение WhatsApp Business…' : 'WABA получена. Определяем Phone Number ID через Meta…');
       try {
-        const result = await fetch('/api/integrations/waba/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId }) });
+        const result = await fetch('/api/integrations/waba/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId, pin: registrationPin || undefined }) });
         const value = await readJson<{ phoneNumberId?: string; credentialMode?: 'system_user' | 'oauth_user'; error?: string }>(result);
         if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
         const phoneNumberId = value.phoneNumberId || identifiers.phoneNumberId;
@@ -154,12 +160,39 @@ export default function WabaEmbeddedSignup() {
     } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : String(error)); setBusy(false); cleanup(); }
   };
 
+  const disconnect = async () => {
+    if (busy || !connected) return;
+    setBusy(true); setFailed(false); setMessage('Отключаем WABA и webhook…');
+    try {
+      const response = await fetch('/api/integrations/waba/disconnect', { method: 'DELETE', headers: { accept: 'application/json' } });
+      const value = await readJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      setConnected(false); setSignup({}); signupRef.current = {}; setMessage('WABA отключена от IMDS Marketing');
+    } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+
   const activeMode = signup.credentialMode === 'system_user' || techProviderMode;
   return <div className="waba-signup-actions">
+    {!connected && <label className="meta-oauth-message">
+      PIN WhatsApp 2FA (если уже настроен)
+      <input
+        value={registrationPin}
+        onChange={(event) => setRegistrationPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        placeholder="6 цифр"
+        disabled={busy || loading}
+      />
+    </label>}
     <button type="button" className="connections-button connections-button--facebook" onClick={() => void connect()} disabled={busy || loading}>
       {busy || loading ? <LoaderCircle size={16} className="spin"/> : connected ? <CheckCircle2 size={16}/> : failed ? <RotateCw size={16}/> : <Facebook size={16}/>} {' '}
-      {loading ? 'Проверяем подключение…' : busy ? 'Загружаем Facebook…' : connected ? 'Переподключить WABA' : failed ? 'Повторить подключение' : 'Подключить через Facebook'}
+      {loading ? 'Проверяем подключение…' : busy ? 'Выполняем операцию…' : connected ? 'Переподключить WABA' : failed ? 'Повторить подключение' : 'Подключить через Facebook'}
     </button>
+    {connected && <button type="button" className="connections-button" onClick={() => void disconnect()} disabled={busy || loading}>
+      <Unplug size={16}/> Отключить WABA
+    </button>}
     <small className="meta-oauth-message"><ShieldCheck size={14}/> Режим: {activeMode ? 'IMDS Tech Provider' : 'OAuth fallback'}</small>
     {message && <small className="meta-oauth-message">{failed && <AlertCircle size={14}/>} {message}</small>}
     {!activeMode && <small className="meta-oauth-message">Для production Tech Provider настройте Meta System User credentials в Cloudflare Secrets.</small>}
