@@ -26,8 +26,9 @@ export const CLINIC_FLOW_JSON: Row = {
   routing_model: {
     APPOINTMENT: ['DETAILS'],
     DETAILS: ['SUMMARY'],
-    SUMMARY: ['TERMS'],
-    TERMS: [],
+    SUMMARY: ['TERMS', 'SUCCESS'],
+    TERMS: ['SUMMARY'],
+    SUCCESS: [],
   },
   screens: [
     {
@@ -80,10 +81,7 @@ export const CLINIC_FLOW_JSON: Row = {
                 required: true,
                 'on-select-action': {
                   name: 'data_exchange',
-                  payload: {
-                    trigger: 'service_selected',
-                    service: '${form.service}',
-                  },
+                  payload: { trigger: 'service_selected', service: '${form.service}' },
                 },
               },
               {
@@ -95,11 +93,7 @@ export const CLINIC_FLOW_JSON: Row = {
                 enabled: '${data.is_branch_enabled}',
                 'on-select-action': {
                   name: 'data_exchange',
-                  payload: {
-                    trigger: 'branch_selected',
-                    service: '${form.service}',
-                    branch: '${form.branch}',
-                  },
+                  payload: { trigger: 'branch_selected', service: '${form.service}', branch: '${form.branch}' },
                 },
               },
               {
@@ -111,12 +105,7 @@ export const CLINIC_FLOW_JSON: Row = {
                 enabled: '${data.is_doctor_enabled}',
                 'on-select-action': {
                   name: 'data_exchange',
-                  payload: {
-                    trigger: 'doctor_selected',
-                    service: '${form.service}',
-                    branch: '${form.branch}',
-                    doctor: '${form.doctor}',
-                  },
+                  payload: { trigger: 'doctor_selected', service: '${form.service}', branch: '${form.branch}', doctor: '${form.doctor}' },
                 },
               },
               {
@@ -128,13 +117,7 @@ export const CLINIC_FLOW_JSON: Row = {
                 enabled: '${data.is_date_enabled}',
                 'on-select-action': {
                   name: 'data_exchange',
-                  payload: {
-                    trigger: 'date_selected',
-                    service: '${form.service}',
-                    branch: '${form.branch}',
-                    doctor: '${form.doctor}',
-                    date: '${form.date}',
-                  },
+                  payload: { trigger: 'date_selected', service: '${form.service}', branch: '${form.branch}', doctor: '${form.doctor}', date: '${form.date}' },
                 },
               },
               {
@@ -194,14 +177,8 @@ export const CLINIC_FLOW_JSON: Row = {
                 'on-click-action': {
                   name: 'data_exchange',
                   payload: {
-                    service: '${data.service}',
-                    branch: '${data.branch}',
-                    doctor: '${data.doctor}',
-                    date: '${data.date}',
-                    time: '${data.time}',
-                    name: '${form.name}',
-                    phone: '${form.phone}',
-                    comment: '${form.comment}',
+                    service: '${data.service}', branch: '${data.branch}', doctor: '${data.doctor}', date: '${data.date}', time: '${data.time}',
+                    name: '${form.name}', phone: '${form.phone}', comment: '${form.comment}',
                   },
                 },
               },
@@ -213,7 +190,6 @@ export const CLINIC_FLOW_JSON: Row = {
     {
       id: 'SUMMARY',
       title: 'Подтверждение',
-      terminal: true,
       data: {
         appointment: stringData('Филиал · Врач\n10 августа 2026, 09:00'),
         details: stringData('Имя: Пациент\nТелефон: +77000000000'),
@@ -244,11 +220,6 @@ export const CLINIC_FLOW_JSON: Row = {
                 name: 'terms',
                 label: 'Я подтверждаю данные и согласен на их обработку для организации записи',
                 required: true,
-                'on-click-action': {
-                  name: 'navigate',
-                  next: { type: 'screen', name: 'TERMS' },
-                  payload: {},
-                },
               },
               {
                 type: 'Footer',
@@ -256,14 +227,8 @@ export const CLINIC_FLOW_JSON: Row = {
                 'on-click-action': {
                   name: 'data_exchange',
                   payload: {
-                    service: '${data.service}',
-                    branch: '${data.branch}',
-                    doctor: '${data.doctor}',
-                    date: '${data.date}',
-                    time: '${data.time}',
-                    name: '${data.name}',
-                    phone: '${data.phone}',
-                    comment: '${data.comment}',
+                    service: '${data.service}', branch: '${data.branch}', doctor: '${data.doctor}', date: '${data.date}', time: '${data.time}',
+                    name: '${data.name}', phone: '${data.phone}', comment: '${data.comment}', terms: '${form.terms}',
                   },
                 },
               },
@@ -275,11 +240,66 @@ export const CLINIC_FLOW_JSON: Row = {
     {
       id: 'TERMS',
       title: 'Условия',
+      data: {},
       layout: {
         type: 'SingleColumnLayout',
         children: [
           { type: 'TextHeading', text: 'Обработка данных' },
           { type: 'TextBody', text: 'Данные из этой формы используются клиникой для обработки заявки, подтверждения записи и связи с пациентом. Доступ к данным предоставляется только уполномоченным сотрудникам в рамках рабочего процесса IMDS.' },
+          {
+            type: 'Footer',
+            label: 'Назад',
+            'on-click-action': {
+              name: 'navigate',
+              next: { type: 'screen', name: 'SUMMARY' },
+              payload: {},
+            },
+          },
+        ],
+      },
+    },
+    {
+      id: 'SUCCESS',
+      title: 'Запись создана',
+      terminal: true,
+      success: true,
+      data: {
+        extension_message_response: {
+          type: 'object',
+          properties: {
+            params: {
+              type: 'object',
+              properties: {
+                flow_token: { type: 'string' },
+                lead_id: { type: 'string' },
+                appointment_id: { type: 'string' },
+                appointment: { type: 'string' },
+              },
+            },
+          },
+          __example__: {
+            params: {
+              flow_token: 'example-token',
+              lead_id: '00000000-0000-0000-0000-000000000000',
+              appointment_id: '00000000-0000-0000-0000-000000000000',
+              appointment: 'Филиал · Врач · 10 августа 2026, 09:00',
+            },
+          },
+        },
+      },
+      layout: {
+        type: 'SingleColumnLayout',
+        children: [
+          { type: 'TextHeading', text: 'Готово' },
+          { type: 'TextBody', text: 'Запись создана. Клиника свяжется с вами при необходимости.' },
+          {
+            type: 'Footer',
+            label: 'Закрыть',
+            'on-click-action': {
+              name: 'complete',
+              payload: { extension_message_response: '${data.extension_message_response}' },
+            },
+          },
         ],
       },
     },
