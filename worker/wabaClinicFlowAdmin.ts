@@ -213,6 +213,69 @@ export async function handleWabaClinicFlowAdminRequest(request: Request, env: Wa
   return null;
 }
 
+function threadIdFromFlowToken(flowToken: string): string {
+  if (!flowToken.startsWith('imds-clinic:')) return '';
+  const withoutPrefix = flowToken.slice('imds-clinic:'.length);
+  const separator = withoutPrefix.indexOf(':');
+  return separator > 0 ? withoutPrefix.slice(0, separator) : '';
+}
+
+async function attachFlowSubmissionToThread(
+  env: WabaClinicFlowEnv,
+  companyId: string,
+  threadId: string,
+  leadId: string,
+  name: string,
+  flowToken: string,
+  firstMessage: string,
+  metadata: Row,
+): Promise<void> {
+  if (!threadId) return;
+  const threads = await db<Row[]>(env,
+    `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&channel=eq.WHATSAPP&archived_at=is.null&select=id,unread_count&limit=1`,
+  );
+  const thread = threads[0];
+  if (!thread) return;
+
+  const externalMessageId = `flow:${flowToken}`;
+  const existing = await db<Row[]>(env,
+    `marketing_messages?external_message_id=eq.${encodeURIComponent(externalMessageId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id&limit=1`,
+  );
+  const sentAt = new Date().toISOString();
+  if (!existing.length) {
+    await db<Row[]>(env, 'marketing_messages?select=id', {
+      method: 'POST',
+      body: JSON.stringify({
+        company_id: companyId,
+        conversation_id: threadId,
+        body: firstMessage,
+        direction: 'INBOUND',
+        sender_name: name,
+        external_message_id: externalMessageId,
+        status: 'DELIVERED',
+        sent_at: sentAt,
+        read_at: null,
+        metadata: {
+          whatsapp_type: 'flow_submission',
+          whatsapp_flow: metadata,
+        },
+        created_at: sentAt,
+      }),
+    });
+  }
+
+  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      lead_id: leadId || null,
+      last_message_at: sentAt,
+      updated_at: sentAt,
+      status: 'OPEN',
+      unread_count: Math.max(0, Number(thread.unread_count || 0)) + (existing.length ? 0 : 1),
+    }),
+  });
+}
+
 export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId: string, body: Row): Promise<Row | null> {
   const action = text(body.action).toLowerCase();
   const screen = text(body.screen).toUpperCase();
@@ -240,6 +303,17 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
   const timeLabel = TIME_LABELS[preferredTime] || preferredTime;
   const externalId = `whatsapp-flow:${flowToken}`;
   const firstMessage = `Заявка WhatsApp Flow: ${serviceLabel}; ${preferredDate}; ${timeLabel}${comment ? `; ${comment}` : ''}`;
+  const flowMetadata = {
+    flow_token: flowToken,
+    screen: 'APPOINTMENT',
+    service,
+    service_label: serviceLabel,
+    preferred_date: preferredDate,
+    preferred_time: preferredTime,
+    preferred_time_label: timeLabel,
+    comment: comment || null,
+    received_at: new Date().toISOString(),
+  };
   const leadPayload = {
     company_id: companyId,
     external_id: externalId,
@@ -248,23 +322,11 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
     phone,
     source: 'WhatsApp Flow',
     platform: 'WhatsApp',
-    stage: 'NEW',
+    stage: 'Новый',
     first_message: firstMessage,
     direction: 'INBOUND',
     is_target: true,
-    metadata: {
-      whatsapp_flow: {
-        flow_token: flowToken,
-        screen: 'APPOINTMENT',
-        service,
-        service_label: serviceLabel,
-        preferred_date: preferredDate,
-        preferred_time: preferredTime,
-        preferred_time_label: timeLabel,
-        comment: comment || null,
-        received_at: new Date().toISOString(),
-      },
-    },
+    metadata: { whatsapp_flow: flowMetadata },
     updated_at: new Date().toISOString(),
   };
 
@@ -274,6 +336,10 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
     body: JSON.stringify(leadPayload),
   });
   const leadId = text(rows[0]?.id);
+  const threadId = threadIdFromFlowToken(flowToken);
+  await attachFlowSubmissionToThread(env, companyId, threadId, leadId, name, flowToken, firstMessage, flowMetadata).catch((error) => {
+    console.error('Unable to attach WhatsApp Flow submission to chat', error);
+  });
 
   return {
     screen: 'SUCCESS',
