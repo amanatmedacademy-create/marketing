@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Facebook, LoaderCircle, RotateCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Facebook, KeyRound, LoaderCircle, RotateCw } from 'lucide-react';
 
 type FacebookLoginResponse = { status?: string; authResponse?: { code?: string } };
 type FacebookSdk = {
@@ -21,6 +21,15 @@ type WabaConfig = {
   configId?: string;
   connected?: boolean;
   connection?: WabaConnection | null;
+  error?: string;
+};
+type FlowsConfig = {
+  configured?: boolean;
+  endpointUrl?: string;
+  phoneNumberId?: string;
+  publicKeyUploaded?: boolean;
+  signatureStatus?: string | null;
+  uploadedAt?: string | null;
   error?: string;
 };
 
@@ -81,6 +90,59 @@ async function loadSdk(config: WabaConfig): Promise<FacebookSdk> {
     script.addEventListener('error', () => finish(() => reject(new Error('Не удалось загрузить Facebook SDK'))), { once: true });
     document.head.appendChild(script);
   });
+}
+
+function WabaFlowsSetup({ connected }: { connected: boolean }) {
+  const [config, setConfig] = useState<FlowsConfig | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    if (!connected) return;
+    try {
+      const response = await fetch('/api/integrations/waba/flows/config', { headers: { accept: 'application/json' } });
+      const value = await readJson<FlowsConfig>(response);
+      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      setConfig(value);
+      setError('');
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    }
+  };
+
+  useEffect(() => { void load(); }, [connected]);
+
+  const setup = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/integrations/waba/flows/setup', {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const value = await readJson<FlowsConfig>(response);
+      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      setConfig(value);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!connected) return null;
+  const valid = config?.signatureStatus === 'VALID';
+
+  return <div className="waba-flows-setup" style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+    <button type="button" className="connections-button" onClick={() => void setup()} disabled={busy}>
+      {busy ? <LoaderCircle size={16} className="spin"/> : valid ? <CheckCircle2 size={16}/> : <KeyRound size={16}/>} {' '}
+      {busy ? 'Настраиваем WhatsApp Flows…' : valid ? 'WhatsApp Flows настроены' : config?.configured ? 'Обновить ключ WhatsApp Flows' : 'Настроить WhatsApp Flows'}
+    </button>
+    {config?.endpointUrl && <small className="meta-oauth-message">Flow Endpoint: {config.endpointUrl}</small>}
+    {config?.configured && <small className="meta-oauth-message">Public key: {valid ? 'VALID' : config.signatureStatus || 'загружен, ожидает проверки Meta'}</small>}
+    {error && <small className="meta-oauth-message"><AlertCircle size={14}/> {error}</small>}
+  </div>;
 }
 
 export default function WabaEmbeddedSignup() {
@@ -160,11 +222,7 @@ export default function WabaEmbeddedSignup() {
         const result = await fetch('/api/integrations/waba/connect', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            code,
-            wabaId: identifiers.wabaId,
-            phoneNumberId: identifiers.phoneNumberId,
-          }),
+          body: JSON.stringify({ code, wabaId: identifiers.wabaId, phoneNumberId: identifiers.phoneNumberId }),
         });
         const value = await readJson<{ phoneNumberId?: string; error?: string }>(result);
         if (!result.ok) throw new Error(value.error || `HTTP ${result.status}`);
@@ -241,10 +299,7 @@ export default function WabaEmbeddedSignup() {
         config_id: config.configId,
         response_type: 'code',
         override_default_response_type: true,
-        extras: {
-          setup: {},
-          sessionInfoVersion: '3',
-        },
+        extras: { setup: {}, sessionInfoVersion: '3' },
       });
     } catch (error) {
       setFailed(true);
@@ -260,6 +315,7 @@ export default function WabaEmbeddedSignup() {
       {loading ? 'Проверяем подключение…' : busy ? 'Загружаем Facebook…' : connected ? 'Переподключить WABA' : failed ? 'Повторить подключение' : 'Подключить через Facebook'}
     </button>
     {message && <small className="meta-oauth-message">{failed && <AlertCircle size={14}/>} {message}</small>}
-    {connected && signup.phoneNumberId && <small className="meta-oauth-message">Webhook и сообщения активируются автоматически после подключения.</small>}
+    {connected && signup.phoneNumberId && <small className="meta-oauth-message">Webhook и сообщения активированы. WhatsApp Flows можно настроить ниже.</small>}
+    <WabaFlowsSetup connected={connected}/>
   </div>;
 }
