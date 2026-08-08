@@ -1,4 +1,5 @@
 import { resolveCompanyId } from './companyContext';
+import { handleClinicFlowExchange, handleWabaClinicFlowAdminRequest, type WabaClinicFlowEnv } from './wabaClinicFlowAdmin';
 
 type Row = Record<string, unknown>;
 
@@ -21,13 +22,8 @@ type WabaCredential = {
   configSummary: Row;
 };
 
-export interface WabaFlowsEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  DEFAULT_COMPANY_ID?: string;
-  INTEGRATION_ENCRYPTION_KEY?: string;
+export interface WabaFlowsEnv extends WabaClinicFlowEnv {
   META_APP_SECRET?: string;
-  META_GRAPH_VERSION?: string;
 }
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -335,12 +331,13 @@ async function encryptFlowResponse(response: Row, aesKey: CryptoKey, iv: Uint8Ar
   return bytesToBase64(new Uint8Array(encrypted));
 }
 
-async function flowResponse(body: Row): Promise<Row> {
+async function flowResponse(env: WabaFlowsEnv, companyId: string, body: Row): Promise<Row> {
   const action = text(body.action).toLowerCase();
   if (action === 'ping') return { data: { status: 'active' } };
 
-  // Generic safe response for endpoint-backed Flows. Concrete screen routing can be
-  // extended per Flow without changing the encryption/security layer.
+  const clinicResponse = await handleClinicFlowExchange(env, companyId, body);
+  if (clinicResponse) return clinicResponse;
+
   const screen = text(body.screen);
   const data = record(body.data);
   if (screen) return { screen, data };
@@ -359,19 +356,21 @@ async function handleFlowWebhook(request: Request, env: WabaFlowsEnv): Promise<R
   for (const item of keys) {
     try {
       const decrypted = await decryptFlowPayload(env, payload, item.envelope);
-      const response = await flowResponse(decrypted.body);
+      const response = await flowResponse(env, item.companyId, decrypted.body);
       const encrypted = await encryptFlowResponse(response, decrypted.aesKey, decrypted.iv);
       return new Response(encrypted, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
-    } catch {
-      // Try the next tenant key. Meta does not include our tenant ID in the encrypted envelope.
+    } catch (error) {
+      console.error('WhatsApp Flow key candidate failed', error);
     }
   }
 
-  // Meta recommends 421 when the endpoint cannot decrypt, so clients refresh the public key.
   return new Response('', { status: 421 });
 }
 
 export async function handleWabaFlowsRequest(request: Request, env: WabaFlowsEnv, url: URL): Promise<Response | null> {
+  const clinicAdmin = await handleWabaClinicFlowAdminRequest(request, env, url);
+  if (clinicAdmin) return clinicAdmin;
+
   if (url.pathname === '/api/webhooks/waba/flows' && request.method === 'POST') {
     return handleFlowWebhook(request, env);
   }
