@@ -1,5 +1,6 @@
 import { resolveCompanyId } from './companyContext';
-import { CLINIC_FLOW_CATEGORY, CLINIC_FLOW_JSON, CLINIC_FLOW_NAME, SERVICE_LABELS, TIME_LABELS } from './wabaClinicFlow';
+import { CLINIC_FLOW_CATEGORY, CLINIC_FLOW_JSON, CLINIC_FLOW_NAME, CLINIC_FLOW_SCHEMA_VERSION, SERVICE_LABELS } from './wabaClinicFlow';
+import { createClinicAppointment, handleClinicBookingAdminRequest, handleClinicBookingExchange, type WabaClinicBookingEnv } from './wabaClinicBooking';
 
 type Row = Record<string, unknown>;
 
@@ -13,9 +14,7 @@ type Credential = {
   configSummary: Row;
 };
 
-export interface WabaClinicFlowEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+export interface WabaClinicFlowEnv extends WabaClinicBookingEnv {
   DEFAULT_COMPANY_ID?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   META_GRAPH_VERSION?: string;
@@ -117,7 +116,7 @@ async function metaForm(url: string, accessToken: string, form?: FormData): Prom
 async function createMetaFlow(request: Request, current: Credential): Promise<{ flowId: string; validationErrors: unknown[] }> {
   const endpointUri = `${new URL(request.url).origin}/api/webhooks/waba/flows`;
   const createForm = new FormData();
-  createForm.set('name', CLINIC_FLOW_NAME);
+  createForm.set('name', `${CLINIC_FLOW_NAME} v${CLINIC_FLOW_SCHEMA_VERSION}`);
   createForm.set('categories', JSON.stringify(CLINIC_FLOW_CATEGORY));
   createForm.set('endpoint_uri', endpointUri);
   const createResult = await metaForm(
@@ -139,27 +138,26 @@ async function createMetaFlow(request: Request, current: Credential): Promise<{ 
   );
   const validationErrors = Array.isArray(assetResult.validation_errors) ? assetResult.validation_errors : [];
   if (validationErrors.length) return { flowId, validationErrors };
-
-  await metaForm(
-    `https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(flowId)}/publish`,
-    current.accessToken,
-  );
+  await metaForm(`https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(flowId)}/publish`, current.accessToken);
   return { flowId, validationErrors: [] };
 }
 
 async function saveFlowMeta(env: WabaClinicFlowEnv, current: Credential, flowId: string, endpointUrl: string): Promise<void> {
   const summary = current.configSummary;
   const flows = record(summary.flows);
+  const previousClinic = record(flows.clinic);
   const next = {
     ...summary,
     flows: {
       ...flows,
       clinic: {
+        ...previousClinic,
         flowId,
         name: CLINIC_FLOW_NAME,
         categories: CLINIC_FLOW_CATEGORY,
         endpointUrl,
         status: 'PUBLISHED',
+        schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
         updatedAt: new Date().toISOString(),
       },
     },
@@ -173,8 +171,9 @@ async function saveFlowMeta(env: WabaClinicFlowEnv, current: Credential, flowId:
 export async function handleWabaClinicFlowAdminRequest(request: Request, env: WabaClinicFlowEnv, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/integrations/waba/flows/clinic/')) return null;
   if (text(request.headers.get('x-amanat-auth-role')) !== 'administrator') return json({ error: 'Требуются права администратора' }, 403);
-
   const companyId = await resolveCompanyId(env);
+  const bookingAdmin = await handleClinicBookingAdminRequest(request, env, url, companyId);
+  if (bookingAdmin) return bookingAdmin;
   const current = await credential(env, companyId);
   const clinic = record(record(current.configSummary.flows).clinic);
 
@@ -184,6 +183,8 @@ export async function handleWabaClinicFlowAdminRequest(request: Request, env: Wa
       flowId: text(clinic.flowId) || null,
       name: text(clinic.name) || CLINIC_FLOW_NAME,
       status: text(clinic.status) || null,
+      schemaVersion: Number(clinic.schemaVersion || 1),
+      requiredSchemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
       endpointUrl: text(clinic.endpointUrl) || `${url.origin}/api/webhooks/waba/flows`,
       updatedAt: text(clinic.updatedAt) || null,
     });
@@ -193,23 +194,16 @@ export async function handleWabaClinicFlowAdminRequest(request: Request, env: Wa
     try {
       const result = await createMetaFlow(request, current);
       if (result.validationErrors.length) {
-        return json({
-          ok: false,
-          flowId: result.flowId,
-          status: 'DRAFT',
-          validationErrors: result.validationErrors,
-          error: 'Meta отклонила Flow JSON. Исправьте validation_errors перед публикацией.',
-        }, 422);
+        return json({ ok: false, flowId: result.flowId, status: 'DRAFT', validationErrors: result.validationErrors, error: 'Meta отклонила Flow JSON. Исправьте validation_errors перед публикацией.' }, 422);
       }
       const endpointUrl = `${url.origin}/api/webhooks/waba/flows`;
       await saveFlowMeta(env, current, result.flowId, endpointUrl);
-      return json({ ok: true, flowId: result.flowId, status: 'PUBLISHED', endpointUrl, validationErrors: [] });
+      return json({ ok: true, flowId: result.flowId, status: 'PUBLISHED', schemaVersion: CLINIC_FLOW_SCHEMA_VERSION, endpointUrl, validationErrors: [] });
     } catch (error) {
       console.error('Clinic WhatsApp Flow create failed', error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
   }
-
   return null;
 }
 
@@ -220,100 +214,44 @@ function threadIdFromFlowToken(flowToken: string): string {
   return separator > 0 ? withoutPrefix.slice(0, separator) : '';
 }
 
-async function attachFlowSubmissionToThread(
-  env: WabaClinicFlowEnv,
-  companyId: string,
-  threadId: string,
-  leadId: string,
-  name: string,
-  flowToken: string,
-  firstMessage: string,
-  metadata: Row,
-): Promise<void> {
+async function attachFlowSubmissionToThread(env: WabaClinicFlowEnv, companyId: string, threadId: string, leadId: string, name: string, flowToken: string, firstMessage: string, metadata: Row): Promise<void> {
   if (!threadId) return;
-  const threads = await db<Row[]>(env,
-    `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&channel=eq.WHATSAPP&archived_at=is.null&select=id,unread_count&limit=1`,
-  );
+  const threads = await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&channel=eq.WHATSAPP&archived_at=is.null&select=id,unread_count&limit=1`);
   const thread = threads[0];
   if (!thread) return;
-
   const externalMessageId = `flow:${flowToken}`;
-  const existing = await db<Row[]>(env,
-    `marketing_messages?external_message_id=eq.${encodeURIComponent(externalMessageId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id&limit=1`,
-  );
+  const existing = await db<Row[]>(env, `marketing_messages?external_message_id=eq.${encodeURIComponent(externalMessageId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id&limit=1`);
   const sentAt = new Date().toISOString();
   if (!existing.length) {
     await db<Row[]>(env, 'marketing_messages?select=id', {
       method: 'POST',
-      body: JSON.stringify({
-        company_id: companyId,
-        conversation_id: threadId,
-        body: firstMessage,
-        direction: 'INBOUND',
-        sender_name: name,
-        external_message_id: externalMessageId,
-        status: 'DELIVERED',
-        sent_at: sentAt,
-        read_at: null,
-        metadata: {
-          whatsapp_type: 'flow_submission',
-          whatsapp_flow: metadata,
-        },
-        created_at: sentAt,
-      }),
+      body: JSON.stringify({ company_id: companyId, conversation_id: threadId, body: firstMessage, direction: 'INBOUND', sender_name: name, external_message_id: externalMessageId, status: 'DELIVERED', sent_at: sentAt, read_at: null, metadata: { whatsapp_type: 'flow_submission', whatsapp_flow: metadata }, created_at: sentAt }),
     });
   }
-
   await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
     method: 'PATCH',
-    body: JSON.stringify({
-      lead_id: leadId || null,
-      last_message_at: sentAt,
-      updated_at: sentAt,
-      status: 'OPEN',
-      unread_count: Math.max(0, Number(thread.unread_count || 0)) + (existing.length ? 0 : 1),
-    }),
+    body: JSON.stringify({ lead_id: leadId || null, last_message_at: sentAt, updated_at: sentAt, status: 'OPEN', unread_count: Math.max(0, Number(thread.unread_count || 0)) + (existing.length ? 0 : 1) }),
   });
 }
 
 export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId: string, body: Row): Promise<Row | null> {
+  const bookingStep = await handleClinicBookingExchange(env, companyId, body);
+  if (bookingStep) return bookingStep;
   const action = text(body.action).toLowerCase();
   const screen = text(body.screen).toUpperCase();
-  if (action !== 'data_exchange' || screen !== 'APPOINTMENT') return null;
-
+  if (action !== 'data_exchange' || screen !== 'SLOT') return null;
   const data = record(body.data);
   const name = text(data.name);
   const phone = text(data.phone);
   const service = text(data.service);
-  const preferredDate = text(data.preferred_date);
-  const preferredTime = text(data.preferred_time);
   const comment = text(data.comment);
   const flowToken = text(body.flow_token) || crypto.randomUUID();
-
-  if (!name || !phone || !service || !preferredDate || !preferredTime) {
-    return {
-      screen: 'APPOINTMENT',
-      data: {
-        error_message: 'Заполните имя, телефон, услугу, желаемую дату и время.',
-      },
-    };
-  }
+  if (!name || !phone || !service || !text(data.branch_id) || !text(data.doctor_id) || !text(data.slot_id)) return { screen: 'SLOT', data: { ...data, error_message: 'Выберите свободное время.' } };
 
   const serviceLabel = SERVICE_LABELS[service] || service;
-  const timeLabel = TIME_LABELS[preferredTime] || preferredTime;
   const externalId = `whatsapp-flow:${flowToken}`;
-  const firstMessage = `Заявка WhatsApp Flow: ${serviceLabel}; ${preferredDate}; ${timeLabel}${comment ? `; ${comment}` : ''}`;
-  const flowMetadata = {
-    flow_token: flowToken,
-    screen: 'APPOINTMENT',
-    service,
-    service_label: serviceLabel,
-    preferred_date: preferredDate,
-    preferred_time: preferredTime,
-    preferred_time_label: timeLabel,
-    comment: comment || null,
-    received_at: new Date().toISOString(),
-  };
+  const threadId = threadIdFromFlowToken(flowToken);
+  const flowMetadata: Row = { flow_token: flowToken, screen: 'SLOT', service, service_label: serviceLabel, branch_id: text(data.branch_id), doctor_id: text(data.doctor_id), slot_id: text(data.slot_id), comment: comment || null, received_at: new Date().toISOString() };
   const leadPayload = {
     company_id: companyId,
     external_id: externalId,
@@ -322,36 +260,25 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
     phone,
     source: 'WhatsApp Flow',
     platform: 'WhatsApp',
-    stage: 'Новый',
-    first_message: firstMessage,
+    stage: 'Запись',
+    first_message: `Запись через WhatsApp Flow: ${serviceLabel}`,
     direction: 'INBOUND',
     is_target: true,
+    appointment_at: new Date(text(data.slot_id)).toISOString(),
     metadata: { whatsapp_flow: flowMetadata },
     updated_at: new Date().toISOString(),
   };
+  const leadRows = await db<Row[]>(env, 'marketing_leads?on_conflict=company_id,external_id&select=id', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(leadPayload) });
+  const leadId = text(leadRows[0]?.id);
 
-  const rows = await db<Row[]>(env, 'marketing_leads?on_conflict=company_id,external_id&select=id', {
-    method: 'POST',
-    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify(leadPayload),
-  });
-  const leadId = text(rows[0]?.id);
-  const threadId = threadIdFromFlowToken(flowToken);
-  await attachFlowSubmissionToThread(env, companyId, threadId, leadId, name, flowToken, firstMessage, flowMetadata).catch((error) => {
-    console.error('Unable to attach WhatsApp Flow submission to chat', error);
-  });
-
-  return {
-    screen: 'SUCCESS',
-    data: {
-      summary: `Заявка на «${serviceLabel}» принята. Администратор свяжется с вами и подтвердит дату и время.`,
-      lead_id: leadId,
-      extension_message_response: {
-        params: {
-          flow_token: flowToken,
-          lead_id: leadId,
-        },
-      },
-    },
-  };
+  try {
+    const appointment = await createClinicAppointment(env, companyId, data, leadId, threadId, flowToken);
+    const when = new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(appointment.startsAt));
+    const firstMessage = `Запись WhatsApp Flow: ${serviceLabel}; ${appointment.branchName}; ${appointment.doctorName}; ${when}${comment ? `; ${comment}` : ''}`;
+    const finalMetadata = { ...flowMetadata, appointment_id: appointment.appointmentId, starts_at: appointment.startsAt, ends_at: appointment.endsAt, branch_name: appointment.branchName, doctor_name: appointment.doctorName };
+    await attachFlowSubmissionToThread(env, companyId, threadId, leadId, name, flowToken, firstMessage, finalMetadata).catch((error) => console.error('Unable to attach WhatsApp Flow booking to chat', error));
+    return { screen: 'SUCCESS', data: { summary: `Вы записаны: ${appointment.branchName}, ${appointment.doctorName}, ${when}.`, lead_id: leadId, appointment_id: appointment.appointmentId, extension_message_response: { params: { flow_token: flowToken, lead_id: leadId, appointment_id: appointment.appointmentId } } } };
+  } catch (error) {
+    return { screen: 'SLOT', data: { ...data, error_message: error instanceof Error ? error.message : 'Не удалось создать запись.' } };
+  }
 }
