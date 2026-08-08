@@ -1,3 +1,4 @@
+import { detectAdvertisingCurrencies } from './adCurrencies';
 import type { Env } from './integrations';
 
 type RecordValue = Record<string, unknown>;
@@ -8,6 +9,20 @@ const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 const PAGE_SIZE = 1000;
 const MAX_ROWS = 200000;
+
+// Расход кабинетов приходит в валюте кабинета (Meta/TikTok — обычно USD),
+// выручка CRM — в KZT. Суммы НЕ конвертируются: каждая строка и агрегат
+// несут spend_currency, чтобы интерфейс показывал исходную валюту,
+// а не подписывал доллары как тенге. Агрегат из разных валют — 'MIXED'.
+const AD_PLATFORM_DEFAULT_CURRENCY: Record<string, string> = { meta: 'USD', facebook: 'USD', instagram: 'USD', tiktok: 'USD' };
+const MIXED_CURRENCY = 'MIXED';
+
+const normalizeAccountId = (value: unknown) => text(value).replace(/^act_/, '');
+
+function currencyCode(value: unknown): string {
+  const code = text(value).toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : '';
+}
 
 class AnalyticsQueryError extends Error {
   constructor(readonly resource: string, readonly status: number, readonly detail: string) {
@@ -104,24 +119,43 @@ function parentKey(level: Level, row: Identity) {
   return hierarchyKey('adset', row);
 }
 
+function recommendationLabel(spend: number, spendCurrency: string, romi: number | null): string {
+  if (!spend) return 'Нет расхода за период';
+  if (spendCurrency === MIXED_CURRENCY) return 'Кабинеты с разными валютами — сравнение сумм недоступно';
+  if (romi === null) return `Расход в ${spendCurrency}, выручка в KZT — ROMI не рассчитывается без конвертации`;
+  if (romi >= 50) return 'Связка прибыльна — можно масштабировать';
+  if (romi >= 0) return 'На уровне окупаемости — наблюдать';
+  return 'Убыточная связка — оптимизировать или отключить';
+}
+
+// Суммы остаются в исходной валюте кабинета. Spend-метрики (CPL/CPM/CAC)
+// считаются в валюте расхода; ROMI/ROAS — только когда расход тоже в KZT,
+// иначе честный null вместо смеси валют.
 function finalize(row: RecordValue): RecordValue {
   const spend = num(row.spend), impressions = num(row.impressions), clicks = num(row.clicks), linkClicks = num(row.link_clicks);
-  const reach = num(row.reach);
+  const reach = num(row.reach), revenue = num(row.revenue);
+  const crmLeads = num(row.crm_leads), targetLeads = num(row.target_leads);
+  const appointments = num(row.appointments), arrived = num(row.arrived), sales = num(row.sales);
+  const spendCurrency = text(row.spend_currency, 'KZT');
+  const single = spendCurrency !== MIXED_CURRENCY;
+  const comparable = spendCurrency === 'KZT';
+  const romi = comparable && spend > 0 ? (revenue - spend) * 100 / spend : null;
   return {
     ...row,
-    roas: null,
-    romi: null,
-    cpl: null,
-    cost_per_target: null,
-    cost_per_appointment: null,
-    cost_per_arrival: null,
-    cac: null,
-    cpm: impressions ? spend * 1000 / impressions : 0,
-    cpc: clicks ? spend / clicks : 0,
+    spend_currency: spendCurrency,
+    roas: comparable && spend > 0 ? revenue / spend : null,
+    romi,
+    cpl: single && spend > 0 && crmLeads > 0 ? spend / crmLeads : null,
+    cost_per_target: single && spend > 0 && targetLeads > 0 ? spend / targetLeads : null,
+    cost_per_appointment: single && spend > 0 && appointments > 0 ? spend / appointments : null,
+    cost_per_arrival: single && spend > 0 && arrived > 0 ? spend / arrived : null,
+    cac: single && spend > 0 && sales > 0 ? spend / sales : null,
+    cpm: impressions && single ? spend * 1000 / impressions : 0,
+    cpc: clicks && single ? spend / clicks : 0,
     ctr: impressions ? clicks * 100 / impressions : 0,
     link_ctr: impressions ? linkClicks * 100 / impressions : 0,
     frequency: reach ? impressions / reach : 0,
-    recommendation: 'Рассчитывается после конвертации валюты',
+    recommendation: recommendationLabel(spend, spendCurrency, romi),
   };
 }
 
@@ -155,9 +189,10 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
 
   const settled = await Promise.allSettled([
     queryAll<RecordValue>(env, 'marketing_leads', `marketing_leads?select=external_id,source,platform,campaign,stage,is_target,appointment_at,arrived_at,sold_at,sale_amount,lead_created_at,qualified_at,rejected_at,deal_created_at,deal_rejected_at,utm_source,utm_medium,utm_campaign,utm_content,campaign_id,adset_id,ad_id,internal_client_id,fbclid,gclid,ttclid,yclid,vk_click_id&${leadFilter}&order=lead_created_at.asc`),
-    queryAll<RecordValue>(env, 'marketing_ads', `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${adFilter}&order=report_date.asc`),
+    queryAll<RecordValue>(env, 'marketing_ads', `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,currency,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${adFilter}&order=report_date.asc`),
     queryAll<RecordValue>(env, 'marketing_dashboard_daily', `marketing_dashboard_daily?select=*&date=gte.${from}&date=lte.${to}&order=date.asc`),
     queryOne<RecordValue>(env, 'marketing_scoring_settings', 'marketing_scoring_settings?select=*&id=eq.default'),
+    detectAdvertisingCurrencies(env),
   ]);
 
   const unavailable: string[] = [];
@@ -167,10 +202,32 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
     console.error(`[analytics] источник ${resource} недоступен:`, result.reason);
     return [];
   };
-  const leads = unwrap(settled[0], 'marketing_leads');
-  const ads = unwrap(settled[1], 'marketing_ads');
-  const daily = unwrap(settled[2], 'marketing_dashboard_daily');
-  const settingsRows = unwrap(settled[3], 'marketing_scoring_settings');
+  const leads = unwrap(settled[0] as PromiseSettledResult<RecordValue[]>, 'marketing_leads');
+  const ads = unwrap(settled[1] as PromiseSettledResult<RecordValue[]>, 'marketing_ads');
+  const daily = unwrap(settled[2] as PromiseSettledResult<RecordValue[]>, 'marketing_dashboard_daily');
+  const settingsRows = unwrap(settled[3] as PromiseSettledResult<RecordValue[]>, 'marketing_scoring_settings');
+  const accountCurrencies = settled[4].status === 'fulfilled' ? settled[4].value : [];
+
+  const currencyByAccount = new Map<string, string>();
+  for (const account of accountCurrencies) {
+    const id = normalizeAccountId(account.account_id);
+    if (id) currencyByAccount.set(id, currencyCode(account.currency) || 'USD');
+  }
+
+  const resolveAdCurrency = (ad: RecordValue): string => {
+    // Валюта строки из синка — самый точный источник; дефолт колонки 'KZT'
+    // для рекламных платформ считаем недостоверным и уточняем по кабинету.
+    const rowCurrency = currencyCode(ad.currency);
+    const platform = normalizedPlatform(ad).toLowerCase();
+    const platformDefault = AD_PLATFORM_DEFAULT_CURRENCY[platform] || '';
+    if (rowCurrency && !(rowCurrency === 'KZT' && platformDefault)) return rowCurrency;
+    return currencyByAccount.get(normalizeAccountId(ad.account_id)) || platformDefault || rowCurrency || 'KZT';
+  };
+  const mergeCurrency = (current: unknown, incoming: string): string => {
+    const existing = text(current);
+    if (!existing) return incoming;
+    return existing === incoming ? existing : MIXED_CURRENCY;
+  };
   if (unavailable.includes('marketing_leads') && unavailable.includes('marketing_ads')) {
     return new Response(JSON.stringify({ error:'Аналитика недоступна: не удалось прочитать данные из базы', unavailable }), { status:503, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'} });
   }
@@ -189,6 +246,8 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   const adIndex = new Map<string, Identity[]>(), adsetIndex = new Map<string, Identity[]>(), campaignIndex = new Map<string, Identity[]>();
   for (const ad of ads) {
     const row = ensureLeaf(ad);
+    const adCurrency = resolveAdCurrency(ad);
+    row.spend_currency = mergeCurrency(row.spend_currency, adCurrency);
     addMetrics(row, { spend:ad.spend, ad_revenue:ad.revenue, impressions:ad.impressions, reach:ad.reach, clicks:ad.clicks, link_clicks:ad.link_clicks, ads_leads:ad.leads });
     const id = identity(ad);
     addIndex(adIndex,id.ad_id,id); addIndex(adsetIndex,id.adset_id,id); addIndex(campaignIndex,id.campaign_id,id);
@@ -235,7 +294,7 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   };
   for(const leaf of leafMap.values()){
     const id=identity(leaf);
-    for(const level of ['platform','account','campaign','adset','ad'] as Level[]){const target=ensureHierarchy(level,id);addMetrics(target,leaf);target.active_days=Math.max(num(target.active_days),num(leaf.active_days));if(level==='ad')target.attribution_level=leaf.attribution_level;}
+    for(const level of ['platform','account','campaign','adset','ad'] as Level[]){const target=ensureHierarchy(level,id);addMetrics(target,leaf);const leafCurrency=text(leaf.spend_currency);if(leafCurrency&&num(leaf.spend)>0)target.spend_currency=mergeCurrency(target.spend_currency,leafCurrency);target.active_days=Math.max(num(target.active_days),num(leaf.active_days));if(level==='ad')target.attribution_level=leaf.attribution_level;}
   }
   const hierarchy: RecordValue[]=[...hierarchyMap.values()].map(finalize);
   const campaigns: RecordValue[]=hierarchy.filter((row)=>row.level==='campaign').sort((a,b)=>num(b.revenue)-num(a.revenue));
@@ -246,7 +305,14 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   const delays=Array.from({length:7},(_,index)=>({day:index+1,appointments:0,rate:0}));
   for(const lead of leads){const created=new Date(text(lead.lead_created_at));if(Number.isNaN(created.getTime()))continue;const h=created.getUTCHours(),d=(created.getUTCDay()+6)%7;hourly[h].leads+=1;weekdays[d].leads+=1;if(lead.appointment_at){hourly[h].appointments+=1;weekdays[d].appointments+=1;const appointment=new Date(text(lead.appointment_at));if(!Number.isNaN(appointment.getTime())){const delay=Math.max(1,Math.min(7,Math.floor((appointment.getTime()-created.getTime())/86400000)+1));delays[delay-1].appointments+=1;}}}
   hourly.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});weekdays.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});delays.forEach((row)=>{row.rate=leads.length?row.appointments*100/leads.length:0;});
-  const totals=platforms.reduce<{leads:number;target_leads:number;arrived:number;sales:number;spend:number;revenue:number}>((acc,row)=>({leads:acc.leads+num(row.crm_leads),target_leads:acc.target_leads+num(row.target_leads),arrived:acc.arrived+num(row.arrived),sales:acc.sales+num(row.sales),spend:acc.spend+num(row.spend),revenue:acc.revenue+num(row.revenue)}),{leads:0,target_leads:0,arrived:0,sales:0,spend:0,revenue:0});
+  const totals=platforms.reduce<{leads:number;target_leads:number;arrived:number;sales:number;spend:number;spend_currency:string;revenue:number}>((acc,row)=>({leads:acc.leads+num(row.crm_leads),target_leads:acc.target_leads+num(row.target_leads),arrived:acc.arrived+num(row.arrived),sales:acc.sales+num(row.sales),spend:acc.spend+num(row.spend),spend_currency:num(row.spend)>0?mergeCurrency(acc.spend_currency||undefined,text(row.spend_currency,'KZT')):acc.spend_currency,revenue:acc.revenue+num(row.revenue)}),{leads:0,target_leads:0,arrived:0,sales:0,spend:0,spend_currency:'',revenue:0});
+  if(!totals.spend_currency)totals.spend_currency='KZT';
   const attribution={total_leads:leads.length,unattributed_leads:unattributedLeads,unattributed_rate:leads.length?unattributedLeads*100/leads.length:0};
-  return new Response(JSON.stringify({period:{from,to,days},totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,data_complete:true}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+  const currencyMeta = {
+    mode: 'original',
+    revenue_currency: 'KZT',
+    spend_currencies: [...new Set(hierarchy.map((row) => text(row.spend_currency)).filter((value) => value && value !== MIXED_CURRENCY))],
+    accounts_detected: accountCurrencies.length,
+  };
+  return new Response(JSON.stringify({period:{from,to,days},totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,currency:currencyMeta,data_complete:true}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 }
