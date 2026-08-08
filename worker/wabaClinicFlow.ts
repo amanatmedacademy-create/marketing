@@ -2,12 +2,27 @@ type Row = Record<string, unknown>;
 
 export const CLINIC_FLOW_NAME = 'IMDS Clinic Appointment';
 export const CLINIC_FLOW_CATEGORY = ['APPOINTMENT_BOOKING', 'LEAD_GENERATION'];
+export const CLINIC_FLOW_SCHEMA_VERSION = 2;
+
+const optionArray = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      title: { type: 'string' },
+      description: { type: 'string' },
+    },
+  },
+};
 
 export const CLINIC_FLOW_JSON: Row = {
   version: '7.3',
   data_api_version: '3.0',
   routing_model: {
-    APPOINTMENT: ['SUCCESS'],
+    APPOINTMENT: ['DOCTOR'],
+    DOCTOR: ['SLOT'],
+    SLOT: ['SUCCESS'],
     SUCCESS: [],
   },
   screens: [
@@ -16,7 +31,11 @@ export const CLINIC_FLOW_JSON: Row = {
       title: 'Запись в клинику',
       terminal: false,
       success: false,
-      data: {},
+      data: {
+        branches: { ...optionArray, __example__: [{ id: 'branch-1', title: 'Филиал', description: 'Адрес' }] },
+        has_branches: { type: 'boolean', __example__: true },
+        error_message: { type: 'string', __example__: '' },
+      },
       layout: {
         type: 'SingleColumnLayout',
         children: [
@@ -24,28 +43,10 @@ export const CLINIC_FLOW_JSON: Row = {
             type: 'Form',
             name: 'appointment_form',
             children: [
-              {
-                type: 'TextHeading',
-                text: 'Оставьте заявку на запись',
-              },
-              {
-                type: 'TextBody',
-                text: 'Выберите удобные параметры. Администратор клиники подтвердит точную дату и время после получения заявки.',
-              },
-              {
-                type: 'TextInput',
-                name: 'name',
-                label: 'Имя',
-                required: true,
-                'input-type': 'text',
-              },
-              {
-                type: 'TextInput',
-                name: 'phone',
-                label: 'Телефон',
-                required: true,
-                'input-type': 'phone',
-              },
+              { type: 'TextHeading', text: 'Выберите филиал' },
+              { type: 'TextBody', text: 'Укажите данные пациента и выберите филиал. На следующем шаге покажем доступных врачей и свободное время.' },
+              { type: 'TextInput', name: 'name', label: 'Имя', required: true, 'input-type': 'text' },
+              { type: 'TextInput', name: 'phone', label: 'Телефон', required: true, 'input-type': 'phone' },
               {
                 type: 'Dropdown',
                 name: 'service',
@@ -58,43 +59,109 @@ export const CLINIC_FLOW_JSON: Row = {
                   { id: 'other', title: 'Другое' },
                 ],
               },
-              {
-                type: 'TextInput',
-                name: 'preferred_date',
-                label: 'Желаемая дата',
-                required: true,
-                'input-type': 'text',
-                'helper-text': 'Например: 12 августа',
-              },
-              {
-                type: 'Dropdown',
-                name: 'preferred_time',
-                label: 'Удобное время',
-                required: true,
-                'data-source': [
-                  { id: 'morning', title: 'Утро · 09:00–12:00' },
-                  { id: 'day', title: 'День · 12:00–17:00' },
-                  { id: 'evening', title: 'Вечер · 17:00–20:00' },
-                ],
-              },
-              {
-                type: 'TextInput',
-                name: 'comment',
-                label: 'Комментарий',
-                required: false,
-                'input-type': 'text',
-              },
+              { type: 'Dropdown', name: 'branch_id', label: 'Филиал', required: true, 'data-source': '${data.branches}' },
+              { type: 'TextBody', text: '${data.error_message}' },
               {
                 type: 'Footer',
-                label: 'Отправить заявку',
+                label: 'Выбрать врача',
                 'on-click-action': {
                   name: 'data_exchange',
                   payload: {
                     name: '${form.name}',
                     phone: '${form.phone}',
                     service: '${form.service}',
-                    preferred_date: '${form.preferred_date}',
-                    preferred_time: '${form.preferred_time}',
+                    branch_id: '${form.branch_id}',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      id: 'DOCTOR',
+      title: 'Выберите врача',
+      terminal: false,
+      success: false,
+      data: {
+        name: { type: 'string', __example__: 'Пациент' },
+        phone: { type: 'string', __example__: '+77000000000' },
+        service: { type: 'string', __example__: 'consultation' },
+        branch_id: { type: 'string', __example__: 'branch-1' },
+        doctors: { ...optionArray, __example__: [{ id: 'doctor-1', title: 'Врач', description: 'Специализация' }] },
+        has_doctors: { type: 'boolean', __example__: true },
+        error_message: { type: 'string', __example__: '' },
+      },
+      layout: {
+        type: 'SingleColumnLayout',
+        children: [
+          {
+            type: 'Form',
+            name: 'doctor_form',
+            children: [
+              { type: 'TextHeading', text: 'Доступные специалисты' },
+              { type: 'TextBody', text: 'Выберите врача. После этого IMDS покажет только реально свободные слоты из расписания.' },
+              { type: 'Dropdown', name: 'doctor_id', label: 'Врач', required: true, 'data-source': '${data.doctors}' },
+              { type: 'TextBody', text: '${data.error_message}' },
+              {
+                type: 'Footer',
+                label: 'Показать свободное время',
+                'on-click-action': {
+                  name: 'data_exchange',
+                  payload: {
+                    name: '${data.name}',
+                    phone: '${data.phone}',
+                    service: '${data.service}',
+                    branch_id: '${data.branch_id}',
+                    doctor_id: '${form.doctor_id}',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      id: 'SLOT',
+      title: 'Дата и время',
+      terminal: false,
+      success: false,
+      data: {
+        name: { type: 'string', __example__: 'Пациент' },
+        phone: { type: 'string', __example__: '+77000000000' },
+        service: { type: 'string', __example__: 'consultation' },
+        branch_id: { type: 'string', __example__: 'branch-1' },
+        doctor_id: { type: 'string', __example__: 'doctor-1' },
+        slots: { ...optionArray, __example__: [{ id: '2026-08-10T09:00:00+05:00', title: '10.08, 09:00', description: 'пн · 30 мин' }] },
+        has_slots: { type: 'boolean', __example__: true },
+        error_message: { type: 'string', __example__: '' },
+      },
+      layout: {
+        type: 'SingleColumnLayout',
+        children: [
+          {
+            type: 'Form',
+            name: 'slot_form',
+            children: [
+              { type: 'TextHeading', text: 'Свободное время' },
+              { type: 'TextBody', text: 'Слоты обновляются из расписания клиники. Перед подтверждением IMDS повторно проверит доступность.' },
+              { type: 'Dropdown', name: 'slot_id', label: 'Дата и время', required: true, 'data-source': '${data.slots}' },
+              { type: 'TextInput', name: 'comment', label: 'Комментарий', required: false, 'input-type': 'text' },
+              { type: 'TextBody', text: '${data.error_message}' },
+              {
+                type: 'Footer',
+                label: 'Записаться',
+                'on-click-action': {
+                  name: 'data_exchange',
+                  payload: {
+                    name: '${data.name}',
+                    phone: '${data.phone}',
+                    service: '${data.service}',
+                    branch_id: '${data.branch_id}',
+                    doctor_id: '${data.doctor_id}',
+                    slot_id: '${form.slot_id}',
                     comment: '${form.comment}',
                   },
                 },
@@ -106,18 +173,13 @@ export const CLINIC_FLOW_JSON: Row = {
     },
     {
       id: 'SUCCESS',
-      title: 'Заявка принята',
+      title: 'Запись подтверждена',
       terminal: true,
       success: true,
       data: {
-        summary: {
-          type: 'string',
-          __example__: 'Администратор свяжется с вами для подтверждения записи.',
-        },
-        lead_id: {
-          type: 'string',
-          __example__: '00000000-0000-0000-0000-000000000000',
-        },
+        summary: { type: 'string', __example__: 'Запись создана.' },
+        lead_id: { type: 'string', __example__: '00000000-0000-0000-0000-000000000000' },
+        appointment_id: { type: 'string', __example__: '00000000-0000-0000-0000-000000000000' },
         extension_message_response: {
           type: 'object',
           properties: {
@@ -126,6 +188,7 @@ export const CLINIC_FLOW_JSON: Row = {
               properties: {
                 flow_token: { type: 'string' },
                 lead_id: { type: 'string' },
+                appointment_id: { type: 'string' },
               },
             },
           },
@@ -133,6 +196,7 @@ export const CLINIC_FLOW_JSON: Row = {
             params: {
               flow_token: 'example-token',
               lead_id: '00000000-0000-0000-0000-000000000000',
+              appointment_id: '00000000-0000-0000-0000-000000000000',
             },
           },
         },
@@ -140,21 +204,16 @@ export const CLINIC_FLOW_JSON: Row = {
       layout: {
         type: 'SingleColumnLayout',
         children: [
-          {
-            type: 'TextHeading',
-            text: 'Спасибо',
-          },
-          {
-            type: 'TextBody',
-            text: '${data.summary}',
-          },
+          { type: 'TextHeading', text: 'Готово' },
+          { type: 'TextBody', text: '${data.summary}' },
           {
             type: 'Footer',
-            label: 'Готово',
+            label: 'Закрыть',
             'on-click-action': {
               name: 'complete',
               payload: {
                 lead_id: '${data.lead_id}',
+                appointment_id: '${data.appointment_id}',
               },
             },
           },
@@ -169,10 +228,4 @@ export const SERVICE_LABELS: Record<string, string> = {
   diagnostics: 'Диагностика',
   repeat: 'Повторный приём',
   other: 'Другое',
-};
-
-export const TIME_LABELS: Record<string, string> = {
-  morning: 'Утро · 09:00–12:00',
-  day: 'День · 12:00–17:00',
-  evening: 'Вечер · 17:00–20:00',
 };
