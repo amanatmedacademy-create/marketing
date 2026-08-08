@@ -1,13 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarClock, LoaderCircle, Plus, Stethoscope } from 'lucide-react';
+import { Building2, CalendarClock, CheckCircle2, LoaderCircle, Plus, Stethoscope, UserCheck, XCircle } from 'lucide-react';
 
 type Branch = { id: string; name: string; address?: string | null; active: boolean };
 type Doctor = { id: string; branch_id: string; name: string; specialty?: string | null; active: boolean };
 type Schedule = { id: string; doctor_id: string; weekday: number; start_time: string; end_time: string; slot_minutes: number; active: boolean };
-type BookingConfig = { branches: Branch[]; doctors: Doctor[]; schedules: Schedule[]; upcoming: unknown[]; error?: string };
+type Appointment = {
+  id: string;
+  branch_id: string;
+  doctor_id: string;
+  lead_id?: string | null;
+  conversation_id?: string | null;
+  starts_at: string;
+  ends_at: string;
+  patient_name: string;
+  phone: string;
+  status: 'BOOKED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  metadata?: Record<string, unknown>;
+};
+type BookingConfig = { branches: Branch[]; doctors: Doctor[]; schedules: Schedule[]; upcoming: Appointment[]; error?: string };
 
 type ApiPayload = Record<string, unknown>;
 const weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const appointmentLabels: Record<Appointment['status'], string> = {
+  BOOKED: 'Новая',
+  CONFIRMED: 'Подтверждена',
+  COMPLETED: 'Завершена',
+  CANCELLED: 'Отменена',
+  NO_SHOW: 'Неявка',
+};
+
+function formatAppointmentTime(value: string): string {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : value;
+}
 
 async function api<T>(init?: RequestInit): Promise<T> {
   const response = await fetch('/api/integrations/waba/flows/clinic/booking', {
@@ -23,6 +50,7 @@ async function api<T>(init?: RequestInit): Promise<T> {
 export default function WabaClinicBookingSetup({ enabled }: { enabled: boolean }) {
   const [data, setData] = useState<BookingConfig | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyAppointment, setBusyAppointment] = useState('');
   const [error, setError] = useState('');
   const [branchName, setBranchName] = useState('');
   const [branchAddress, setBranchAddress] = useState('');
@@ -63,6 +91,19 @@ export default function WabaClinicBookingSetup({ enabled }: { enabled: boolean }
     }
   };
 
+  const setAppointmentStatus = async (id: string, status: Appointment['status']) => {
+    setBusyAppointment(id);
+    setError('');
+    try {
+      await api({ method: 'POST', body: JSON.stringify({ action: 'set_appointment_status', id, status }) });
+      await load();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setBusyAppointment('');
+    }
+  };
+
   const activeBranches = useMemo(() => data?.branches.filter((item) => item.active) || [], [data]);
   const activeDoctors = useMemo(() => data?.doctors.filter((item) => item.active) || [], [data]);
   if (!enabled) return null;
@@ -70,6 +111,7 @@ export default function WabaClinicBookingSetup({ enabled }: { enabled: boolean }
   const fieldStyle = { display: 'grid', gap: 4 } as const;
   const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 } as const;
   const panelStyle = { display: 'grid', gap: 8, padding: 10, border: '1px solid rgba(148,163,184,.2)', borderRadius: 10 } as const;
+  const appointmentStyle = { display: 'grid', gap: 7, padding: 10, border: '1px solid rgba(148,163,184,.18)', borderRadius: 9, background: 'rgba(15,23,42,.24)' } as const;
 
   return <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
     <div style={panelStyle}>
@@ -111,6 +153,35 @@ export default function WabaClinicBookingSetup({ enabled }: { enabled: boolean }
       </button>
       {data?.schedules.map((item) => <small className="meta-oauth-message" key={item.id}>{item.active ? '●' : '○'} {data.doctors.find((doctor) => doctor.id === item.doctor_id)?.name || 'Врач'} · {weekdays[item.weekday]} · {item.start_time.slice(0,5)}–{item.end_time.slice(0,5)} · {item.slot_minutes} мин</small>)}
       <small className="meta-oauth-message">Свободные слоты генерируются на 21 день вперёд и автоматически исключают уже занятое время.</small>
+    </div>
+
+    <div style={panelStyle}>
+      <strong><UserCheck size={15}/> Ближайшие записи</strong>
+      {!data?.upcoming.length && <small className="meta-oauth-message">Предстоящих записей пока нет.</small>}
+      {data?.upcoming.map((item) => {
+        const doctor = data.doctors.find((candidate) => candidate.id === item.doctor_id);
+        const branch = data.branches.find((candidate) => candidate.id === item.branch_id);
+        const itemBusy = busyAppointment === item.id;
+        return <div key={item.id} style={appointmentStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <strong>{item.patient_name}</strong>
+            <small className="meta-oauth-message">{appointmentLabels[item.status]}</small>
+          </div>
+          <small className="meta-oauth-message">{formatAppointmentTime(item.starts_at)} · {doctor?.name || 'Врач'} · {branch?.name || 'Филиал'}</small>
+          <small className="meta-oauth-message">{item.phone}</small>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {item.status === 'BOOKED' && <button type="button" className="connections-button" disabled={itemBusy} onClick={() => void setAppointmentStatus(item.id, 'CONFIRMED')}>
+              {itemBusy ? <LoaderCircle size={14} className="spin"/> : <CheckCircle2 size={14}/>} Подтвердить
+            </button>}
+            {(item.status === 'BOOKED' || item.status === 'CONFIRMED') && <button type="button" className="connections-button" disabled={itemBusy} onClick={() => void setAppointmentStatus(item.id, 'CANCELLED')}>
+              {itemBusy ? <LoaderCircle size={14} className="spin"/> : <XCircle size={14}/>} Отменить
+            </button>}
+            {item.status === 'CONFIRMED' && <button type="button" className="connections-button" disabled={itemBusy} onClick={() => void setAppointmentStatus(item.id, 'COMPLETED')}>Завершена</button>}
+            {item.status === 'CONFIRMED' && <button type="button" className="connections-button" disabled={itemBusy} onClick={() => void setAppointmentStatus(item.id, 'NO_SHOW')}>Неявка</button>}
+          </div>
+        </div>;
+      })}
+      <small className="meta-oauth-message">При отмене запись перестаёт занимать слот и время снова становится доступным в WhatsApp Flow.</small>
     </div>
 
     {error && <small className="meta-oauth-message">{error}</small>}
