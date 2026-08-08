@@ -85,7 +85,7 @@ async function secretKey(env: WabaFlowsEnv): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-async function encryptPrivateKey(env: WabaFlowsEnv, privateKeyBytes: Uint8Array): Promise<{ ciphertext: string; iv: string }> {
+async function encryptPrivateKey(env: WabaFlowsEnv, privateKeyBytes: Uint8Array<ArrayBuffer>): Promise<{ ciphertext: string; iv: string }> {
   const key = await secretKey(env);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, privateKeyBytes);
