@@ -16,11 +16,20 @@ const json = (data: unknown, status = 200, headers: HeadersInit = {}) => new Res
 
 const text = (value?: string | null): string => (value || '').trim();
 
-function stateCookie(state: string, companyId: string, userId: string): string {
-  return encodeURIComponent(JSON.stringify({ state, companyId, userId }));
+function base64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-export function handleMetaOAuthStart(request: Request, env: MetaOAuthStartEnv, url: URL): Response | null {
+async function signedStateCookie(state: string, companyId: string, userId: string, secret: string): Promise<string> {
+  const payload = base64Url(new TextEncoder().encode(JSON.stringify({ state, companyId, userId, issuedAt: Date.now() })));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return encodeURIComponent(`${payload}.${base64Url(new Uint8Array(signature))}`);
+}
+
+export async function handleMetaOAuthStart(request: Request, env: MetaOAuthStartEnv, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/integrations/meta/start' || request.method !== 'POST') return null;
 
   const appId = text(env.META_APP_ID);
@@ -50,6 +59,6 @@ export function handleMetaOAuthStart(request: Request, env: MetaOAuthStartEnv, u
     authorizationUrl: `https://www.facebook.com/${version}/dialog/oauth?${params.toString()}`,
     redirectUri,
   }, 200, {
-    'set-cookie': `${STATE_COOKIE}=${stateCookie(state, companyId, userId)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+    'set-cookie': `${STATE_COOKIE}=${await signedStateCookie(state, companyId, userId, appSecret)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
   });
 }
