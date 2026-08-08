@@ -1,0 +1,291 @@
+import { resolveCompanyId } from './companyContext';
+import { CLINIC_FLOW_CATEGORY, CLINIC_FLOW_JSON, CLINIC_FLOW_NAME, SERVICE_LABELS, TIME_LABELS } from './wabaClinicFlow';
+
+type Row = Record<string, unknown>;
+
+type Credential = {
+  rowId: string;
+  companyId: string;
+  accessToken: string;
+  wabaId: string;
+  phoneNumberId: string;
+  graphVersion: string;
+  configSummary: Row;
+};
+
+export interface WabaClinicFlowEnv {
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  DEFAULT_COMPANY_ID?: string;
+  INTEGRATION_ENCRYPTION_KEY?: string;
+  META_GRAPH_VERSION?: string;
+}
+
+const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
+  status,
+  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+});
+
+function graphVersion(value?: string): string {
+  const version = text(value) || 'v23.0';
+  return version.startsWith('v') ? version : `v${version}`;
+}
+
+function secret(env: WabaClinicFlowEnv): string {
+  return text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
+}
+
+function supabaseHeaders(env: WabaClinicFlowEnv, extra: HeadersInit = {}): Headers {
+  const headers = new Headers(extra);
+  headers.set('apikey', env.SUPABASE_SERVICE_ROLE_KEY);
+  headers.set('authorization', `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);
+  headers.set('accept', 'application/json');
+  return headers;
+}
+
+async function db<T>(env: WabaClinicFlowEnv, path: string, init: RequestInit = {}): Promise<T> {
+  const headers = supabaseHeaders(env, init.headers);
+  if (init.body != null) headers.set('content-type', 'application/json');
+  if (init.method && !['GET', 'HEAD'].includes(init.method) && !headers.has('prefer')) headers.set('prefer', 'return=representation');
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/${path}`, { ...init, headers, cache: 'no-store' });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Supabase ${response.status}: ${body.slice(0, 1800)}`);
+  return (body ? JSON.parse(body) : null) as T;
+}
+
+function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(value);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function decryptCredential(env: WabaClinicFlowEnv, row: Row): Promise<Credential | null> {
+  const encrypted = text(row.encrypted_payload);
+  const iv = text(row.iv);
+  if (!encrypted || !iv) return null;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret(env)));
+  const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt']);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(iv) }, key, base64ToBytes(encrypted));
+  const payload = record(JSON.parse(new TextDecoder().decode(decrypted)));
+  const accessToken = text(payload.accessToken);
+  const wabaId = text(payload.wabaId);
+  const phoneNumberId = text(payload.phoneNumberId);
+  if (!accessToken || !wabaId || !phoneNumberId) return null;
+  return {
+    rowId: text(row.id),
+    companyId: text(row.company_id),
+    accessToken,
+    wabaId,
+    phoneNumberId,
+    graphVersion: graphVersion(text(payload.graphVersion) || env.META_GRAPH_VERSION),
+    configSummary: record(row.config_summary),
+  };
+}
+
+async function credential(env: WabaClinicFlowEnv, companyId: string): Promise<Credential> {
+  const rows = await db<Row[]>(env,
+    `integration_credentials?provider=eq.waba&status=eq.connected&company_id=eq.${encodeURIComponent(companyId)}&select=id,company_id,encrypted_payload,iv,config_summary&order=updated_at.desc&limit=20`,
+  );
+  for (const row of rows) {
+    try {
+      const value = await decryptCredential(env, row);
+      if (value) return value;
+    } catch (error) {
+      console.error('Unable to decrypt WABA credential for clinic Flow', error);
+    }
+  }
+  throw new Error('Подключённая WABA для клиники не найдена');
+}
+
+async function metaForm(url: string, accessToken: string, form?: FormData): Promise<Row> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' },
+    body: form,
+  });
+  const raw = await response.text();
+  let payload: Row = {};
+  try { payload = record(raw ? JSON.parse(raw) : {}); } catch { payload = { raw }; }
+  if (!response.ok || payload.error) throw new Error(`Meta Graph ${response.status}: ${JSON.stringify(payload).slice(0, 1800)}`);
+  return payload;
+}
+
+async function createMetaFlow(request: Request, current: Credential): Promise<{ flowId: string; validationErrors: unknown[] }> {
+  const endpointUri = `${new URL(request.url).origin}/api/webhooks/waba/flows`;
+  const createForm = new FormData();
+  createForm.set('name', CLINIC_FLOW_NAME);
+  createForm.set('categories', JSON.stringify(CLINIC_FLOW_CATEGORY));
+  createForm.set('endpoint_uri', endpointUri);
+  const createResult = await metaForm(
+    `https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(current.wabaId)}/flows`,
+    current.accessToken,
+    createForm,
+  );
+  const flowId = text(createResult.id);
+  if (!flowId) throw new Error('Meta не вернула Flow ID');
+
+  const assetForm = new FormData();
+  assetForm.set('file', new Blob([JSON.stringify(CLINIC_FLOW_JSON)], { type: 'application/json' }), 'flow.json');
+  assetForm.set('name', 'flow.json');
+  assetForm.set('asset_type', 'FLOW_JSON');
+  const assetResult = await metaForm(
+    `https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(flowId)}/assets`,
+    current.accessToken,
+    assetForm,
+  );
+  const validationErrors = Array.isArray(assetResult.validation_errors) ? assetResult.validation_errors : [];
+  if (validationErrors.length) return { flowId, validationErrors };
+
+  await metaForm(
+    `https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(flowId)}/publish`,
+    current.accessToken,
+  );
+  return { flowId, validationErrors: [] };
+}
+
+async function saveFlowMeta(env: WabaClinicFlowEnv, current: Credential, flowId: string, endpointUrl: string): Promise<void> {
+  const summary = current.configSummary;
+  const flows = record(summary.flows);
+  const next = {
+    ...summary,
+    flows: {
+      ...flows,
+      clinic: {
+        flowId,
+        name: CLINIC_FLOW_NAME,
+        categories: CLINIC_FLOW_CATEGORY,
+        endpointUrl,
+        status: 'PUBLISHED',
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+  await db<Row[]>(env, `integration_credentials?id=eq.${encodeURIComponent(current.rowId)}&select=id`, {
+    method: 'PATCH',
+    body: JSON.stringify({ config_summary: next, updated_at: new Date().toISOString() }),
+  });
+}
+
+export async function handleWabaClinicFlowAdminRequest(request: Request, env: WabaClinicFlowEnv, url: URL): Promise<Response | null> {
+  if (!url.pathname.startsWith('/api/integrations/waba/flows/clinic/')) return null;
+  if (text(request.headers.get('x-amanat-auth-role')) !== 'administrator') return json({ error: 'Требуются права администратора' }, 403);
+
+  const companyId = await resolveCompanyId(env);
+  const current = await credential(env, companyId);
+  const clinic = record(record(current.configSummary.flows).clinic);
+
+  if (url.pathname === '/api/integrations/waba/flows/clinic/config' && request.method === 'GET') {
+    return json({
+      configured: Boolean(text(clinic.flowId)),
+      flowId: text(clinic.flowId) || null,
+      name: text(clinic.name) || CLINIC_FLOW_NAME,
+      status: text(clinic.status) || null,
+      endpointUrl: text(clinic.endpointUrl) || `${url.origin}/api/webhooks/waba/flows`,
+      updatedAt: text(clinic.updatedAt) || null,
+    });
+  }
+
+  if (url.pathname === '/api/integrations/waba/flows/clinic/create' && request.method === 'POST') {
+    try {
+      const result = await createMetaFlow(request, current);
+      if (result.validationErrors.length) {
+        return json({
+          ok: false,
+          flowId: result.flowId,
+          status: 'DRAFT',
+          validationErrors: result.validationErrors,
+          error: 'Meta отклонила Flow JSON. Исправьте validation_errors перед публикацией.',
+        }, 422);
+      }
+      const endpointUrl = `${url.origin}/api/webhooks/waba/flows`;
+      await saveFlowMeta(env, current, result.flowId, endpointUrl);
+      return json({ ok: true, flowId: result.flowId, status: 'PUBLISHED', endpointUrl, validationErrors: [] });
+    } catch (error) {
+      console.error('Clinic WhatsApp Flow create failed', error);
+      return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  }
+
+  return null;
+}
+
+export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId: string, body: Row): Promise<Row | null> {
+  const action = text(body.action).toLowerCase();
+  const screen = text(body.screen).toUpperCase();
+  if (action !== 'data_exchange' || screen !== 'APPOINTMENT') return null;
+
+  const data = record(body.data);
+  const name = text(data.name);
+  const phone = text(data.phone);
+  const service = text(data.service);
+  const preferredDate = text(data.preferred_date);
+  const preferredTime = text(data.preferred_time);
+  const comment = text(data.comment);
+  const flowToken = text(body.flow_token) || crypto.randomUUID();
+
+  if (!name || !phone || !service || !preferredDate || !preferredTime) {
+    return {
+      screen: 'APPOINTMENT',
+      data: {
+        error_message: 'Заполните имя, телефон, услугу, желаемую дату и время.',
+      },
+    };
+  }
+
+  const serviceLabel = SERVICE_LABELS[service] || service;
+  const timeLabel = TIME_LABELS[preferredTime] || preferredTime;
+  const externalId = `whatsapp-flow:${flowToken}`;
+  const firstMessage = `Заявка WhatsApp Flow: ${serviceLabel}; ${preferredDate}; ${timeLabel}${comment ? `; ${comment}` : ''}`;
+  const leadPayload = {
+    company_id: companyId,
+    external_id: externalId,
+    name,
+    first_name: name.split(/\s+/)[0] || name,
+    phone,
+    source: 'WhatsApp Flow',
+    platform: 'WhatsApp',
+    stage: 'NEW',
+    first_message: firstMessage,
+    direction: 'INBOUND',
+    is_target: true,
+    metadata: {
+      whatsapp_flow: {
+        flow_token: flowToken,
+        screen: 'APPOINTMENT',
+        service,
+        service_label: serviceLabel,
+        preferred_date: preferredDate,
+        preferred_time: preferredTime,
+        preferred_time_label: timeLabel,
+        comment: comment || null,
+        received_at: new Date().toISOString(),
+      },
+    },
+    updated_at: new Date().toISOString(),
+  };
+
+  const rows = await db<Row[]>(env, 'marketing_leads?on_conflict=company_id,external_id&select=id', {
+    method: 'POST',
+    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(leadPayload),
+  });
+  const leadId = text(rows[0]?.id);
+
+  return {
+    screen: 'SUCCESS',
+    data: {
+      summary: `Заявка на «${serviceLabel}» принята. Администратор свяжется с вами и подтвердит дату и время.`,
+      lead_id: leadId,
+      extension_message_response: {
+        params: {
+          flow_token: flowToken,
+          lead_id: leadId,
+        },
+      },
+    },
+  };
+}
