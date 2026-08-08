@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, CalendarCheck2, CheckCircle2, Facebook, KeyRound, LoaderCircle, RotateCw } from 'lucide-react';
+import { AlertCircle, CalendarCheck2, CheckCircle2, Facebook, KeyRound, LoaderCircle, RotateCw, Send } from 'lucide-react';
 
 type FacebookLoginResponse = { status?: string; authResponse?: { code?: string } };
 type FacebookSdk = {
@@ -40,6 +40,15 @@ type ClinicFlowConfig = {
   endpointUrl?: string;
   updatedAt?: string | null;
   validationErrors?: unknown[];
+  error?: string;
+};
+type ClinicTemplateConfig = {
+  configured?: boolean;
+  templateId?: string | null;
+  name?: string;
+  language?: string;
+  category?: string;
+  status?: string | null;
   error?: string;
 };
 
@@ -105,8 +114,10 @@ async function loadSdk(config: WabaConfig): Promise<FacebookSdk> {
 function WabaFlowsSetup({ connected }: { connected: boolean }) {
   const [config, setConfig] = useState<FlowsConfig | null>(null);
   const [clinic, setClinic] = useState<ClinicFlowConfig | null>(null);
+  const [template, setTemplate] = useState<ClinicTemplateConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [clinicBusy, setClinicBusy] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
   const [error, setError] = useState('');
 
   const loadClinic = async () => {
@@ -121,6 +132,18 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
     }
   };
 
+  const loadTemplate = async () => {
+    if (!connected) return;
+    try {
+      const response = await fetch('/api/integrations/waba/flows/clinic/template', { headers: { accept: 'application/json' } });
+      const value = await readJson<ClinicTemplateConfig>(response);
+      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      setTemplate(value);
+    } catch {
+      setTemplate(null);
+    }
+  };
+
   const load = async () => {
     if (!connected) return;
     try {
@@ -129,7 +152,7 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setConfig(value);
       setError('');
-      await loadClinic();
+      await Promise.all([loadClinic(), loadTemplate()]);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     }
@@ -149,11 +172,31 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       const value = await readJson<FlowsConfig>(response);
       if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
       setConfig(value);
-      await loadClinic();
+      await Promise.all([loadClinic(), loadTemplate()]);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const createClinicTemplate = async () => {
+    setTemplateBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/integrations/waba/flows/clinic/template', {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const value = await readJson<ClinicTemplateConfig>(response);
+      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      setTemplate(value);
+      await loadTemplate();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setTemplateBusy(false);
     }
   };
 
@@ -175,6 +218,7 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
       }
       setClinic(value);
       await loadClinic();
+      await createClinicTemplate();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     } finally {
@@ -185,22 +229,29 @@ function WabaFlowsSetup({ connected }: { connected: boolean }) {
   if (!connected) return null;
   const valid = config?.signatureStatus === 'VALID';
   const clinicPublished = clinic?.status === 'PUBLISHED' && Boolean(clinic.flowId);
+  const templateApproved = template?.status === 'APPROVED';
 
   return <div className="waba-flows-setup" style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-    <button type="button" className="connections-button" onClick={() => void setup()} disabled={busy || clinicBusy}>
+    <button type="button" className="connections-button" onClick={() => void setup()} disabled={busy || clinicBusy || templateBusy}>
       {busy ? <LoaderCircle size={16} className="spin"/> : valid ? <CheckCircle2 size={16}/> : <KeyRound size={16}/>} {' '}
       {busy ? 'Настраиваем WhatsApp Flows…' : valid ? 'Шифрование WhatsApp Flows настроено' : config?.configured ? 'Обновить ключ WhatsApp Flows' : 'Настроить WhatsApp Flows'}
     </button>
 
-    <button type="button" className="connections-button" onClick={() => void createClinicFlow()} disabled={!valid || busy || clinicBusy || clinicPublished}>
+    <button type="button" className="connections-button" onClick={() => void createClinicFlow()} disabled={!valid || busy || clinicBusy || templateBusy || clinicPublished}>
       {clinicBusy ? <LoaderCircle size={16} className="spin"/> : clinicPublished ? <CheckCircle2 size={16}/> : <CalendarCheck2 size={16}/>} {' '}
       {clinicBusy ? 'Создаём Flow записи…' : clinicPublished ? 'Flow «Запись в клинику» опубликован' : 'Создать Flow «Запись в клинику»'}
     </button>
 
+    {clinicPublished && <button type="button" className="connections-button" onClick={() => void createClinicTemplate()} disabled={busy || clinicBusy || templateBusy || templateApproved}>
+      {templateBusy ? <LoaderCircle size={16} className="spin"/> : templateApproved ? <CheckCircle2 size={16}/> : <Send size={16}/>} {' '}
+      {templateBusy ? 'Создаём шаблон отправки…' : templateApproved ? 'Шаблон записи одобрен Meta' : template?.configured ? `Обновить статус шаблона · ${template.status || 'PENDING'}` : 'Создать шаблон отправки Flow'}
+    </button>}
+
     {!valid && <small className="meta-oauth-message">Сначала настройте шифрование Flows и дождитесь статуса Public key: VALID.</small>}
     {config?.endpointUrl && <small className="meta-oauth-message">Flow Endpoint: {config.endpointUrl}</small>}
     {config?.configured && <small className="meta-oauth-message">Public key: {valid ? 'VALID' : config.signatureStatus || 'загружен, ожидает проверки Meta'}</small>}
-    {clinicPublished && <small className="meta-oauth-message">Clinic Flow ID: {clinic?.flowId} · статус PUBLISHED. Заявки автоматически попадают в IMDS Marketing Leads.</small>}
+    {clinicPublished && <small className="meta-oauth-message">Clinic Flow ID: {clinic?.flowId} · PUBLISHED. Заявки автоматически попадают в IMDS Marketing Leads.</small>}
+    {template?.configured && <small className="meta-oauth-message">Шаблон: {template.name} · {template.language} · {template.status || 'PENDING'}. После APPROVED он появится в меню «Шаблон» в WhatsApp-чате.</small>}
     {error && <small className="meta-oauth-message"><AlertCircle size={14}/> {error}</small>}
   </div>;
 }
