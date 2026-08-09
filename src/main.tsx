@@ -17,6 +17,7 @@ import './advertising-platform-cards.css';
 import './v36-dashboard-advanced.css';
 import './user-admin.css';
 import './call-center-chat-layout-fix.css';
+import './sales-funnel-fullheight.css';
 
 function Root() {
   if (window.location.pathname === '/operations') {
