@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import VoiceTranscriptionAction from '../components/VoiceTranscriptionAction';
 import {
   createChatThread,
   fetchChatMessages,
@@ -501,6 +502,7 @@ export function CallCenterChatPage() {
                     <header><strong>{message.senderName || (message.direction === 'OUTBOUND' ? 'Оператор' : selectedContact?.fullName || 'Клиент')}</strong></header>
                     <p>{message.body}</p>
                     {message.hasAttachment && <a className="inbox-attachment" href={getChatAttachmentUrl(message.id)} target="_blank" rel="noreferrer"><span>📎</span><div><strong>{message.attachmentName || 'Вложение'}</strong><small>{message.attachmentMimeType || 'Файл'} {bytesLabel(message.attachmentSizeBytes)}</small></div></a>}
+                    <VoiceTranscriptionAction message={message}/>
                     <footer><time>{formatMessageTime(message.sentAt)}</time><span>{message.direction === 'OUTBOUND' ? outboundStatusLabel(message.status) : message.readAt ? 'Прочитано' : 'Новое'}</span></footer>
                   </article>
                 </div>;
