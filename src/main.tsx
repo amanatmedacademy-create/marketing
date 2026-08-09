@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
-import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import DealWorkspaceHost from './components/DealWorkspace';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
 import VoiceTranscriptionEnhancer from './components/VoiceTranscriptionEnhancer';
@@ -25,7 +24,6 @@ function Root() {
 
   return <>
     <MarketingPlatform />
-    <AnalyticsTableColorizer />
     <AdPreviewEnhancer />
     <DealWorkspaceHost />
     <InternalCommunicationBridge />
