@@ -4,7 +4,6 @@ import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import DealWorkspaceHost from './components/DealWorkspace';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
-import VoiceTranscriptionEnhancer from './components/VoiceTranscriptionEnhancer';
 import MarketingPlatform from './MarketingPlatform';
 import './styles.css';
 import './analytics.css';
@@ -28,7 +27,6 @@ function Root() {
     <AdPreviewEnhancer />
     <DealWorkspaceHost />
     <InternalCommunicationBridge />
-    <VoiceTranscriptionEnhancer />
   </>;
 }
 
