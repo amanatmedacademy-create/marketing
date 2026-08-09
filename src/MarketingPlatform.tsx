@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { BarChart3, Bell, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import ImdsBrand from './components/ImdsBrand';
@@ -14,9 +14,10 @@ import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
-import { CustomersPage, GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
-import { AutomationStudioPage, DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
+import { GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
+import { DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
+import { Customer360Page, GoogleIntegrationsPage, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -31,7 +32,7 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'CRM', items: [
     { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
-    { to: '/customers', label: 'Клиенты', icon: UserRoundSearch, moduleId: 'crm.leads' },
+    { to: '/customers', label: 'Клиенты 360°', icon: UserRoundSearch, moduleId: 'crm.leads' },
     { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
@@ -52,12 +53,14 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'МАРКЕТИНГ', items: [
     { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
-    { to: '/automation', label: 'Automation Studio', icon: Workflow, moduleId: 'dashboard' },
+    { to: '/automation', label: 'Journey Automation', icon: Workflow, moduleId: 'dashboard' },
+    { to: '/assistant', label: 'IMDS AI', icon: Bot, moduleId: 'analytics.reports' },
     { to: '/lead-forms', label: 'Формы захвата', icon: FileText, moduleId: 'crm.leads' },
     { to: '/media-plan', label: 'Медиаплан', icon: Goal, moduleId: 'dashboard' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
+    { to: '/google', label: 'Google Ads + GA4', icon: BarChart3, moduleId: 'integrations' },
     { to: '/data-quality', label: 'Качество данных', icon: Database, moduleId: 'audit' },
     { to: '/notifications', label: 'Уведомления', icon: Bell, moduleId: 'integrations' },
     { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
@@ -99,7 +102,7 @@ function Shell() {
         <Route path="/goals" element={guard('dashboard', <GoalsPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
-        <Route path="/customers" element={guard('crm.leads', <CustomersPage/>)} />
+        <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <SalesFunnelPage/>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
@@ -111,10 +114,12 @@ function Shell() {
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
         <Route path="/reports" element={guard('analytics.reports', <ReportsPage/>)} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
-        <Route path="/automation" element={guard('dashboard', <AutomationStudioPage/>)} />
+        <Route path="/automation" element={guard('dashboard', <JourneyAutomationPage/>)} />
+        <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
         <Route path="/lead-forms" element={guard('crm.leads', <LeadFormsPage/>)} />
         <Route path="/media-plan" element={guard('dashboard', <MediaPlanPage/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
+        <Route path="/google" element={guard('integrations', <GoogleIntegrationsPage/>)} />
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
