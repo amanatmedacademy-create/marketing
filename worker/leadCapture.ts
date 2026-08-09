@@ -59,7 +59,7 @@ function tracking(input: Row, form: Row): Row {
 }
 
 export async function handleLeadCaptureRequest(request: Request, env: LeadCaptureEnv, url: URL): Promise<Response | null> {
-  const match = url.pathname.match(/^\/api\/public\/lead-forms\/([^/]+)$/);
+  const match = url.pathname.match(/^\/api\/webhooks\/lead-forms\/([^/]+)$/);
   if (!match) return null;
   if (request.method === 'OPTIONS') return json({ ok: true }, 204);
 
