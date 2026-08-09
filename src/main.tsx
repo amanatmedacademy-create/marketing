@@ -3,13 +3,10 @@ import ReactDOM from 'react-dom/client';
 import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
-import CompanySwitcher from './components/CompanySwitcher';
 import DealWorkspaceHost from './components/DealWorkspace';
-import ImdsBrand from './components/ImdsBrand';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
 import VoiceTranscriptionEnhancer from './components/VoiceTranscriptionEnhancer';
 import MarketingPlatform from './MarketingPlatform';
-import MarketingOS from './pages/MarketingOS';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
@@ -22,17 +19,8 @@ import './user-admin.css';
 import './call-center-chat-layout-fix.css';
 
 function Root() {
-  const operatingSystem = window.location.pathname === '/operations';
-
-  if (operatingSystem) {
-    return <div className="operations-shell">
-      <header className="operations-topbar">
-        <a href="/" aria-label="IMDS Marketing"><ImdsBrand compact /></a>
-        <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
-        <CompanySwitcher />
-      </header>
-      <main className="operations-content"><MarketingOS /></main>
-    </div>;
+  if (window.location.pathname === '/operations') {
+    window.history.replaceState({}, document.title, '/marketing');
   }
 
   return <>

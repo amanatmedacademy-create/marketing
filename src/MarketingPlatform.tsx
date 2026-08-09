@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { BarChart3, Bell, Cable, ChartNoAxesCombined, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { BarChart3, Bell, Cable, ChartNoAxesCombined, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
@@ -14,63 +14,96 @@ import { AttributionPage, MarketingArchitecturePage } from './components/Marketi
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
+import MarketingOS from './pages/MarketingOS';
+import { CustomersPage, GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
-const nav = [
-  { to: '/', label: 'Dashboard Marketing', icon: LayoutDashboard, end: true, moduleId: 'dashboard' },
-  { to: '/chat', label: 'Чат', icon: MessageCircle, moduleId: 'communications.chat' },
-  { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
-  { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
-  { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
-  { to: '/advertising', label: 'Реклама', icon: ChartNoAxesCombined, moduleId: 'advertising' },
-  { to: '/attribution', label: 'UTM и атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
-  { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
-  { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
-  { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
-  { to: '/architecture', label: 'Архитектура', icon: Workflow, moduleId: 'platform.architecture' },
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string; end?: boolean };
+type NavGroup = { label: string; items: NavItem[] };
+
+const navigation: NavGroup[] = [
+  { label: 'ОБЗОР', items: [
+    { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, moduleId: 'dashboard' },
+    { to: '/goals', label: 'Цели и эффективность', icon: Goal, moduleId: 'dashboard' },
+  ]},
+  { label: 'CRM', items: [
+    { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
+    { to: '/customers', label: 'Клиенты', icon: UserRoundSearch, moduleId: 'crm.leads' },
+    { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
+  ]},
+  { label: 'КОММУНИКАЦИИ', items: [
+    { to: '/chat', label: 'Чат', icon: MessageCircle, moduleId: 'communications.chat' },
+    { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
+  ]},
+  { label: 'РЕКЛАМА', items: [
+    { to: '/advertising', label: 'Рекламные кампании', icon: ChartNoAxesCombined, moduleId: 'advertising' },
+    { to: '/segments', label: 'Сегменты и аудитории', icon: Layers3, moduleId: 'analytics.reports' },
+  ]},
+  { label: 'АНАЛИТИКА', items: [
+    { to: '/attribution', label: 'UTM и атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
+    { to: '/analytics', label: 'Аналитика и отчёты', icon: BarChart3, moduleId: 'analytics.reports' },
+  ]},
+  { label: 'МАРКЕТИНГ', items: [
+    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
+  ]},
+  { label: 'ПЛАТФОРМА', items: [
+    { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
+    { to: '/notifications', label: 'Уведомления', icon: Bell, moduleId: 'integrations' },
+    { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
+    { to: '/architecture', label: 'Архитектура', icon: Workflow, moduleId: 'platform.architecture' },
+  ]},
 ];
 
 function Shell() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
-  const visibleNav = nav.filter((item) => canView(item.moduleId));
+  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canView(item.moduleId)) })).filter(group => group.items.length > 0);
+  const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
   const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
       <div className="marketing-brand"><ImdsBrand compact /></div>
-      <div className="marketing-nav-label">МАРКЕТИНГ</div>
-      <nav>{visibleNav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+      <div className="marketing-nav-groups">{visibleGroups.map(group => <section className="marketing-nav-group" key={group.label}>
+        <div className="marketing-nav-label">{group.label}</div>
+        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+      </section>)}</div>
     </aside>
     <main>
       <header className="marketing-topbar">
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
-        <div className="marketing-search"><Search size={17}/><input placeholder="Поиск лидов, кампаний, каналов и UTM"/></div>
+        <div className="marketing-search"><Search size={17}/><input placeholder="Поиск клиентов, лидов, кампаний и UTM"/></div>
         <div className="marketing-top-actions">
           <CompanySwitcher />
-          <button type="button" aria-label="Уведомления" onClick={() => setWorkspace('profile')}><Bell size={18}/></button>
+          <button type="button" aria-label="Уведомления" onClick={() => navigate('/notifications')}><Bell size={18}/></button>
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
         </div>
       </header>
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <MarketingDashboardSummary/>)} />
+        <Route path="/goals" element={guard('dashboard', <GoalsPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
+        <Route path="/customers" element={guard('crm.leads', <CustomersPage/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <SalesFunnelPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
+        <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
         <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
+        <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
+        <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
-        <Route path="*" element={<Navigate to={visibleNav[0]?.to || '/'} replace/>} />
+        <Route path="*" element={<Navigate to={firstRoute} replace/>} />
       </Routes></div>
     </main>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
