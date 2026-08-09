@@ -114,6 +114,7 @@ async function slots(env: ClinicScreenResponseEnv, companyId: string, doctorId: 
 
 async function appointmentScreen(env: ClinicScreenResponseEnv, companyId: string, data: Row): Promise<Row> {
   const trigger = text(data.trigger);
+  const service = text(data.service);
   const branchId = text(data.branch);
   const doctorId = text(data.doctor);
   const selectedDate = text(data.date);
@@ -128,13 +129,13 @@ async function appointmentScreen(env: ClinicScreenResponseEnv, companyId: string
     data: {
       service: serviceOptions(),
       branch: branchRows.map((row) => option(text(row.id), text(row.name), text(row.address) || undefined)),
-      is_branch_enabled: branchRows.length > 0,
+      is_branch_enabled: Boolean(service && branchRows.length),
       doctor: doctorRows.map((row) => option(text(row.id), text(row.name), text(row.specialty) || undefined)),
-      is_doctor_enabled: Boolean(branchId && doctorRows.length),
+      is_doctor_enabled: Boolean(service && branchId && doctorRows.length),
       date: dates.map((value) => option(value, dateTitle(value))),
-      is_date_enabled: Boolean(doctorId && dates.length),
+      is_date_enabled: Boolean(service && branchId && doctorId && dates.length),
       time: times.map((item) => option(item.id, item.title, undefined, item.enabled)),
-      is_time_enabled: Boolean(selectedDate && times.length),
+      is_time_enabled: Boolean(service && branchId && doctorId && selectedDate && times.length),
       error_message: trigger === 'date_selected' && selectedDate && !times.length ? 'На эту дату свободного времени нет.' : '',
     },
   };
