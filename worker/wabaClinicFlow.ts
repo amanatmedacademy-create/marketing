@@ -2,7 +2,7 @@ type Row = Record<string, unknown>;
 
 export const CLINIC_FLOW_NAME = 'IMDS Clinic Appointment';
 export const CLINIC_FLOW_CATEGORY = ['APPOINTMENT_BOOKING', 'LEAD_GENERATION'];
-export const CLINIC_FLOW_SCHEMA_VERSION = 3;
+export const CLINIC_FLOW_SCHEMA_VERSION = 4;
 
 const optionArray = {
   type: 'array',
@@ -26,8 +26,7 @@ export const CLINIC_FLOW_JSON: Row = {
   routing_model: {
     APPOINTMENT: ['DETAILS'],
     DETAILS: ['SUMMARY'],
-    SUMMARY: ['TERMS', 'SUCCESS'],
-    TERMS: ['SUMMARY'],
+    SUMMARY: ['SUCCESS'],
     SUCCESS: [],
   },
   screens: [
@@ -46,22 +45,22 @@ export const CLINIC_FLOW_JSON: Row = {
           ...optionArray,
           __example__: [{ id: 'branch-1', title: 'Филиал', description: 'Адрес' }],
         },
-        is_branch_enabled: booleanData(true),
+        is_branch_enabled: booleanData(false),
         doctor: {
           ...optionArray,
           __example__: [{ id: 'doctor-1', title: 'Врач', description: 'Специализация' }],
         },
-        is_doctor_enabled: booleanData(true),
+        is_doctor_enabled: booleanData(false),
         date: {
           ...optionArray,
           __example__: [{ id: '2026-08-10', title: 'пн, 10 авг.' }],
         },
-        is_date_enabled: booleanData(true),
+        is_date_enabled: booleanData(false),
         time: {
           ...optionArray,
           __example__: [{ id: '2026-08-10T09:00:00+05:00', title: '09:00' }],
         },
-        is_time_enabled: booleanData(true),
+        is_time_enabled: booleanData(false),
         error_message: stringData(''),
       },
       layout: {
@@ -215,6 +214,7 @@ export const CLINIC_FLOW_JSON: Row = {
               { type: 'TextHeading', text: 'Пациент' },
               { type: 'TextBody', text: '${data.details}' },
               { type: 'TextBody', text: '${data.error_message}' },
+              { type: 'TextBody', text: 'Данные используются клиникой только для обработки заявки, организации записи и связи с пациентом.' },
               {
                 type: 'OptIn',
                 name: 'terms',
@@ -233,27 +233,6 @@ export const CLINIC_FLOW_JSON: Row = {
                 },
               },
             ],
-          },
-        ],
-      },
-    },
-    {
-      id: 'TERMS',
-      title: 'Условия',
-      data: {},
-      layout: {
-        type: 'SingleColumnLayout',
-        children: [
-          { type: 'TextHeading', text: 'Обработка данных' },
-          { type: 'TextBody', text: 'Данные из этой формы используются клиникой для обработки заявки, подтверждения записи и связи с пациентом. Доступ к данным предоставляется только уполномоченным сотрудникам в рамках рабочего процесса IMDS.' },
-          {
-            type: 'Footer',
-            label: 'Назад',
-            'on-click-action': {
-              name: 'navigate',
-              next: { type: 'screen', name: 'SUMMARY' },
-              payload: {},
-            },
           },
         ],
       },
