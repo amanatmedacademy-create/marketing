@@ -235,6 +235,21 @@ async function attachFlowSubmissionToThread(env: WabaClinicFlowEnv, companyId: s
   });
 }
 
+async function linkAppointmentToLead(env: WabaClinicFlowEnv, companyId: string, appointmentId: string, leadId: string, threadId: string): Promise<void> {
+  await db<Row[]>(env, `waba_clinic_appointments?id=eq.${encodeURIComponent(appointmentId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
+    method: 'PATCH',
+    body: JSON.stringify({ lead_id: leadId || null, conversation_id: threadId || null, updated_at: new Date().toISOString() }),
+  });
+}
+
+async function releaseUnlinkedAppointment(env: WabaClinicFlowEnv, companyId: string, appointmentId: string): Promise<void> {
+  if (!appointmentId) return;
+  await db<unknown>(env, `waba_clinic_appointments?id=eq.${encodeURIComponent(appointmentId)}&company_id=eq.${encodeURIComponent(companyId)}&lead_id=is.null`, {
+    method: 'DELETE',
+    headers: { prefer: 'return=minimal' },
+  });
+}
+
 export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId: string, body: Row): Promise<Row | null> {
   const screenResponse = await handleClinicScreenResponse(env, companyId, body);
   if (screenResponse) return screenResponse;
@@ -267,31 +282,38 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
     comment: comment || null,
     received_at: new Date().toISOString(),
   };
-  const leadPayload = {
-    company_id: companyId,
-    external_id: externalId,
-    name,
-    first_name: name.split(/\s+/)[0] || name,
-    phone,
-    source: 'WhatsApp Flow',
-    platform: 'WhatsApp',
-    stage: 'Запись',
-    first_message: `Запись через WhatsApp Flow: ${serviceLabel}`,
-    direction: 'INBOUND',
-    is_target: true,
-    appointment_at: new Date(text(data.slot_id)).toISOString(),
-    metadata: { whatsapp_flow: flowMetadata },
-    updated_at: new Date().toISOString(),
-  };
-  const leadRows = await db<Row[]>(env, 'marketing_leads?on_conflict=company_id,external_id&select=id', {
-    method: 'POST',
-    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify(leadPayload),
-  });
-  const leadId = text(leadRows[0]?.id);
 
+  let appointment: Awaited<ReturnType<typeof createClinicAppointment>> | null = null;
   try {
-    const appointment = await createClinicAppointment(env, companyId, data, leadId, threadId, flowToken);
+    // Reserve the slot first. This prevents creating a false CRM lead when the slot was already taken.
+    appointment = await createClinicAppointment(env, companyId, data, '', threadId, flowToken);
+
+    const leadPayload = {
+      company_id: companyId,
+      external_id: externalId,
+      name,
+      first_name: name.split(/\s+/)[0] || name,
+      phone,
+      source: 'WhatsApp Flow',
+      platform: 'WhatsApp',
+      stage: 'Запись',
+      first_message: `Запись через WhatsApp Flow: ${serviceLabel}`,
+      direction: 'INBOUND',
+      is_target: true,
+      appointment_at: new Date(appointment.startsAt).toISOString(),
+      metadata: { whatsapp_flow: { ...flowMetadata, appointment_id: appointment.appointmentId } },
+      updated_at: new Date().toISOString(),
+    };
+    const leadRows = await db<Row[]>(env, 'marketing_leads?on_conflict=company_id,external_id&select=id', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(leadPayload),
+    });
+    const leadId = text(leadRows[0]?.id);
+    if (!leadId) throw new Error('Не удалось создать лид для подтверждённой записи.');
+
+    await linkAppointmentToLead(env, companyId, appointment.appointmentId, leadId, threadId);
+
     const when = new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(appointment.startsAt));
     const firstMessage = `Запись WhatsApp Flow: ${serviceLabel}; ${appointment.branchName}; ${appointment.doctorName}; ${when}${comment ? `; ${comment}` : ''}`;
     const finalMetadata = { ...flowMetadata, appointment_id: appointment.appointmentId, starts_at: appointment.startsAt, ends_at: appointment.endsAt, branch_name: appointment.branchName, doctor_name: appointment.doctorName };
@@ -310,6 +332,9 @@ export async function handleClinicFlowExchange(env: WabaClinicFlowEnv, companyId
       },
     };
   } catch (error) {
+    if (appointment?.appointmentId) {
+      await releaseUnlinkedAppointment(env, companyId, appointment.appointmentId).catch((cleanupError) => console.error('Unable to release unlinked clinic appointment', cleanupError));
+    }
     return {
       screen: 'SUMMARY',
       data: {
