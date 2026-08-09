@@ -4,6 +4,7 @@ import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
 import DealWorkspaceHost from './components/DealWorkspace';
+import ImdsBrand from './components/ImdsBrand';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
 import VoiceTranscriptionEnhancer from './components/VoiceTranscriptionEnhancer';
 import MarketingPlatform from './MarketingPlatform';
@@ -25,7 +26,7 @@ function Root() {
   if (operatingSystem) {
     return <div className="operations-shell">
       <header className="operations-topbar">
-        <a href="/">IMDS Marketing</a>
+        <a href="/" aria-label="IMDS Marketing"><ImdsBrand compact /></a>
         <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
       </header>
       <main className="operations-content"><MarketingOS /></main>
