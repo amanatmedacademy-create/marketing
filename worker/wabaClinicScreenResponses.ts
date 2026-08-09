@@ -174,6 +174,13 @@ export async function handleClinicScreenResponse(env: ClinicScreenResponseEnv, c
   const screen = text(body.screen).toUpperCase();
   const data = record(body.data);
 
+  // Meta sends client-side Flow errors back to the data endpoint. Acknowledge them
+  // instead of echoing an invalid screen payload or attempting a booking mutation.
+  if (data.error) {
+    console.warn('WhatsApp Flow client error', { companyId, screen, error: data.error });
+    return { data: { acknowledged: true } };
+  }
+
   if (action === 'init') return appointmentScreen(env, companyId, data);
   if (action !== 'data_exchange') return null;
 
