@@ -4,7 +4,6 @@ import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, G
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import ImdsBrand from './components/ImdsBrand';
-import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
@@ -17,7 +16,8 @@ import MarketingOS from './pages/MarketingOS';
 import { GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
 import { DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
-import { Customer360Page, GoogleIntegrationsPage, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
+import { Customer360Page, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
+import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -60,7 +60,6 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
-    { to: '/google', label: 'Google Ads + GA4', icon: BarChart3, moduleId: 'integrations' },
     { to: '/data-quality', label: 'Качество данных', icon: Database, moduleId: 'audit' },
     { to: '/notifications', label: 'Уведомления', icon: Bell, moduleId: 'integrations' },
     { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
@@ -118,8 +117,8 @@ function Shell() {
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
         <Route path="/lead-forms" element={guard('crm.leads', <LeadFormsPage/>)} />
         <Route path="/media-plan" element={guard('dashboard', <MediaPlanPage/>)} />
-        <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
-        <Route path="/google" element={guard('integrations', <GoogleIntegrationsPage/>)} />
+        <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
+        <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
