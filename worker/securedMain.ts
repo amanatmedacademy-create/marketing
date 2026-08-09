@@ -1,5 +1,6 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
+import { runAutomationEngine } from './automationEngine';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 
@@ -44,6 +45,11 @@ export default {
   },
 
   async scheduled(controller: WorkerScheduledController, env: SecuredEnv, ctx: WorkerExecutionContext): Promise<void> {
-    return app.scheduled(controller, env, ctx);
+    await app.scheduled(controller, env, ctx);
+    ctx.waitUntil(
+      runAutomationEngine(env)
+        .then((result) => console.log('Scheduled journey automation completed', result))
+        .catch((error) => console.error('Scheduled journey automation failed', error)),
+    );
   },
 };
