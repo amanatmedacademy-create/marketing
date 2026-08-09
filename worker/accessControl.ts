@@ -9,6 +9,7 @@ export interface AccessControlEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
 }
 
 const ACTIONS: AccessAction[] = ['view', 'create', 'edit', 'delete', 'export', 'manage'];
@@ -28,7 +29,7 @@ async function db<T>(env: AccessControlEnv, path: string): Promise<T> {
 }
 
 export async function resolveUserAccess(env: AccessControlEnv, userId: string, role?: string): Promise<{ companyId: string; positionId: string | null; jobTitle: string | null; permissions: AccessMap }> {
-  const companyId = await resolveCompanyId(env);
+  const companyId = await resolveCompanyId(env, userId);
   const modules = await db<Row[]>(env, 'platform_modules?status=eq.active&select=id');
   const permissions: AccessMap = Object.fromEntries(modules.map((module) => [text(module.id), emptyGrant()]));
 
