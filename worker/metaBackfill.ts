@@ -137,6 +137,7 @@ function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: str
     platform: 'Meta',
     account_id: accountId,
     account_name: text(item.account_name) || accountId,
+    currency: 'USD',
     campaign_id: text(item.campaign_id) || null,
     campaign_name: text(item.campaign_name) || 'Meta campaign',
     adset_id: text(item.adset_id) || null,
@@ -158,7 +159,7 @@ function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: str
     utm_medium: 'paid_social',
     utm_campaign: text(item.campaign_id) || null,
     utm_content: adId,
-    metadata: { meta: item, selection_mode: selectedAdIds.size ? 'selected' : 'all' },
+    metadata: { meta: item, selection_mode: selectedAdIds.size ? 'selected' : 'all', spend_currency: 'USD' },
   };
 }
 
