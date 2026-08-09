@@ -15,6 +15,9 @@ import {
 } from './credentials';
 import { detectAdvertisingCurrencies } from './adCurrencies';
 import { handleIntegrationLifecycle } from './integrationLifecycle';
+import { handleGoogleIntegrationRequest } from './googleIntegrations';
+import { handleMarketingAssistantRequest } from './marketingAssistant';
+import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -128,6 +131,12 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return new Response(null, { status: 204, headers: { ...corsHeaders(request, env), 'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization,x-admin-key,x-webhook-secret,x-hub-signature-256', 'access-control-max-age': '86400' } });
     try {
+      const googleResponse = await handleGoogleIntegrationRequest(request, env, url);
+      if (googleResponse) return googleResponse;
+      const assistantResponse = await handleMarketingAssistantRequest(request, env, url);
+      if (assistantResponse) return assistantResponse;
+      const automationResponse = await handleAutomationEngineRequest(request, env, url);
+      if (automationResponse) return automationResponse;
       const lifecycleResponse = await handleIntegrationLifecycle(request, env, url);
       if (lifecycleResponse) return lifecycleResponse;
       const credentialResponse = await handleCredentialRequest(request, env, url);
@@ -145,6 +154,7 @@ export default {
       if (url.pathname === '/api/calls/operators' && request.method === 'GET') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_call_operator_summary?select=*&order=appointments.desc,calls.desc'), request, runtimeEnv);
       if (url.pathname === '/api/dashboard') return handleDashboard(request, runtimeEnv, url);
       if (url.pathname === '/api/sources') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_source_summary?select=*&order=revenue.desc'), request, runtimeEnv);
+      if (url.pathname === '/api/web-analytics' && request.method === 'GET') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_web_analytics?select=*&order=report_date.desc&limit=2000'), request, runtimeEnv);
       if (url.pathname === '/api/ads') {
         const summary = await supabaseRequest(runtimeEnv, 'marketing_ads_summary?select=*&order=revenue.desc');
         return summary.ok || summary.status !== 404 ? proxySupabase(summary, request, runtimeEnv) : proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_ads?select=row_key:id,*&order=report_date.desc,revenue.desc'), request, runtimeEnv);
@@ -160,5 +170,6 @@ export default {
   async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
     const runtimeEnv = await hydrateIntegrationEnv(env);
     await runScheduledSync(controller, runtimeEnv, ctx);
+    ctx.waitUntil(runAutomationEngine(runtimeEnv).then((result) => console.log('Automation engine completed', result)).catch((error) => console.error('Automation engine failed', error)));
   },
 };
