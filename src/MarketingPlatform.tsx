@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
+import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
-import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
@@ -18,7 +18,8 @@ import MarketingOS from './pages/MarketingOS';
 import { GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
 import { DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
-import { Customer360Page, GoogleIntegrationsPage, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
+import { Customer360Page, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
+import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -37,19 +38,19 @@ const navigation: NavGroup[] = [
     { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
-    { to: '/chat', label: 'Чат', icon: MessageCircle, moduleId: 'communications.chat' },
+    { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
     { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
   ]},
   { label: 'РЕКЛАМА', items: [
     { to: '/advertising', label: 'Рекламные кампании', icon: ChartNoAxesCombined, moduleId: 'advertising' },
-    { to: '/segments', label: 'Сегменты и аудитории', icon: Layers3, moduleId: 'analytics.reports' },
+    { to: '/segments', label: 'Аудитории и сегменты', icon: Layers3, moduleId: 'analytics.reports' },
   ]},
   { label: 'АНАЛИТИКА', items: [
-    { to: '/attribution', label: 'UTM и атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
-    { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
+    { to: '/attribution', label: 'Атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
+    { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
     { to: '/reports', label: 'Отчёты', icon: FileText, moduleId: 'analytics.reports' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
@@ -61,11 +62,8 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
-    { to: '/google', label: 'Google Ads + GA4', icon: BarChart3, moduleId: 'integrations' },
     { to: '/data-quality', label: 'Качество данных', icon: Database, moduleId: 'audit' },
-    { to: '/notifications', label: 'Уведомления', icon: Bell, moduleId: 'integrations' },
     { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
-    { to: '/architecture', label: 'Архитектура', icon: Workflow, moduleId: 'platform.architecture' },
   ]},
 ];
 
@@ -91,7 +89,7 @@ function Shell() {
     <main>
       <header className="marketing-topbar">
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
-        <div className="marketing-search"><Search size={17}/><input placeholder="Поиск клиентов, лидов, кампаний и UTM"/></div>
+        <GlobalSearch />
         <div className="marketing-top-actions">
           <button type="button" aria-label="Уведомления" onClick={() => navigate('/notifications')}><Bell size={18}/></button>
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
@@ -119,8 +117,8 @@ function Shell() {
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
         <Route path="/lead-forms" element={guard('crm.leads', <LeadFormsPage/>)} />
         <Route path="/media-plan" element={guard('dashboard', <MediaPlanPage/>)} />
-        <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
-        <Route path="/google" element={guard('integrations', <GoogleIntegrationsPage/>)} />
+        <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
+        <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
