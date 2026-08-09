@@ -85,7 +85,7 @@ async function secretKey(env: WabaFlowsEnv): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-async function encryptPrivateKey(env: WabaFlowsEnv, privateKeyBytes: Uint8Array<ArrayBuffer>): Promise<{ ciphertext: string; iv: string }> {
+async function encryptPrivateKey(env: WabaFlowsEnv, privateKeyBytes: Uint8Array): Promise<{ ciphertext: string; iv: string }> {
   const key = await secretKey(env);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, privateKeyBytes);
@@ -165,7 +165,8 @@ function flowEnvelope(summary: Row): FlowKeyEnvelope | null {
 }
 
 async function uploadPublicKey(credential: WabaCredential, publicKeyPem: string): Promise<Row> {
-  const body = new URLSearchParams({ business_public_key: publicKeyPem });
+  const body = new FormData();
+  body.set('business_public_key', publicKeyPem);
   const response = await fetch(
     `https://graph.facebook.com/${credential.graphVersion}/${encodeURIComponent(credential.phoneNumberId)}/whatsapp_business_encryption`,
     {
@@ -173,7 +174,6 @@ async function uploadPublicKey(credential: WabaCredential, publicKeyPem: string)
       headers: {
         authorization: `Bearer ${credential.accessToken}`,
         accept: 'application/json',
-        'content-type': 'application/x-www-form-urlencoded',
       },
       body,
     },
@@ -223,6 +223,32 @@ async function saveFlowEnvelope(env: WabaFlowsEnv, credential: WabaCredential, e
 async function setupFlows(request: Request, env: WabaFlowsEnv): Promise<Response> {
   const companyId = await resolveCompanyId(env);
   const credential = await connectedCredential(env, companyId);
+  const input = record(await request.clone().json().catch(() => ({})));
+  const rotate = input.rotate === true;
+  const existing = flowEnvelope(credential.configSummary);
+  const endpointUrl = `${new URL(request.url).origin}/api/webhooks/waba/flows`;
+
+  if (existing && !rotate) {
+    await uploadPublicKey(credential, existing.publicKeyPem);
+    const signatureStatus = await readPublicKeyStatus(credential);
+    const refreshed: FlowKeyEnvelope = {
+      ...existing,
+      phoneNumberId: credential.phoneNumberId,
+      uploadedAt: new Date().toISOString(),
+      signatureStatus: signatureStatus || existing.signatureStatus,
+    };
+    await saveFlowEnvelope(env, credential, refreshed, endpointUrl);
+    return json({
+      ok: true,
+      configured: true,
+      reused: true,
+      endpointUrl,
+      phoneNumberId: credential.phoneNumberId,
+      publicKeyUploaded: true,
+      signatureStatus: signatureStatus || existing.signatureStatus || 'UNKNOWN',
+    });
+  }
+
   const keyPair = await crypto.subtle.generateKey(
     {
       name: 'RSA-OAEP',
@@ -240,7 +266,6 @@ async function setupFlows(request: Request, env: WabaFlowsEnv): Promise<Response
 
   await uploadPublicKey(credential, publicKeyPem);
   const signatureStatus = await readPublicKeyStatus(credential);
-  const endpointUrl = `${new URL(request.url).origin}/api/webhooks/waba/flows`;
   const envelope: FlowKeyEnvelope = {
     ...encryptedPrivateKey,
     publicKeyPem,
@@ -253,6 +278,7 @@ async function setupFlows(request: Request, env: WabaFlowsEnv): Promise<Response
   return json({
     ok: true,
     configured: true,
+    rotated: rotate,
     endpointUrl,
     phoneNumberId: credential.phoneNumberId,
     publicKeyUploaded: true,
