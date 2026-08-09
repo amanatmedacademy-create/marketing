@@ -16,6 +16,7 @@ type TemplateSummary = {
   status: string;
   body: string;
   parameterCount: number;
+  quickReplyButtonIndexes: number[];
 };
 
 export interface WabaMessagingV2Env {
@@ -134,6 +135,16 @@ function templateParameterCount(body: string): number {
   return max;
 }
 
+function quickReplyButtonIndexes(components: Row[]): number[] {
+  const buttonsComponent = components.find((component) => text(component.type).toUpperCase() === 'BUTTONS');
+  const buttons = Array.isArray(buttonsComponent?.buttons) ? buttonsComponent.buttons.map(record) : [];
+  const indexes: number[] = [];
+  buttons.forEach((button, index) => {
+    if (text(button.type).toUpperCase() === 'QUICK_REPLY') indexes.push(index);
+  });
+  return indexes;
+}
+
 function templateFromRow(row: Row): TemplateSummary | null {
   const status = text(row.status).toUpperCase();
   if (status !== 'APPROVED') return null;
@@ -153,6 +164,7 @@ function templateFromRow(row: Row): TemplateSummary | null {
     status,
     body,
     parameterCount: templateParameterCount(body),
+    quickReplyButtonIndexes: quickReplyButtonIndexes(components),
   };
 }
 
@@ -187,6 +199,28 @@ function normalizePhone(value: string): string {
   return digits;
 }
 
+function buildTemplateComponents(template: TemplateSummary, parameters: string[], threadId: string): Row[] {
+  const components: Row[] = [];
+  if (parameters.length) {
+    components.push({
+      type: 'body',
+      parameters: parameters.map((value) => ({ type: 'text', text: value })),
+    });
+  }
+  for (const index of template.quickReplyButtonIndexes) {
+    components.push({
+      type: 'button',
+      sub_type: 'quick_reply',
+      index: String(index),
+      parameters: [{
+        type: 'payload',
+        payload: `imds:${threadId}:${template.name}:${index}:${crypto.randomUUID().slice(0, 8)}`,
+      }],
+    });
+  }
+  return components;
+}
+
 async function sendTemplateMessage(env: WabaMessagingV2Env, request: Request, threadId: string, input: Row): Promise<Response> {
   const thread = await conversation(env, threadId);
   if (!thread || text(thread.channel).toUpperCase() !== 'WHATSAPP') return json({ error: 'WhatsApp-диалог не найден' }, 404);
@@ -211,12 +245,9 @@ async function sendTemplateMessage(env: WabaMessagingV2Env, request: Request, th
     name: template.name,
     language: { code: template.language },
   };
-  if (parameters.length) {
-    templateObject.components = [{
-      type: 'body',
-      parameters: parameters.map((value) => ({ type: 'text', text: value })),
-    }];
-  }
+  const components = buildTemplateComponents(template, parameters, threadId);
+  if (components.length > 0) templateObject.components = components;
+
   const whatsappPayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -244,7 +275,13 @@ async function sendTemplateMessage(env: WabaMessagingV2Env, request: Request, th
     metadata: {
       whatsapp: result,
       whatsapp_type: 'template',
-      whatsapp_template: { name: template.name, language: template.language, category: template.category, parameters },
+      whatsapp_template: {
+        name: template.name,
+        language: template.language,
+        category: template.category,
+        parameters,
+        quick_reply_buttons: template.quickReplyButtonIndexes,
+      },
     },
     created_at: sentAt,
   };
