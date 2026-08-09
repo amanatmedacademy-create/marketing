@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, BellRing, CheckCircle2, CircleDollarSign, Goal, Layers3, RefreshCw, UsersRound } from 'lucide-react';
 import { marketingApi, type DashboardDailyRow, type IntegrationStatus, type MarketingLead, type SourceSummaryRow } from '../services/api';
 import '../product-modules.css';
@@ -7,7 +7,7 @@ const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(v
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
 const percent = (value: number, total: number) => total ? `${Math.round((value / total) * 100)}%` : '0%';
 
-function ModuleHeader({ eyebrow, title, text, action }: { eyebrow: string; title: string; text: string; action?: React.ReactNode }) {
+function ModuleHeader({ eyebrow, title, text, action }: { eyebrow: string; title: string; text: string; action?: ReactNode }) {
   return <div className="product-page-head"><div><span>{eyebrow}</span><h1>{title}</h1><p>{text}</p></div>{action}</div>;
 }
 
