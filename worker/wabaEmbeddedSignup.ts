@@ -137,20 +137,32 @@ async function registerPhoneNumber(env: WabaEmbeddedSignupEnv, accessToken: stri
     const error = record(parsed.error);
     const code = Number(error.code || 0);
     if (code === 133005) {
-      throw new Error('PIN двухэтапной проверки WhatsApp не совпадает. Укажите текущий 6-значный PIN номера или сбросьте его в WhatsApp Manager.');
+      throw new Error('PIN двухэтапной проверки WhatsApp не совпадает. Сбросьте PIN номера в WhatsApp Manager и повторите подключение.');
     }
     throw new Error(text(error.message) || `Meta phone registration: ${response.status}`);
   }
 }
 
-async function readExistingRegistrationPin(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<string> {
+async function credentialRows(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, select: string): Promise<JsonRecord[]> {
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
-  const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
-  const response = await fetch(`${baseUrl}?${filter}&select=encrypted_payload,iv&order=updated_at.desc&limit=1`, {
+  const common = `company_id=eq.${encodeURIComponent(companyId)}&provider=eq.waba&select=${encodeURIComponent(select)}&order=updated_at.desc&limit=1`;
+  const tenantResponse = await fetch(`${baseUrl}?${common}&user_id=is.null`, {
     headers: supabaseHeaders(env, { accept: 'application/json' }),
   });
-  if (!response.ok) return '';
-  const rows = await response.json() as JsonRecord[];
+  if (tenantResponse.ok) {
+    const tenantRows = await tenantResponse.json() as JsonRecord[];
+    if (tenantRows.length) return tenantRows;
+  }
+  if (!userId) return [];
+  const userResponse = await fetch(`${baseUrl}?${common}&user_id=eq.${encodeURIComponent(userId)}`, {
+    headers: supabaseHeaders(env, { accept: 'application/json' }),
+  });
+  if (!userResponse.ok) return [];
+  return await userResponse.json() as JsonRecord[];
+}
+
+async function readExistingRegistrationPin(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<string> {
+  const rows = await credentialRows(env, companyId, userId, 'encrypted_payload,iv');
   const row = rows[0];
   const encryptedPayload = text(row?.encrypted_payload);
   const iv = text(row?.iv);
@@ -168,15 +180,23 @@ async function readExistingRegistrationPin(env: WabaEmbeddedSignupEnv, companyId
 async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, userId: string, accessToken: string, wabaId: string, phoneNumberId: string, registrationPin: string): Promise<void> {
   const encrypted = await encrypt({ accessToken, wabaId, phoneNumberId, graphVersion: graphVersion(env), registrationPin }, encryptionSecret(env));
   const baseUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials`;
-  const filter = `company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba`;
   const payload = {
     company_id: companyId,
-    user_id: userId,
+    user_id: null,
     provider: 'waba',
     encrypted_payload: encrypted.encryptedPayload,
     iv: encrypted.iv,
     config_summary: {
-      values: { wabaId, phoneNumberId, graphVersion: graphVersion(env), webhookSubscribed: true, registered: true },
+      values: {
+        wabaId,
+        phoneNumberId,
+        graphVersion: graphVersion(env),
+        webhookSubscribed: true,
+        registered: true,
+        ownership: 'tenant',
+        credentialMode: 'oauth_user',
+        connectedByUserId: userId,
+      },
       secretFields: { accessToken: true, registrationPin: true },
     },
     status: 'connected',
@@ -184,9 +204,20 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, use
     last_verified_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const existingResponse = await fetch(`${baseUrl}?${filter}&select=id&limit=1`, { headers: supabaseHeaders(env, { accept: 'application/json' }) });
-  if (!existingResponse.ok) throw new Error(`Supabase WABA lookup: ${existingResponse.status} ${await existingResponse.text()}`);
-  const existingRows = await existingResponse.json() as Array<{ id?: string }>;
+
+  const tenantLookup = await fetch(`${baseUrl}?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.waba&select=id&order=updated_at.desc&limit=1`, {
+    headers: supabaseHeaders(env, { accept: 'application/json' }),
+  });
+  if (!tenantLookup.ok) throw new Error(`Supabase WABA lookup: ${tenantLookup.status} ${await tenantLookup.text()}`);
+  let existingRows = await tenantLookup.json() as Array<{ id?: string }>;
+
+  if (!existingRows[0]?.id && userId) {
+    const userLookup = await fetch(`${baseUrl}?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba&select=id&order=updated_at.desc&limit=1`, {
+      headers: supabaseHeaders(env, { accept: 'application/json' }),
+    });
+    if (userLookup.ok) existingRows = await userLookup.json() as Array<{ id?: string }>;
+  }
+
   const response = existingRows[0]?.id
     ? await fetch(`${baseUrl}?id=eq.${encodeURIComponent(existingRows[0].id as string)}`, {
         method: 'PATCH', headers: supabaseHeaders(env, { prefer: 'return=minimal' }), body: JSON.stringify(payload),
@@ -198,12 +229,7 @@ async function saveCredential(env: WabaEmbeddedSignupEnv, companyId: string, use
 }
 
 async function readConnection(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<JsonRecord | null> {
-  const response = await fetch(
-    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&provider=eq.waba&select=status,config_summary,last_verified_at,last_error&limit=1`,
-    { headers: supabaseHeaders(env, { accept: 'application/json' }) },
-  );
-  if (!response.ok) throw new Error(`Supabase WABA status: ${response.status} ${await response.text()}`);
-  const rows = await response.json() as JsonRecord[];
+  const rows = await credentialRows(env, companyId, userId, 'status,config_summary,last_verified_at,last_error');
   return rows[0] || null;
 }
 
@@ -214,7 +240,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
     const userId = authenticatedUserId(request);
     const configured = Boolean(appId && env.META_APP_SECRET && configId);
     const companyId = userId ? await resolveCompanyId(env).catch(() => '') : '';
-    const connection = companyId && userId ? await readConnection(env, companyId, userId).catch(() => null) : null;
+    const connection = companyId ? await readConnection(env, companyId, userId).catch(() => null) : null;
     return json({
       configured,
       appId,
@@ -251,7 +277,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       await subscribeWaba(env, accessToken, wabaId);
       await registerPhoneNumber(env, accessToken, phoneNumberId, registrationPin);
       await saveCredential(env, companyId, userId, accessToken, wabaId, phoneNumberId, registrationPin);
-      return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true, registered: true });
+      return json({ ok: true, wabaId, phoneNumberId, webhookSubscribed: true, registered: true, ownership: 'tenant' });
     } catch (error) {
       console.error('WABA Embedded Signup failed', error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
