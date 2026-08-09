@@ -22,6 +22,7 @@ export interface WabaClinicFlowOutreachEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   META_GRAPH_VERSION?: string;
 }
@@ -327,7 +328,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
     const role = text(request.headers.get('x-amanat-auth-role'));
     if (role !== 'administrator') return json({ error: 'Требуются права администратора' }, 403);
     try {
-      const companyId = text((env as Row).CURRENT_COMPANY_ID) || text(env.DEFAULT_COMPANY_ID);
+      const companyId = text(env.CURRENT_COMPANY_ID) || text(env.DEFAULT_COMPANY_ID);
       if (!companyId) throw new Error('Не определена клиника');
       const current = await findCredential(env, companyId);
       const template = await getTemplate(current);
@@ -349,7 +350,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
     const role = text(request.headers.get('x-amanat-auth-role'));
     if (role !== 'administrator') return json({ error: 'Требуются права администратора' }, 403);
     try {
-      const companyId = text((env as Row).CURRENT_COMPANY_ID) || text(env.DEFAULT_COMPANY_ID);
+      const companyId = text(env.CURRENT_COMPANY_ID) || text(env.DEFAULT_COMPANY_ID);
       if (!companyId) throw new Error('Не определена клиника');
       const current = await findCredential(env, companyId);
       const template = await createTemplate(env, current);
