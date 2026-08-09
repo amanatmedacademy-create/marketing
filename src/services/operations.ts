@@ -29,13 +29,30 @@ export type ContentItem = {
   status: string;
 };
 
+export type AutomationAction = {
+  type: 'create_task' | 'update_lead_stage' | 'webhook' | string;
+  title?: string;
+  owner?: string;
+  priority?: 'Высокий' | 'Средний' | 'Низкий' | string;
+  dueDays?: number;
+  stage?: string;
+  url?: string;
+  [key: string]: unknown;
+};
+
 export type AutomationRule = {
   id: string;
   name: string;
   trigger_text: string;
   action_text: string;
   enabled: boolean;
+  trigger_type?: 'lead_created' | 'lead_stage' | 'unassigned_lead' | string | null;
+  trigger_config?: Record<string, unknown>;
+  actions?: AutomationAction[];
   last_run_at?: string | null;
+  last_checked_at?: string | null;
+  last_error?: string | null;
+  run_count?: number;
 };
 
 export type LeadForm = {
