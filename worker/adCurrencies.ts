@@ -16,6 +16,52 @@ const normalizeCurrency = (value: unknown): string => {
   const currency = (asString(value) || 'USD').toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
 };
+const normalizePlatform = (value: unknown): 'Meta' | 'TikTok' | null => {
+  const platform = (asString(value) || '').toLowerCase();
+  if (platform.includes('meta') || platform.includes('facebook') || platform.includes('instagram')) return 'Meta';
+  if (platform.includes('tiktok')) return 'TikTok';
+  return null;
+};
+const accountKey = (platform: 'Meta' | 'TikTok', accountId: string) => `${platform}:${accountId.replace(/^act_/, '')}`;
+
+async function readStoredCurrencies(env: Env): Promise<AdvertisingAccountCurrency[]> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return [];
+  try {
+    const response = await fetch(
+      `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/marketing_ads?select=platform,account_id,account_name,currency,report_date&account_id=not.is.null&order=report_date.desc&limit=5000`,
+      {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          accept: 'application/json',
+        },
+      },
+    );
+    if (!response.ok) {
+      console.error('Stored advertising currency lookup failed', response.status, await response.text());
+      return [];
+    }
+    const rows = await response.json() as JsonRecord[];
+    const result = new Map<string, AdvertisingAccountCurrency>();
+    for (const row of rows) {
+      const platform = normalizePlatform(row.platform);
+      const accountId = asString(row.account_id)?.replace(/^act_/, '') || '';
+      if (!platform || !accountId) continue;
+      const key = accountKey(platform, accountId);
+      if (result.has(key)) continue;
+      result.set(key, {
+        platform,
+        account_id: accountId,
+        account_name: asString(row.account_name),
+        currency: normalizeCurrency(row.currency),
+      });
+    }
+    return [...result.values()];
+  } catch (error) {
+    console.error('Stored advertising currency lookup failed', error);
+    return [];
+  }
+}
 
 async function readMetaCurrencies(env: Env): Promise<AdvertisingAccountCurrency[]> {
   if (!env.META_ACCESS_TOKEN || !env.META_GRAPH_VERSION) return [];
@@ -70,12 +116,25 @@ async function readTikTokCurrencies(env: Env): Promise<AdvertisingAccountCurrenc
 }
 
 export async function detectAdvertisingCurrencies(env: Env): Promise<AdvertisingAccountCurrency[]> {
-  const [meta, tiktok] = await Promise.allSettled([
+  const [stored, meta, tiktok] = await Promise.allSettled([
+    readStoredCurrencies(env),
     readMetaCurrencies(env),
     readTikTokCurrencies(env),
   ]);
-  return [
-    ...(meta.status === 'fulfilled' ? meta.value : []),
-    ...(tiktok.status === 'fulfilled' ? tiktok.value : []),
-  ];
+
+  const result = new Map<string, AdvertisingAccountCurrency>();
+  const add = (items: AdvertisingAccountCurrency[]) => {
+    for (const item of items) {
+      const key = accountKey(item.platform, item.account_id);
+      if (!result.has(key)) result.set(key, item);
+    }
+  };
+
+  // The currency attached to stored spend is authoritative for analytics.
+  // Live account metadata is used only when there is no stored spend currency yet.
+  add(stored.status === 'fulfilled' ? stored.value : []);
+  add(meta.status === 'fulfilled' ? meta.value : []);
+  add(tiktok.status === 'fulfilled' ? tiktok.value : []);
+
+  return [...result.values()];
 }
