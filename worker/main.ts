@@ -8,6 +8,7 @@ import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent
 import { handleCallCenterChat } from './callCenterChat';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
+import { handleLeadCaptureRequest, type LeadCaptureEnv } from './leadCapture';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
@@ -34,6 +35,7 @@ const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 
 type MainEnv = AuthEnv
   & AdPreviewEnv
+  & LeadCaptureEnv
   & MetaOAuthEnv
   & MetaOAuthStartEnv
   & MetaSdkEnv
@@ -149,6 +151,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(env);
 
+      const leadCapture = await handleLeadCaptureRequest(forwardedRequest, runtimeEnv, url);
+      if (leadCapture) return leadCapture;
       const clinicFlowOutreach = await handleWabaClinicFlowOutreachRequest(forwardedRequest, runtimeEnv, url);
       if (clinicFlowOutreach) return clinicFlowOutreach;
       const wabaFlows = await handleWabaFlowsRequest(forwardedRequest, runtimeEnv, url);

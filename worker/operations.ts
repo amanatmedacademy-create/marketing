@@ -9,6 +9,9 @@ const resources: Record<string, Resource> = {
   tasks: { table: 'marketing_tasks', order: 'done.asc,due_on.asc.nullslast,created_at.desc' },
   content: { table: 'marketing_content_plan', order: 'publish_on.asc.nullslast,created_at.desc' },
   automations: { table: 'marketing_automations', order: 'created_at.desc' },
+  forms: { table: 'marketing_lead_forms', order: 'created_at.desc' },
+  links: { table: 'marketing_tracking_links', order: 'created_at.desc' },
+  'media-plan': { table: 'marketing_media_plan', order: 'month.desc,created_at.desc' },
   activity: { table: 'marketing_activity_log', order: 'created_at.desc' },
 };
 

@@ -16,6 +16,7 @@ import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
 import { CustomersPage, GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
 import { AutomationStudioPage, DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
+import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -45,12 +46,15 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/attribution', label: 'UTM и атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
+    { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
     { to: '/reports', label: 'Отчёты', icon: FileText, moduleId: 'analytics.reports' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
     { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
     { to: '/automation', label: 'Automation Studio', icon: Workflow, moduleId: 'dashboard' },
+    { to: '/lead-forms', label: 'Формы захвата', icon: FileText, moduleId: 'crm.leads' },
+    { to: '/media-plan', label: 'Медиаплан', icon: Goal, moduleId: 'dashboard' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
@@ -103,10 +107,13 @@ function Shell() {
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
         <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
         <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
+        <Route path="/utm-builder" element={guard('analytics.attribution', <UtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
         <Route path="/reports" element={guard('analytics.reports', <ReportsPage/>)} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
         <Route path="/automation" element={guard('dashboard', <AutomationStudioPage/>)} />
+        <Route path="/lead-forms" element={guard('crm.leads', <LeadFormsPage/>)} />
+        <Route path="/media-plan" element={guard('dashboard', <MediaPlanPage/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />

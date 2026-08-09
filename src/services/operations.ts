@@ -38,6 +38,45 @@ export type AutomationRule = {
   last_run_at?: string | null;
 };
 
+export type LeadForm = {
+  id: string;
+  name: string;
+  public_token: string;
+  status: 'active' | 'inactive';
+  source?: string | null;
+  campaign?: string | null;
+  success_message: string;
+  fields: Array<{ key: string; label: string; required?: boolean }>;
+  created_at?: string;
+};
+
+export type TrackingLink = {
+  id: string;
+  name: string;
+  destination_url: string;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_content?: string | null;
+  utm_term?: string | null;
+  final_url: string;
+  created_at?: string;
+};
+
+export type MediaPlanItem = {
+  id: string;
+  month: string;
+  channel: string;
+  campaign?: string | null;
+  planned_budget: number;
+  target_leads: number;
+  target_sales: number;
+  target_revenue: number;
+  owner?: string | null;
+  status: 'План' | 'Активен' | 'Закрыт';
+  created_at?: string;
+};
+
 export type AuditStatus = 'success' | 'error' | 'warning';
 export type ActivityItem = {
   id: string;
@@ -78,6 +117,9 @@ type ResourceMap = {
   tasks: MarketingTask;
   content: ContentItem;
   automations: AutomationRule;
+  forms: LeadForm;
+  links: TrackingLink;
+  'media-plan': MediaPlanItem;
   activity: ActivityItem;
 };
 
@@ -114,5 +156,8 @@ export const operationsApi = {
   tasks: resourceApi('tasks'),
   content: resourceApi('content'),
   automations: resourceApi('automations'),
+  forms: resourceApi('forms'),
+  links: resourceApi('links'),
+  mediaPlan: resourceApi('media-plan'),
   activity: activityApi,
 };
