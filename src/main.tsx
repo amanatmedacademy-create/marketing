@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import AnalyticsTableColorizer from './components/AnalyticsTableColorizer';
+import CompanySwitcher from './components/CompanySwitcher';
 import DealWorkspaceHost from './components/DealWorkspace';
 import ImdsBrand from './components/ImdsBrand';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
@@ -28,6 +29,7 @@ function Root() {
       <header className="operations-topbar">
         <a href="/" aria-label="IMDS Marketing"><ImdsBrand compact /></a>
         <nav><a href="/operations" className="active">Управление маркетингом</a><a href="/integrations">Интеграции</a></nav>
+        <CompanySwitcher />
       </header>
       <main className="operations-content"><MarketingOS /></main>
     </div>;

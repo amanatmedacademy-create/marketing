@@ -1,421 +1,54 @@
 type Row = Record<string, unknown>;
-
-type WabaCredential = {
-  companyId: string;
-  accessToken: string;
-  wabaId: string;
-  phoneNumberId: string;
-  graphVersion: string;
-};
-
-type TemplateSummary = {
-  id?: string;
-  name: string;
-  language: string;
-  category?: string;
-  status: string;
-  body: string;
-  parameterCount: number;
-  quickReplyButtonIndexes: number[];
-};
+type WabaCredential = { companyId:string; accessToken:string; wabaId:string; phoneNumberId:string; graphVersion:string };
+type TemplateSummary = { id?:string; name:string; language:string; category?:string; status:string; body:string; parameterCount:number; quickReplyButtonIndexes:number[] };
 
 export interface WabaMessagingV2Env {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  DEFAULT_COMPANY_ID?: string;
-  INTEGRATION_ENCRYPTION_KEY?: string;
-  META_APP_SECRET?: string;
-  META_GRAPH_VERSION?: string;
+  SUPABASE_URL:string;
+  SUPABASE_SERVICE_ROLE_KEY:string;
+  DEFAULT_COMPANY_ID?:string;
+  CURRENT_COMPANY_ID?:string;
+  INTEGRATION_ENCRYPTION_KEY?:string;
+  META_APP_SECRET?:string;
+  META_GRAPH_VERSION?:string;
 }
 
-const WINDOW_MS = 24 * 60 * 60 * 1000;
-const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
-const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
-const number = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : Number(value || 0) || 0;
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
-  status,
-  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-});
+const WINDOW_MS=24*60*60*1000;
+const record=(value:unknown):Row=>value&&typeof value==='object'&&!Array.isArray(value)?value as Row:{};
+const text=(value:unknown):string=>typeof value==='string'?value.trim():value==null?'':String(value).trim();
+const number=(value:unknown):number=>typeof value==='number'&&Number.isFinite(value)?value:Number(value||0)||0;
+const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+function graphVersion(value?:string):string{const version=text(value)||'v23.0';return version.startsWith('v')?version:`v${version}`}
+function authHeaders(env:WabaMessagingV2Env,extra:HeadersInit={}):Headers{const headers=new Headers(extra);headers.set('apikey',env.SUPABASE_SERVICE_ROLE_KEY);headers.set('authorization',`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);return headers}
+async function db<T>(env:WabaMessagingV2Env,path:string,init:RequestInit={}):Promise<T>{const headers=authHeaders(env,init.headers);headers.set('accept','application/json');if(init.body!=null)headers.set('content-type','application/json');if(init.method&&!['GET','HEAD'].includes(init.method)&&!headers.has('prefer'))headers.set('prefer','return=representation');const response=await fetch(`${env.SUPABASE_URL.replace(/\/+$/,'')}/rest/v1/${path}`,{...init,headers,cache:'no-store'});const body=await response.text();if(!response.ok)throw new Error(`Supabase ${response.status}: ${body.slice(0,2000)}`);return(body?JSON.parse(body):null)as T}
+function secureEqual(left:string,right:string):boolean{if(left.length!==right.length)return false;let result=0;for(let index=0;index<left.length;index+=1)result|=left.charCodeAt(index)^right.charCodeAt(index);return result===0}
+async function hmacSha256(secret:string,body:string):Promise<string>{const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(body));return Array.from(new Uint8Array(signature),(byte)=>byte.toString(16).padStart(2,'0')).join('')}
+function base64ToBytes(value:string):Uint8Array<ArrayBuffer>{const binary=atob(value);const bytes=new Uint8Array(new ArrayBuffer(binary.length));for(let index=0;index<binary.length;index+=1)bytes[index]=binary.charCodeAt(index);return bytes}
 
-function graphVersion(value?: string): string {
-  const version = text(value) || 'v23.0';
-  return version.startsWith('v') ? version : `v${version}`;
-}
+async function decryptCredential(env:WabaMessagingV2Env,row:Row):Promise<WabaCredential|null>{const encrypted=text(row.encrypted_payload);const iv=text(row.iv);const companyId=text(row.company_id);if(!encrypted||!iv||!companyId)return null;const secret=text(env.INTEGRATION_ENCRYPTION_KEY)||`imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(secret));const key=await crypto.subtle.importKey('raw',digest,{name:'AES-GCM'},false,['decrypt']);const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(iv)},key,base64ToBytes(encrypted));const payload=record(JSON.parse(new TextDecoder().decode(decrypted)));const accessToken=text(payload.accessToken),phoneNumberId=text(payload.phoneNumberId),wabaId=text(payload.wabaId);if(!accessToken||!phoneNumberId||!wabaId)return null;return{companyId,accessToken,phoneNumberId,wabaId,graphVersion:graphVersion(text(payload.graphVersion)||env.META_GRAPH_VERSION)}}
+async function findCredential(env:WabaMessagingV2Env,companyId?:string):Promise<WabaCredential>{const companyFilter=companyId?`&company_id=eq.${encodeURIComponent(companyId)}`:'';const rows=await db<Row[]>(env,`integration_credentials?provider=eq.waba&status=eq.connected&user_id=is.null${companyFilter}&select=company_id,encrypted_payload,iv&order=updated_at.desc&limit=20`);for(const row of rows){try{const credential=await decryptCredential(env,row);if(credential)return credential}catch(error){console.error('Unable to decrypt WABA credential',error)}}throw new Error('Подключённая WABA для клиники не найдена')}
+async function graphJson(url:string,accessToken:string,init:RequestInit={}):Promise<Row>{const headers=new Headers(init.headers);headers.set('authorization',`Bearer ${accessToken}`);headers.set('accept','application/json');if(init.body&&!(init.body instanceof FormData))headers.set('content-type','application/json');const response=await fetch(url,{...init,headers});const body=await response.text();let payload:Row={};try{payload=record(body?JSON.parse(body):{})}catch{payload={raw:body}}if(!response.ok||payload.error)throw new Error(`Meta Graph ${response.status}: ${JSON.stringify(payload).slice(0,1800)}`);return payload}
+function templateParameterCount(body:string):number{let max=0;for(const match of body.matchAll(/\{\{(\d+)\}\}/g))max=Math.max(max,Number(match[1])||0);return max}
+function quickReplyButtonIndexes(components:Row[]):number[]{const buttonsComponent=components.find((component)=>text(component.type).toUpperCase()==='BUTTONS');const buttons=Array.isArray(buttonsComponent?.buttons)?buttonsComponent.buttons.map(record):[];const indexes:number[]=[];buttons.forEach((button,index)=>{if(text(button.type).toUpperCase()==='QUICK_REPLY')indexes.push(index)});return indexes}
+function templateFromRow(row:Row):TemplateSummary|null{const status=text(row.status).toUpperCase();if(status!=='APPROVED')return null;const components=Array.isArray(row.components)?row.components.map(record):[];const bodyComponent=components.find((component)=>text(component.type).toUpperCase()==='BODY');const body=text(bodyComponent?.text);if(!body)return null;const dynamicOutsideBody=components.filter((component)=>text(component.type).toUpperCase()!=='BODY').some((component)=>/\{\{\d+\}\}/.test(JSON.stringify(component)));if(dynamicOutsideBody)return null;return{id:text(row.id)||undefined,name:text(row.name),language:text(row.language),category:text(row.category)||undefined,status,body,parameterCount:templateParameterCount(body),quickReplyButtonIndexes:quickReplyButtonIndexes(components)}}
+async function fetchTemplates(credential:WabaCredential):Promise<TemplateSummary[]>{const fields=encodeURIComponent('id,name,status,category,language,components');const payload=await graphJson(`https://graph.facebook.com/${credential.graphVersion}/${encodeURIComponent(credential.wabaId)}/message_templates?fields=${fields}&limit=250`,credential.accessToken);const rows=Array.isArray(payload.data)?payload.data.map(record):[];return rows.map(templateFromRow).filter((template):template is TemplateSummary=>Boolean(template?.name&&template.language)).sort((left,right)=>left.name.localeCompare(right.name))}
+function renderTemplateBody(body:string,parameters:string[]):string{return body.replace(/\{\{(\d+)\}\}/g,(_,index:string)=>parameters[(Number(index)||1)-1]||`{{${index}}}`)}
+async function conversation(env:WabaMessagingV2Env,threadId:string):Promise<Row|null>{const rows=await db<Row[]>(env,`marketing_conversations?id=eq.${encodeURIComponent(threadId)}&archived_at=is.null&select=id,phone,channel,company_id&limit=1`);return rows[0]||null}
+async function customerServiceWindowOpen(env:WabaMessagingV2Env,threadId:string):Promise<boolean>{const rows=await db<Row[]>(env,`marketing_messages?conversation_id=eq.${encodeURIComponent(threadId)}&direction=eq.INBOUND&select=sent_at&order=sent_at.desc&limit=1`);const sentAt=Date.parse(text(rows[0]?.sent_at));return Number.isFinite(sentAt)&&Date.now()-sentAt<=WINDOW_MS}
+function normalizePhone(value:string):string{let digits=value.replace(/\D/g,'');if(digits.length===11&&digits.startsWith('8'))digits=`7${digits.slice(1)}`;return digits}
+function tenantCompanyId(env:WabaMessagingV2Env,thread?:Row|null):string{return text(thread?.company_id)||text(env.CURRENT_COMPANY_ID)||text(env.DEFAULT_COMPANY_ID)}
+function buildTemplateComponents(template:TemplateSummary,parameters:string[],threadId:string):Row[]{const components:Row[]=[];if(parameters.length)components.push({type:'body',parameters:parameters.map((value)=>({type:'text',text:value}))});for(const index of template.quickReplyButtonIndexes){components.push({type:'button',sub_type:'quick_reply',index:String(index),parameters:[{type:'payload',payload:`imds:${threadId}:${template.name}:${index}:${crypto.randomUUID().slice(0,8)}`} ]})}return components}
 
-function authHeaders(env: WabaMessagingV2Env, extra: HeadersInit = {}): Headers {
-  const headers = new Headers(extra);
-  headers.set('apikey', env.SUPABASE_SERVICE_ROLE_KEY);
-  headers.set('authorization', `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);
-  return headers;
-}
+async function sendTemplateMessage(env:WabaMessagingV2Env,request:Request,threadId:string,input:Row):Promise<Response>{void request;const thread=await conversation(env,threadId);if(!thread||text(thread.channel).toUpperCase()!=='WHATSAPP')return json({error:'WhatsApp-диалог не найден'},404);const phone=normalizePhone(text(thread.phone));if(!phone)return json({error:'В WhatsApp-диалоге не указан телефон'},400);const companyId=tenantCompanyId(env,thread);if(!companyId)return json({error:'Не удалось определить клинику для WhatsApp-диалога',code:'COMPANY_REQUIRED'},409);const credential=await findCredential(env,companyId);const templateInput=record(input.template);const templateName=text(templateInput.name),languageCode=text(templateInput.languageCode);const parameters=Array.isArray(templateInput.parameters)?templateInput.parameters.map(text):[];if(!templateName||!languageCode)return json({error:'Не указан WhatsApp-шаблон'},400);const templates=await fetchTemplates(credential);const template=templates.find((item)=>item.name===templateName&&item.language===languageCode);if(!template)return json({error:'Одобренный WhatsApp-шаблон не найден или не поддерживается'},400);if(parameters.length!==template.parameterCount||parameters.some((value)=>!value))return json({error:`Шаблон ${template.name} требует ${template.parameterCount} параметров`},400);
+  const templateObject:Row={name:template.name,language:{code:template.language}};const components=buildTemplateComponents(template,parameters,threadId);if(components.length)templateObject.components=components;const whatsappPayload={messaging_product:'whatsapp',recipient_type:'individual',to:phone,type:'template',template:templateObject};const result=await graphJson(`https://graph.facebook.com/${credential.graphVersion}/${credential.phoneNumberId}/messages`,credential.accessToken,{method:'POST',body:JSON.stringify(whatsappPayload)});const externalMessageId=text(record((Array.isArray(result.messages)?result.messages[0]:null)).id);const sentAt=new Date().toISOString();const senderName=text(input.senderName)||'Оператор';const preview=renderTemplateBody(template.body,parameters);const payload:Row={company_id:companyId,conversation_id:threadId,body:preview||`[Шаблон] ${template.name}`,direction:'OUTBOUND',sender_name:senderName,external_message_id:externalMessageId||null,status:'SENT',sent_at:sentAt,read_at:null,metadata:{whatsapp:result,whatsapp_type:'template',whatsapp_template:{name:template.name,language:template.language,category:template.category,parameters,quick_reply_buttons:template.quickReplyButtonIndexes},waba_phone_number_id:credential.phoneNumberId},created_at:sentAt};const rows=await db<Row[]>(env,'marketing_messages?select=*',{method:'POST',body:JSON.stringify(payload)});await db<Row[]>(env,`marketing_conversations?id=eq.${encodeURIComponent(threadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`,{method:'PATCH',body:JSON.stringify({last_message_at:sentAt,updated_at:sentAt,status:'OPEN'})});const row=rows[0]||{};return json({id:text(row.id),threadId,direction:'OUTBOUND',senderName,body:text(row.body)||preview,status:text(row.status)||'SENT',externalId:text(row.external_message_id)||undefined,readAt:text(row.read_at)||undefined,hasAttachment:false,sentAt:text(row.sent_at)||sentAt},201)}
 
-async function db<T>(env: WabaMessagingV2Env, path: string, init: RequestInit = {}): Promise<T> {
-  const headers = authHeaders(env, init.headers);
-  headers.set('accept', 'application/json');
-  if (init.body != null) headers.set('content-type', 'application/json');
-  if (init.method && !['GET', 'HEAD'].includes(init.method) && !headers.has('prefer')) headers.set('prefer', 'return=representation');
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/${path}`, { ...init, headers, cache: 'no-store' });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Supabase ${response.status}: ${body.slice(0, 2000)}`);
-  return (body ? JSON.parse(body) : null) as T;
-}
+function statusTimestamp(status:Row):number{const seconds=number(status.timestamp);return seconds>0?seconds*1000:Date.now()}
+function statusRank(value:string):number{if(value==='SENT')return 1;if(value==='DELIVERED')return 2;if(value==='READ')return 3;if(value==='FAILED')return 4;return 0}
+async function processStatus(env:WabaMessagingV2Env,status:Row):Promise<boolean>{const externalId=text(status.id);if(!externalId)return false;const rows=await db<Row[]>(env,`marketing_messages?external_message_id=eq.${encodeURIComponent(externalId)}&select=id,status,metadata,read_at&limit=1`);const current=rows[0];if(!current)return false;const rawStatus=text(status.status).toLowerCase();const mappedStatus=rawStatus==='sent'?'SENT':rawStatus==='delivered'?'DELIVERED':rawStatus==='read'?'READ':rawStatus==='failed'?'FAILED':rawStatus.toUpperCase()||text(current.status)||'SENT';const metadata=record(current.metadata),priorDelivery=record(metadata.whatsapp_delivery),priorTimestamp=number(priorDelivery.timestamp_ms),nextTimestamp=statusTimestamp(status);if(priorTimestamp>nextTimestamp)return false;if(priorTimestamp===nextTimestamp&&statusRank(text(current.status).toUpperCase())>statusRank(mappedStatus))return false;const errors=Array.isArray(status.errors)?status.errors.map(record):[];const firstError=errors[0]||{};const failureReason=text(firstError.message)||text(firstError.title)||text(record(firstError.error_data).details);const patch:Row={status:mappedStatus,metadata:{...metadata,whatsapp_delivery:{status:rawStatus,timestamp:text(status.timestamp),timestamp_ms:nextTimestamp,recipient_id:text(status.recipient_id)||undefined,conversation:status.conversation||undefined,pricing:status.pricing||undefined,errors:errors.length?errors:undefined,failure_reason:failureReason||undefined}}};if(mappedStatus==='READ')patch.read_at=new Date(nextTimestamp).toISOString();await db<Row[]>(env,`marketing_messages?id=eq.${encodeURIComponent(text(current.id))}&select=id`,{method:'PATCH',body:JSON.stringify(patch)});return true}
+async function handleStatusWebhook(request:Request,env:WabaMessagingV2Env):Promise<Response|null>{if(request.method!=='POST')return null;const body=await request.clone().text();if(env.META_APP_SECRET){const supplied=request.headers.get('x-hub-signature-256')||'';const expected=`sha256=${await hmacSha256(env.META_APP_SECRET,body)}`;if(!secureEqual(supplied,expected))return json({error:'Invalid Meta signature'},401)}const payload=record(JSON.parse(body||'{}'));const entries=Array.isArray(payload.entry)?payload.entry.map(record):[];const statuses:Row[]=[];let hasMessages=false;for(const entry of entries){const changes=Array.isArray(entry.changes)?entry.changes.map(record):[];for(const change of changes){const value=record(change.value);if(Array.isArray(value.messages)&&value.messages.length)hasMessages=true;if(Array.isArray(value.statuses))statuses.push(...value.statuses.map(record))}}if(!statuses.length)return null;let updated=0;for(const status of statuses)if(await processStatus(env,status))updated+=1;if(hasMessages)return null;return json({ok:true,statusUpdates:updated})}
 
-function secureEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let result = 0;
-  for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return result === 0;
-}
-
-async function hmacSha256(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(value);
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
-async function decryptCredential(env: WabaMessagingV2Env, row: Row): Promise<WabaCredential | null> {
-  const encrypted = text(row.encrypted_payload);
-  const iv = text(row.iv);
-  if (!encrypted || !iv) return null;
-  const secret = text(env.INTEGRATION_ENCRYPTION_KEY) || `imds-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
-  const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt']);
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(iv) }, key, base64ToBytes(encrypted));
-  const payload = record(JSON.parse(new TextDecoder().decode(decrypted)));
-  const accessToken = text(payload.accessToken);
-  const phoneNumberId = text(payload.phoneNumberId);
-  const wabaId = text(payload.wabaId);
-  if (!accessToken || !phoneNumberId || !wabaId) return null;
-  return {
-    companyId: text(row.company_id),
-    accessToken,
-    phoneNumberId,
-    wabaId,
-    graphVersion: graphVersion(text(payload.graphVersion) || env.META_GRAPH_VERSION),
-  };
-}
-
-async function findCredential(env: WabaMessagingV2Env, companyId?: string): Promise<WabaCredential> {
-  const companyFilter = companyId ? `&company_id=eq.${encodeURIComponent(companyId)}` : '';
-  const rows = await db<Row[]>(env, `integration_credentials?provider=eq.waba&status=eq.connected${companyFilter}&select=company_id,encrypted_payload,iv&order=updated_at.desc&limit=20`);
-  for (const row of rows) {
-    try {
-      const credential = await decryptCredential(env, row);
-      if (credential) return credential;
-    } catch (error) {
-      console.error('Unable to decrypt WABA credential', error);
-    }
-  }
-  throw new Error('Подключённая WABA не найдена');
-}
-
-async function graphJson(url: string, accessToken: string, init: RequestInit = {}): Promise<Row> {
-  const headers = new Headers(init.headers);
-  headers.set('authorization', `Bearer ${accessToken}`);
-  headers.set('accept', 'application/json');
-  if (init.body && !(init.body instanceof FormData)) headers.set('content-type', 'application/json');
-  const response = await fetch(url, { ...init, headers });
-  const body = await response.text();
-  let payload: Row = {};
-  try { payload = record(body ? JSON.parse(body) : {}); } catch { payload = { raw: body }; }
-  if (!response.ok || payload.error) throw new Error(`Meta Graph ${response.status}: ${JSON.stringify(payload).slice(0, 1800)}`);
-  return payload;
-}
-
-function templateParameterCount(body: string): number {
-  let max = 0;
-  for (const match of body.matchAll(/\{\{(\d+)\}\}/g)) max = Math.max(max, Number(match[1]) || 0);
-  return max;
-}
-
-function quickReplyButtonIndexes(components: Row[]): number[] {
-  const buttonsComponent = components.find((component) => text(component.type).toUpperCase() === 'BUTTONS');
-  const buttons = Array.isArray(buttonsComponent?.buttons) ? buttonsComponent.buttons.map(record) : [];
-  const indexes: number[] = [];
-  buttons.forEach((button, index) => {
-    if (text(button.type).toUpperCase() === 'QUICK_REPLY') indexes.push(index);
-  });
-  return indexes;
-}
-
-function templateFromRow(row: Row): TemplateSummary | null {
-  const status = text(row.status).toUpperCase();
-  if (status !== 'APPROVED') return null;
-  const components = Array.isArray(row.components) ? row.components.map(record) : [];
-  const bodyComponent = components.find((component) => text(component.type).toUpperCase() === 'BODY');
-  const body = text(bodyComponent?.text);
-  if (!body) return null;
-  const dynamicOutsideBody = components
-    .filter((component) => text(component.type).toUpperCase() !== 'BODY')
-    .some((component) => /\{\{\d+\}\}/.test(JSON.stringify(component)));
-  if (dynamicOutsideBody) return null;
-  return {
-    id: text(row.id) || undefined,
-    name: text(row.name),
-    language: text(row.language),
-    category: text(row.category) || undefined,
-    status,
-    body,
-    parameterCount: templateParameterCount(body),
-    quickReplyButtonIndexes: quickReplyButtonIndexes(components),
-  };
-}
-
-async function fetchTemplates(credential: WabaCredential): Promise<TemplateSummary[]> {
-  const fields = encodeURIComponent('id,name,status,category,language,components');
-  const payload = await graphJson(`https://graph.facebook.com/${credential.graphVersion}/${encodeURIComponent(credential.wabaId)}/message_templates?fields=${fields}&limit=250`, credential.accessToken);
-  const rows = Array.isArray(payload.data) ? payload.data.map(record) : [];
-  return rows
-    .map(templateFromRow)
-    .filter((template): template is TemplateSummary => Boolean(template?.name && template.language))
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function renderTemplateBody(body: string, parameters: string[]): string {
-  return body.replace(/\{\{(\d+)\}\}/g, (_, index: string) => parameters[(Number(index) || 1) - 1] || `{{${index}}}`);
-}
-
-async function conversation(env: WabaMessagingV2Env, threadId: string): Promise<Row | null> {
-  const rows = await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&archived_at=is.null&select=id,phone,channel,company_id&limit=1`);
-  return rows[0] || null;
-}
-
-async function customerServiceWindowOpen(env: WabaMessagingV2Env, threadId: string): Promise<boolean> {
-  const rows = await db<Row[]>(env, `marketing_messages?conversation_id=eq.${encodeURIComponent(threadId)}&direction=eq.INBOUND&select=sent_at&order=sent_at.desc&limit=1`);
-  const sentAt = Date.parse(text(rows[0]?.sent_at));
-  return Number.isFinite(sentAt) && Date.now() - sentAt <= WINDOW_MS;
-}
-
-function normalizePhone(value: string): string {
-  let digits = value.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
-  return digits;
-}
-
-function buildTemplateComponents(template: TemplateSummary, parameters: string[], threadId: string): Row[] {
-  const components: Row[] = [];
-  if (parameters.length) {
-    components.push({
-      type: 'body',
-      parameters: parameters.map((value) => ({ type: 'text', text: value })),
-    });
-  }
-  for (const index of template.quickReplyButtonIndexes) {
-    components.push({
-      type: 'button',
-      sub_type: 'quick_reply',
-      index: String(index),
-      parameters: [{
-        type: 'payload',
-        payload: `imds:${threadId}:${template.name}:${index}:${crypto.randomUUID().slice(0, 8)}`,
-      }],
-    });
-  }
-  return components;
-}
-
-async function sendTemplateMessage(env: WabaMessagingV2Env, request: Request, threadId: string, input: Row): Promise<Response> {
-  const thread = await conversation(env, threadId);
-  if (!thread || text(thread.channel).toUpperCase() !== 'WHATSAPP') return json({ error: 'WhatsApp-диалог не найден' }, 404);
-  const phone = normalizePhone(text(thread.phone));
-  if (!phone) return json({ error: 'В WhatsApp-диалоге не указан телефон' }, 400);
-  const companyId = text(thread.company_id) || text(env.DEFAULT_COMPANY_ID);
-  const credential = await findCredential(env, companyId || undefined);
-  const templateInput = record(input.template);
-  const templateName = text(templateInput.name);
-  const languageCode = text(templateInput.languageCode);
-  const parameters = Array.isArray(templateInput.parameters) ? templateInput.parameters.map(text) : [];
-  if (!templateName || !languageCode) return json({ error: 'Не указан WhatsApp-шаблон' }, 400);
-
-  const templates = await fetchTemplates(credential);
-  const template = templates.find((item) => item.name === templateName && item.language === languageCode);
-  if (!template) return json({ error: 'Одобренный WhatsApp-шаблон не найден или не поддерживается' }, 400);
-  if (parameters.length !== template.parameterCount || parameters.some((value) => !value)) {
-    return json({ error: `Шаблон ${template.name} требует ${template.parameterCount} параметров` }, 400);
-  }
-
-  const templateObject: Row = {
-    name: template.name,
-    language: { code: template.language },
-  };
-  const components = buildTemplateComponents(template, parameters, threadId);
-  if (components.length > 0) templateObject.components = components;
-
-  const whatsappPayload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: phone,
-    type: 'template',
-    template: templateObject,
-  };
-  const result = await graphJson(`https://graph.facebook.com/${credential.graphVersion}/${credential.phoneNumberId}/messages`, credential.accessToken, {
-    method: 'POST',
-    body: JSON.stringify(whatsappPayload),
-  });
-  const externalMessageId = text(record((Array.isArray(result.messages) ? result.messages[0] : null)).id);
-  const sentAt = new Date().toISOString();
-  const senderName = text(input.senderName) || 'Оператор';
-  const preview = renderTemplateBody(template.body, parameters);
-  const payload: Row = {
-    conversation_id: threadId,
-    body: preview || `[Шаблон] ${template.name}`,
-    direction: 'OUTBOUND',
-    sender_name: senderName,
-    external_message_id: externalMessageId || null,
-    status: 'SENT',
-    sent_at: sentAt,
-    read_at: null,
-    metadata: {
-      whatsapp: result,
-      whatsapp_type: 'template',
-      whatsapp_template: {
-        name: template.name,
-        language: template.language,
-        category: template.category,
-        parameters,
-        quick_reply_buttons: template.quickReplyButtonIndexes,
-      },
-    },
-    created_at: sentAt,
-  };
-  if (companyId) payload.company_id = companyId;
-  const rows = await db<Row[]>(env, 'marketing_messages?select=*', { method: 'POST', body: JSON.stringify(payload) });
-  await db<Row[]>(env, `marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=id`, {
-    method: 'PATCH',
-    body: JSON.stringify({ last_message_at: sentAt, updated_at: sentAt, status: 'OPEN' }),
-  });
-  const row = rows[0] || {};
-  return json({
-    id: text(row.id),
-    threadId,
-    direction: 'OUTBOUND',
-    senderName,
-    body: text(row.body) || preview,
-    status: text(row.status) || 'SENT',
-    externalId: text(row.external_message_id) || undefined,
-    readAt: text(row.read_at) || undefined,
-    hasAttachment: false,
-    sentAt: text(row.sent_at) || sentAt,
-  }, 201);
-}
-
-function statusTimestamp(status: Row): number {
-  const seconds = number(status.timestamp);
-  return seconds > 0 ? seconds * 1000 : Date.now();
-}
-
-function statusRank(value: string): number {
-  if (value === 'SENT') return 1;
-  if (value === 'DELIVERED') return 2;
-  if (value === 'READ') return 3;
-  if (value === 'FAILED') return 4;
-  return 0;
-}
-
-async function processStatus(env: WabaMessagingV2Env, status: Row): Promise<boolean> {
-  const externalId = text(status.id);
-  if (!externalId) return false;
-  const rows = await db<Row[]>(env, `marketing_messages?external_message_id=eq.${encodeURIComponent(externalId)}&select=id,status,metadata,read_at&limit=1`);
-  const current = rows[0];
-  if (!current) return false;
-
-  const rawStatus = text(status.status).toLowerCase();
-  const mappedStatus = rawStatus === 'sent' ? 'SENT'
-    : rawStatus === 'delivered' ? 'DELIVERED'
-      : rawStatus === 'read' ? 'READ'
-        : rawStatus === 'failed' ? 'FAILED'
-          : rawStatus.toUpperCase() || text(current.status) || 'SENT';
-  const metadata = record(current.metadata);
-  const priorDelivery = record(metadata.whatsapp_delivery);
-  const priorTimestamp = number(priorDelivery.timestamp_ms);
-  const nextTimestamp = statusTimestamp(status);
-  if (priorTimestamp > nextTimestamp) return false;
-  if (priorTimestamp === nextTimestamp && statusRank(text(current.status).toUpperCase()) > statusRank(mappedStatus)) return false;
-
-  const errors = Array.isArray(status.errors) ? status.errors.map(record) : [];
-  const firstError = errors[0] || {};
-  const failureReason = text(firstError.message) || text(firstError.title) || text(record(firstError.error_data).details);
-  const patch: Row = {
-    status: mappedStatus,
-    metadata: {
-      ...metadata,
-      whatsapp_delivery: {
-        status: rawStatus,
-        timestamp: text(status.timestamp),
-        timestamp_ms: nextTimestamp,
-        recipient_id: text(status.recipient_id) || undefined,
-        conversation: status.conversation || undefined,
-        pricing: status.pricing || undefined,
-        errors: errors.length ? errors : undefined,
-        failure_reason: failureReason || undefined,
-      },
-    },
-  };
-  if (mappedStatus === 'READ') patch.read_at = new Date(nextTimestamp).toISOString();
-  await db<Row[]>(env, `marketing_messages?id=eq.${encodeURIComponent(text(current.id))}&select=id`, {
-    method: 'PATCH',
-    body: JSON.stringify(patch),
-  });
-  return true;
-}
-
-async function handleStatusWebhook(request: Request, env: WabaMessagingV2Env): Promise<Response | null> {
-  if (request.method !== 'POST') return null;
-  const body = await request.clone().text();
-  if (env.META_APP_SECRET) {
-    const supplied = request.headers.get('x-hub-signature-256') || '';
-    const expected = `sha256=${await hmacSha256(env.META_APP_SECRET, body)}`;
-    if (!secureEqual(supplied, expected)) return json({ error: 'Invalid Meta signature' }, 401);
-  }
-  const payload = record(JSON.parse(body || '{}'));
-  const entries = Array.isArray(payload.entry) ? payload.entry.map(record) : [];
-  const statuses: Row[] = [];
-  let hasMessages = false;
-  for (const entry of entries) {
-    const changes = Array.isArray(entry.changes) ? entry.changes.map(record) : [];
-    for (const change of changes) {
-      const value = record(change.value);
-      if (Array.isArray(value.messages) && value.messages.length) hasMessages = true;
-      if (Array.isArray(value.statuses)) statuses.push(...value.statuses.map(record));
-    }
-  }
-  if (!statuses.length) return null;
-  let updated = 0;
-  for (const status of statuses) if (await processStatus(env, status)) updated += 1;
-  if (hasMessages) return null;
-  return json({ ok: true, statusUpdates: updated });
-}
-
-export async function handleWabaMessagingV2Request(request: Request, env: WabaMessagingV2Env, url: URL): Promise<Response | null> {
-  if (url.pathname === '/api/webhooks/waba') return handleStatusWebhook(request, env);
-
-  if (url.pathname === '/api/integrations/waba/templates' && request.method === 'GET') {
-    const threadId = text(url.searchParams.get('threadId'));
-    const thread = threadId ? await conversation(env, threadId) : null;
-    const companyId = text(thread?.company_id) || text(env.DEFAULT_COMPANY_ID);
-    const credential = await findCredential(env, companyId || undefined);
-    const templates = await fetchTemplates(credential);
-    return json({ templates });
-  }
-
-  const messageMatch = url.pathname.match(/^\/api\/callcenter\/threads\/([^/]+)\/messages$/);
-  if (messageMatch && request.method === 'POST') {
-    const threadId = decodeURIComponent(messageMatch[1]);
-    const thread = await conversation(env, threadId);
-    if (!thread || text(thread.channel).toUpperCase() !== 'WHATSAPP') return null;
-    const input = record(await request.clone().json().catch(() => ({})));
-    if (input.template) return sendTemplateMessage(env, request, threadId, input);
-    if (!await customerServiceWindowOpen(env, threadId)) {
-      return json({ error: '24-часовое окно WhatsApp закрыто. Используйте одобренный шаблон WhatsApp.', code: 'WHATSAPP_TEMPLATE_REQUIRED' }, 409);
-    }
-  }
-
+export async function handleWabaMessagingV2Request(request:Request,env:WabaMessagingV2Env,url:URL):Promise<Response|null>{
+  if(url.pathname==='/api/webhooks/waba')return handleStatusWebhook(request,env);
+  if(url.pathname==='/api/integrations/waba/templates'&&request.method==='GET'){const threadId=text(url.searchParams.get('threadId'));const thread=threadId?await conversation(env,threadId):null;const companyId=tenantCompanyId(env,thread);if(!companyId)return json({error:'Выберите клинику для загрузки WhatsApp-шаблонов',code:'COMPANY_REQUIRED'},409);const credential=await findCredential(env,companyId);const templates=await fetchTemplates(credential);return json({templates,companyId})}
+  const messageMatch=url.pathname.match(/^\/api\/callcenter\/threads\/([^/]+)\/messages$/);if(messageMatch&&request.method==='POST'){const threadId=decodeURIComponent(messageMatch[1]);const thread=await conversation(env,threadId);if(!thread||text(thread.channel).toUpperCase()!=='WHATSAPP')return null;const companyId=tenantCompanyId(env,thread);if(!companyId)return json({error:'Выберите клинику для WhatsApp-диалога',code:'COMPANY_REQUIRED'},409);if(text(thread.company_id)&&text(env.CURRENT_COMPANY_ID)&&text(thread.company_id)!==text(env.CURRENT_COMPANY_ID))return json({error:'WhatsApp-диалог принадлежит другой клинике'},403);const input=record(await request.clone().json().catch(()=>({})));if(input.template)return sendTemplateMessage(env,request,threadId,input);if(!await customerServiceWindowOpen(env,threadId))return json({error:'24-часовое окно WhatsApp закрыто. Используйте одобренный шаблон WhatsApp.',code:'WHATSAPP_TEMPLATE_REQUIRED'},409)}
   return null;
 }

@@ -12,6 +12,7 @@ export interface MetaOAuthEnv {
   META_GRAPH_VERSION?: string;
   META_OAUTH_REDIRECT_URI?: string;
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
 }
 
 interface MetaAdAccount {
@@ -20,8 +21,16 @@ interface MetaAdAccount {
   name?: string;
 }
 
+interface OAuthTenantState {
+  state: string;
+  companyId: string;
+  userId: string;
+  issuedAt: number;
+}
+
 const DEFAULT_REDIRECT_URI = 'https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback';
 const STATE_COOKIE = 'amanat_meta_oauth_state';
+const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -51,6 +60,53 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function base64Url(bytes: Uint8Array): string {
+  return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlBytes(value: string): Uint8Array<ArrayBuffer> {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function hmacKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
+
+async function signedStateCookie(state: string, companyId: string, userId: string, secret: string): Promise<string> {
+  const payload = base64Url(new TextEncoder().encode(JSON.stringify({ state, companyId, userId, issuedAt: Date.now() })));
+  const signature = await crypto.subtle.sign('HMAC', await hmacKey(secret), new TextEncoder().encode(payload));
+  return encodeURIComponent(`${payload}.${base64Url(new Uint8Array(signature))}`);
+}
+
+async function readSignedState(request: Request, env: MetaOAuthEnv): Promise<OAuthTenantState> {
+  const { appSecret } = requireMetaApp(env);
+  const raw = cookieValue(request, STATE_COOKIE);
+  const [payload, signature] = raw.split('.');
+  if (!payload || !signature) throw new Error('OAuth state cookie отсутствует или повреждена');
+  const valid = await crypto.subtle.verify('HMAC', await hmacKey(appSecret), base64UrlBytes(signature), new TextEncoder().encode(payload));
+  if (!valid) throw new Error('OAuth state signature не совпадает. Повторите подключение.');
+  let parsed: OAuthTenantState;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(base64UrlBytes(payload))) as OAuthTenantState;
+  } catch {
+    throw new Error('OAuth state cookie повреждена');
+  }
+  const state = asString(parsed.state);
+  const companyId = asString(parsed.companyId);
+  const userId = asString(parsed.userId);
+  const issuedAt = Number(parsed.issuedAt);
+  if (!state || !companyId || !userId || !Number.isFinite(issuedAt)) throw new Error('OAuth state cookie неполная');
+  const age = Date.now() - issuedAt;
+  if (age < -60_000 || age > STATE_MAX_AGE_MS) throw new Error('OAuth state истёк. Повторите подключение.');
+  return { state, companyId, userId, issuedAt };
 }
 
 async function encryptPayload(payload: JsonRecord, secret: string): Promise<{ encryptedPayload: string; iv: string }> {
@@ -108,9 +164,8 @@ async function listAdAccounts(env: MetaOAuthEnv, accessToken: string): Promise<M
   return accounts;
 }
 
-async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accounts: MetaAdAccount[]): Promise<void> {
+async function saveMetaCredentials(env: MetaOAuthEnv, companyId: string, accessToken: string, accounts: MetaAdAccount[]): Promise<void> {
   const { appSecret } = requireMetaApp(env);
-  const companyId = await resolveCompanyId(env);
   const accountIds = accounts.map((account) => account.id || (account.account_id ? `act_${account.account_id}` : '')).filter(Boolean);
   if (!accountIds.length) throw new Error('В Facebook-профиле не найдено доступных рекламных кабинетов');
 
@@ -167,14 +222,17 @@ export async function handleMetaOAuthRequest(
   void ctx;
 
   if (url.pathname === '/api/integrations/meta/connect' && request.method === 'GET') {
-    const { appId } = requireMetaApp(env);
+    const { appId, appSecret } = requireMetaApp(env);
+    const companyId = asString(env.CURRENT_COMPANY_ID);
+    const userId = asString(request.headers.get('x-amanat-auth-user'));
+    if (!companyId || !userId) return json({ error: 'Не удалось определить клинику для Meta OAuth' }, 409);
     const state = crypto.randomUUID().replace(/-/g, '');
     const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri(env), state, response_type: 'code', scope: 'ads_read,business_management' });
     return new Response(null, {
       status: 302,
       headers: {
         location: `https://www.facebook.com/${graphVersion(env)}/dialog/oauth?${params}`,
-        'set-cookie': `${STATE_COOKIE}=${encodeURIComponent(state)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+        'set-cookie': `${STATE_COOKIE}=${await signedStateCookie(state, companyId, userId, appSecret)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
         'cache-control': 'no-store',
       },
     });
@@ -187,11 +245,14 @@ export async function handleMetaOAuthRequest(
       const code = url.searchParams.get('code') || '';
       const state = url.searchParams.get('state') || '';
       if (!code) throw new Error('Meta не вернула authorization code');
-      if (!state || state !== cookieValue(request, STATE_COOKIE)) throw new Error('OAuth state не совпадает. Повторите подключение.');
-      const accessToken = await exchangeCode(env, code);
-      const accounts = await listAdAccounts(env, accessToken);
-      await saveMetaCredentials(env, accessToken, accounts);
-      return redirectResult(env, 'connected', String(accounts.length));
+      const oauthState = await readSignedState(request, env);
+      if (!state || state !== oauthState.state) throw new Error('OAuth state не совпадает. Повторите подключение.');
+      const companyId = await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: oauthState.companyId }, oauthState.userId);
+      const tenantEnv = { ...env, CURRENT_COMPANY_ID: companyId };
+      const accessToken = await exchangeCode(tenantEnv, code);
+      const accounts = await listAdAccounts(tenantEnv, accessToken);
+      await saveMetaCredentials(tenantEnv, companyId, accessToken, accounts);
+      return redirectResult(tenantEnv, 'connected', String(accounts.length));
     } catch (error) {
       console.error('Meta OAuth callback failed', error);
       return redirectResult(env, 'error', error instanceof Error ? error.message : 'Ошибка подключения Meta');

@@ -6,8 +6,10 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
+import { resolveCompanyId } from './companyContext';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
+import { handleInstagramDirectRequest, handleInstagramPublicRequest, type InstagramDirectEnv } from './instagramDirect';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
 import { handleMetaBackfillRequest, type MetaBackfillEnv } from './metaBackfill';
@@ -31,6 +33,7 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
+const COMPANY_HEADER = 'x-imds-company-id';
 
 type MainEnv = AuthEnv
   & AdPreviewEnv
@@ -40,6 +43,7 @@ type MainEnv = AuthEnv
   & MetaCatalogEnv
   & MetaBackfillEnv
   & MetaSelectionEnv
+  & InstagramDirectEnv
   & TenantSyncEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
@@ -48,7 +52,7 @@ type MainEnv = AuthEnv
   & WabaMessagingEnv
   & WabaMessagingV2Env
   & VoiceTranscriptionEnv
-  & { FRONTEND_ADMIN_KEY?: string };
+  & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -65,8 +69,10 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/reach-sync'
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/meta/conversions'
+    || pathname.startsWith('/api/integrations/instagram/')
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect'
+    || pathname === '/api/integrations/waba/disconnect'
     || pathname === '/api/integrations/waba/flows/config'
     || pathname === '/api/integrations/waba/flows/setup'
     || pathname.startsWith('/api/integrations/waba/flows/clinic/');
@@ -122,8 +128,12 @@ export default {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
     let forwardedRequest = request;
+    let requestEnv: MainEnv = env;
 
     const route = async (): Promise<Response> => {
+      const instagramPublic = await handleInstagramPublicRequest(request, env, url);
+      if (instagramPublic) return instagramPublic;
+
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url, ctx);
         if (callbackResponse) return callbackResponse;
@@ -142,13 +152,22 @@ export default {
           if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
           if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
           if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
+          const requestedCompany = (request.headers.get(COMPANY_HEADER) || '').trim();
+          try {
+            const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
+            requestEnv = { ...env, CURRENT_COMPANY_ID: companyId };
+          } catch (error) {
+            return authError(409, error instanceof Error ? error.message : 'Выберите клинику для продолжения');
+          }
           forwardedRequest = withTrustedIdentity(request, user.role, user.id);
         }
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
-      const runtimeEnv = await hydrateIntegrationEnv(env);
+      const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
 
+      const instagramDirect = await handleInstagramDirectRequest(forwardedRequest, runtimeEnv, url);
+      if (instagramDirect) return instagramDirect;
       const clinicFlowOutreach = await handleWabaClinicFlowOutreachRequest(forwardedRequest, runtimeEnv, url);
       if (clinicFlowOutreach) return clinicFlowOutreach;
       const wabaFlows = await handleWabaFlowsRequest(forwardedRequest, runtimeEnv, url);
@@ -169,7 +188,7 @@ export default {
       if (wabaResponse) return wabaResponse;
       const metaSdkResponse = await handleMetaSdkRequest(forwardedRequest, runtimeEnv, url);
       if (metaSdkResponse) return metaSdkResponse;
-      const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
+      const metaOAuthStartResponse = await handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
       const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
       if (metaOAuthResponse) return metaOAuthResponse;
@@ -212,12 +231,12 @@ export default {
 
       if (plan && response.status < 400) {
         const { ip, userAgent } = requestClient(request);
-        background(ctx, recordAudit(env, { userId: requestUserId(forwardedRequest), action: plan.action, entityType: plan.entityType, entityId: plan.entityId, after: plan.captureBody ? auditBody : null, ip, userAgent, correlationId: requestCorrelationId }));
+        background(ctx, recordAudit(requestEnv, { userId: requestUserId(forwardedRequest), action: plan.action, entityType: plan.entityType, entityId: plan.entityId, after: plan.captureBody ? auditBody : null, ip, userAgent, correlationId: requestCorrelationId }));
       }
 
       if (url.pathname.startsWith('/api/') && response.status >= 500) {
         const detail = await response.clone().text().catch(() => '');
-        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: String(response.status), message: detail.slice(0, 600) || `HTTP ${response.status}`, correlationId: requestCorrelationId }));
+        background(ctx, recordErrorEvent(requestEnv, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: String(response.status), message: detail.slice(0, 600) || `HTTP ${response.status}`, correlationId: requestCorrelationId }));
       }
 
       const decorated = new Response(response.body, response);
@@ -227,7 +246,7 @@ export default {
       console.error(error);
       const message = error instanceof Error ? error.message : 'Analytics error';
       if (url.pathname.startsWith('/api/')) {
-        background(ctx, recordErrorEvent(env, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
+        background(ctx, recordErrorEvent(requestEnv, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
       }
       return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId } });
     }

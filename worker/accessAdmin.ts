@@ -2,7 +2,7 @@ import { resolveCompanyId } from './companyContext';
 import { resolveUserAccess, type AccessAction } from './accessControl';
 
 type Row = Record<string, unknown>;
-export interface AccessAdminEnv { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string; DEFAULT_COMPANY_ID?: string }
+export interface AccessAdminEnv { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string; DEFAULT_COMPANY_ID?: string; CURRENT_COMPANY_ID?: string }
 class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
@@ -22,7 +22,7 @@ function actorRole(request: Request): string { return text(request.headers.get('
 async function requireAdmin(request: Request, env: AccessAdminEnv): Promise<string> {
   if (actorRole(request) !== 'administrator') throw new HttpError(403, 'Матрица прав доступна только администратору');
   const userId = actorId(request); if (!uuid.test(userId)) throw new HttpError(401, 'Не удалось определить пользователя');
-  const companyId = await resolveCompanyId(env);
+  const companyId = await resolveCompanyId(env, userId);
   const rows = await db<Row[]>(env, `crm_company_members?company_id=eq.${companyId}&user_id=eq.${userId}&status=eq.active&role=in.(owner,administrator)&select=user_id`);
   if (!rows.length) throw new HttpError(403, 'Нет административных прав в компании');
   return companyId;
