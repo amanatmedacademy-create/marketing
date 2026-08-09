@@ -3,7 +3,7 @@ import type { Env } from './integrations';
 
 type Row = Record<string, unknown>;
 
-export type CallCenterTenantEnv = Env & { CURRENT_COMPANY_ID?: string };
+export type CallCenterTenantEnv = Env & { CURRENT_COMPANY_ID?: string; DEFAULT_COMPANY_ID?: string };
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
