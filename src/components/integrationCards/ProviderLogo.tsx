@@ -4,6 +4,7 @@ import styles from './integrationCards.module.css';
 const glyphs: Record<CardIntegrationProvider, string> = {
   meta: '∞',
   instagram: 'IG',
+  telegram: 'TG',
   tiktok: '♪',
   bitrix: '24',
   n8n: 'N8',
