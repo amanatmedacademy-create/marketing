@@ -30,7 +30,7 @@ async function upsertUser(authUser:JsonRecord,env:AuthEnv):Promise<Authenticated
   return{id:text(row.id)||authId,email,name:text(row.name)||googleName,avatarUrl:row.avatar_url?text(row.avatar_url):avatar,role:text(row.role)||'viewer',status:text(row.status)||'invited'};
 }
 function origin(request:Request,env:AuthEnv){const requestOrigin=new URL(request.url).origin;try{return env.APP_ORIGIN?new URL(env.APP_ORIGIN).origin:requestOrigin}catch{return requestOrigin}}
-export function isPublicApiPath(pathname:string){return pathname==='/api/health'||pathname==='/api/auth/config'||pathname==='/api/auth/google/start'||pathname==='/api/auth/refresh'||pathname==='/api/auth/logout'||pathname.startsWith('/api/webhooks/')}
+export function isPublicApiPath(pathname:string){return pathname==='/api/health'||pathname==='/api/auth/config'||pathname==='/api/auth/google/start'||pathname==='/api/auth/refresh'||pathname==='/api/auth/logout'||pathname.startsWith('/api/webhooks/')||pathname.startsWith('/api/public/lead-forms/')}
 export async function authenticateRequest(request:Request,env:AuthEnv):Promise<AuthenticatedUser|null>{const authUser=await fetchAuthUser(request,env);return authUser?upsertUser(authUser,env):null}
 export async function authorizeApplicationRequest(request:Request,env:AuthEnv,user:AuthenticatedUser):Promise<Response|null>{
   if(user.role==='administrator')return null;
