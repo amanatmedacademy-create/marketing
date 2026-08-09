@@ -21,6 +21,7 @@ import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelection';
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
+import { handleTelegramBotRequest, handleTelegramPublicRequest, type TelegramBotEnv } from './telegramBot';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
 import { handleVoiceTranscriptionRequest, type VoiceTranscriptionEnv } from './voiceTranscription';
@@ -44,6 +45,7 @@ type MainEnv = AuthEnv
   & MetaBackfillEnv
   & MetaSelectionEnv
   & InstagramDirectEnv
+  & TelegramBotEnv
   & TenantSyncEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
@@ -70,6 +72,7 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/adsets/sync'
     || pathname === '/api/integrations/meta/conversions'
     || pathname.startsWith('/api/integrations/instagram/')
+    || pathname.startsWith('/api/integrations/telegram/')
     || pathname === '/api/integrations/waba/config'
     || pathname === '/api/integrations/waba/connect'
     || pathname === '/api/integrations/waba/disconnect'
@@ -133,6 +136,8 @@ export default {
     const route = async (): Promise<Response> => {
       const instagramPublic = await handleInstagramPublicRequest(request, env, url);
       if (instagramPublic) return instagramPublic;
+      const telegramPublic = await handleTelegramPublicRequest(request, env, url);
+      if (telegramPublic) return telegramPublic;
 
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url, ctx);
@@ -168,6 +173,8 @@ export default {
 
       const instagramDirect = await handleInstagramDirectRequest(forwardedRequest, runtimeEnv, url);
       if (instagramDirect) return instagramDirect;
+      const telegramBot = await handleTelegramBotRequest(forwardedRequest, runtimeEnv, url);
+      if (telegramBot) return telegramBot;
       const clinicFlowOutreach = await handleWabaClinicFlowOutreachRequest(forwardedRequest, runtimeEnv, url);
       if (clinicFlowOutreach) return clinicFlowOutreach;
       const wabaFlows = await handleWabaFlowsRequest(forwardedRequest, runtimeEnv, url);
