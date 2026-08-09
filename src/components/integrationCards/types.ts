@@ -1,5 +1,7 @@
 export type CardIntegrationProvider =
   | 'meta'
+  | 'instagram'
+  | 'telegram'
   | 'tiktok'
   | 'bitrix'
   | 'n8n'

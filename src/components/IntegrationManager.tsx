@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
+import InstagramDirectSetup, { type InstagramDirectConfig } from './InstagramDirectSetup';
+import TelegramBotSetup, { type TelegramBotConfig } from './TelegramBotSetup';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import { MetaSelectionPanel } from './MetaSelectionPanel';
 import WabaEmbeddedSignup from './WabaEmbeddedSignup';
@@ -132,6 +134,10 @@ export default function IntegrationManager() {
   const [editor, setEditor] = useState<ProviderDefinition | null>(null);
   const [wabaEditorOpen, setWabaEditorOpen] = useState(false);
   const [wabaConfig, setWabaConfig] = useState<WabaConfigResponse | null>(null);
+  const [instagramEditorOpen, setInstagramEditorOpen] = useState(false);
+  const [instagramConfig, setInstagramConfig] = useState<InstagramDirectConfig | null>(null);
+  const [telegramEditorOpen, setTelegramEditorOpen] = useState(false);
+  const [telegramConfig, setTelegramConfig] = useState<TelegramBotConfig | null>(null);
   const [activeCard, setActiveCard] = useState<CardIntegrationProvider | null>(null);
   const [historyDays, setHistoryDays] = useState<number>(90);
   const [loading, setLoading] = useState(true);
@@ -197,7 +203,50 @@ export default function IntegrationManager() {
     };
   }, [wabaConfig]);
 
-  const availableCards = useMemo(() => [...cards, wabaCard], [cards, wabaCard]);
+  const instagramCard = useMemo<CardIntegrationSummary>(() => {
+    const values = instagramConfig?.values || {};
+    const connected = Boolean(instagramConfig?.connected);
+    const needsSelection = instagramConfig?.status === 'selection_required';
+    return {
+      id: 'instagram',
+      name: 'Instagram Direct',
+      description: 'Прямое подключение Direct через Meta Messaging API без сторонних посредников.',
+      status: instagramConfig?.lastError ? 'error' : connected ? 'connected' : needsSelection ? 'disconnected' : 'not_connected',
+      lastSyncedAt: instagramConfig?.lastVerifiedAt || null,
+      stats: connected ? [
+        { label: 'Аккаунт', value: values.username ? `@${values.username}` : values.instagramAccountId || 'Подключён' },
+        { label: 'Webhook', value: values.webhookSubscription === 'automatic' ? 'Автоматически' : 'Проверить Meta' },
+      ] : needsSelection ? [{ label: 'Действие', value: 'Выберите аккаунт' }] : [],
+      fields: [
+        ...(values.instagramAccountId ? [{ label: 'Instagram ID', value: values.instagramAccountId }] : []),
+        ...(values.pageName ? [{ label: 'Facebook Page', value: values.pageName }] : []),
+      ],
+      errorMessage: instagramConfig?.lastError || undefined,
+    };
+  }, [instagramConfig]);
+
+  const telegramCard = useMemo<CardIntegrationSummary>(() => {
+    const values = telegramConfig?.values || {};
+    const connected = Boolean(telegramConfig?.connected);
+    return {
+      id: 'telegram',
+      name: 'Telegram Bot',
+      description: 'Прямое подключение Telegram Bot API: входящие и исходящие сообщения в едином чате IMDS.',
+      status: telegramConfig?.lastError ? 'error' : connected ? 'connected' : 'not_connected',
+      lastSyncedAt: telegramConfig?.lastVerifiedAt || null,
+      stats: connected ? [
+        { label: 'Бот', value: values.botUsername ? `@${values.botUsername}` : values.botName || values.botId || 'Подключён' },
+        { label: 'Webhook', value: values.webhook === 'configured' ? 'Автоматически' : 'Не настроен' },
+      ] : [],
+      fields: [
+        ...(values.botId ? [{ label: 'Bot ID', value: values.botId }] : []),
+        ...(values.botName ? [{ label: 'Название', value: values.botName }] : []),
+      ],
+      errorMessage: telegramConfig?.lastError || undefined,
+    };
+  }, [telegramConfig]);
+
+  const availableCards = useMemo(() => [...cards, wabaCard, instagramCard, telegramCard], [cards, wabaCard, instagramCard, telegramCard]);
   const connectedCount = availableCards.filter((item) => item.status === 'connected' || item.status === 'syncing').length;
 
   const applyConfigs = useCallback((result: IntegrationConfigResponse) => {
@@ -231,9 +280,39 @@ export default function IntegrationManager() {
     }
   }, [isAdmin]);
 
+  const loadInstagram = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/integrations/instagram/config', { headers: { accept: 'application/json' } });
+      const body = await response.text();
+      let result: InstagramDirectConfig = {};
+      try { result = body ? JSON.parse(body) as InstagramDirectConfig : {}; } catch { throw new Error(body || `Instagram status failed: ${response.status}`); }
+      if (!response.ok) throw new Error((result as { error?: string }).error || `Instagram status failed: ${response.status}`);
+      setInstagramConfig(result);
+    } catch (error) {
+      setInstagramConfig({ configured: false, connected: false, status: 'error', lastError: errorText(error) });
+    }
+  }, [isAdmin]);
+
+  const loadTelegram = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/integrations/telegram/config', { headers: { accept: 'application/json' } });
+      const body = await response.text();
+      let result: TelegramBotConfig = {};
+      try { result = body ? JSON.parse(body) as TelegramBotConfig : {}; } catch { throw new Error(body || `Telegram status failed: ${response.status}`); }
+      if (!response.ok) throw new Error((result as { error?: string }).error || `Telegram status failed: ${response.status}`);
+      setTelegramConfig(result);
+    } catch (error) {
+      setTelegramConfig({ configured: false, connected: false, status: 'error', lastError: errorText(error) });
+    }
+  }, [isAdmin]);
+
   const load = useCallback(async () => {
     setLoading(true);
     void loadWaba();
+    void loadInstagram();
+    void loadTelegram();
     try {
       const [nextStatus, nextConfigs] = await Promise.all([
         withTimeout(marketingApi.integrationStatus()),
@@ -246,7 +325,7 @@ export default function IntegrationManager() {
     } finally {
       setLoading(false);
     }
-  }, [applyConfigs, isAdmin, loadWaba]);
+  }, [applyConfigs, isAdmin, loadInstagram, loadTelegram, loadWaba]);
 
   useEffect(() => {
     void load();
@@ -275,6 +354,28 @@ export default function IntegrationManager() {
     }
   }, [load]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('instagram');
+    if (!result) return;
+    const username = params.get('username') || '';
+    const accounts = params.get('accounts') || '0';
+    const webhook = params.get('webhook') || '';
+    const oauthMessage = params.get('message') || 'Неизвестная ошибка Instagram OAuth';
+    const cleanUrl = new URL(window.location.href);
+    ['instagram', 'username', 'accounts', 'webhook', 'message'].forEach((key) => cleanUrl.searchParams.delete(key));
+    window.history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    setInstagramEditorOpen(true);
+    if (result === 'connected') {
+      setMessage({ type: 'ok', text: `Instagram @${username || 'аккаунт'} подключён к Direct.${webhook === 'manual_required' ? ' Проверьте webhook subscription в Meta App Dashboard.' : ''}` });
+    } else if (result === 'select') {
+      setMessage({ type: 'ok', text: `Meta вернула ${accounts} Instagram аккаунтов. Выберите нужный для текущей клиники.` });
+    } else {
+      setMessage({ type: 'error', text: `Instagram OAuth: ${oauthMessage}` });
+    }
+    void loadInstagram();
+  }, [loadInstagram]);
+
   const updateField = (provider: IntegrationProvider, name: string, value: string) => {
     setForms((previous) => ({
       ...previous,
@@ -290,6 +391,16 @@ export default function IntegrationManager() {
   const closeWabaEditor = () => {
     setWabaEditorOpen(false);
     void loadWaba();
+  };
+
+  const closeInstagramEditor = () => {
+    setInstagramEditorOpen(false);
+    void loadInstagram();
+  };
+
+  const closeTelegramEditor = () => {
+    setTelegramEditorOpen(false);
+    void loadTelegram();
   };
 
   const startMetaOAuth = async () => {
@@ -418,7 +529,7 @@ export default function IntegrationManager() {
     <section className="iv2-summary">
       <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {availableCards.length}</strong></div></article>
       <article><Plug size={22}/><div><span>API</span><strong>{message?.type === 'error' ? 'Ошибка' : loading ? 'Проверка' : 'Работает'}</strong></div></article>
-      <article><Settings size={22}/><div><span>Архитектура</span><strong>React без DOM-мутаций</strong></div></article>
+      <article><Settings size={22}/><div><span>Архитектура</span><strong>Multi-tenant · прямые API</strong></div></article>
     </section>
 
     {message && <div className={`iv2-message iv2-message--${message.type}`}>{message.text}</div>}
@@ -434,6 +545,14 @@ export default function IntegrationManager() {
           onConfigure={() => {
             if (card.id === 'waba') {
               setWabaEditorOpen(true);
+              return;
+            }
+            if (card.id === 'instagram') {
+              setInstagramEditorOpen(true);
+              return;
+            }
+            if (card.id === 'telegram') {
+              setTelegramEditorOpen(true);
               return;
             }
             openEditor(card.id as IntegrationProvider);
@@ -478,6 +597,44 @@ export default function IntegrationManager() {
             <button type="button" onClick={closeWabaEditor}>Закрыть</button>
           </div>
         </footer>
+      </section>
+    </div>}
+
+    {instagramEditorOpen && <div
+      className="iv2-overlay"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeInstagramEditor(); }}
+    >
+      <section className="iv2-modal iv2-modal--wide" role="dialog" aria-modal="true" aria-label="Настройка Instagram Direct">
+        <header>
+          <div><h2>Instagram Direct</h2><p>Прямое подключение Instagram Professional Account через Meta без Wazzup и других посредников.</p></div>
+          <button type="button" onClick={closeInstagramEditor} aria-label="Закрыть"><X size={20}/></button>
+        </header>
+        <InstagramDirectSetup
+          config={instagramConfig}
+          onRefresh={loadInstagram}
+          onMessage={(type, text) => setMessage({ type, text })}
+        />
+        <footer><div><button type="button" onClick={closeInstagramEditor}>Закрыть</button></div></footer>
+      </section>
+    </div>}
+
+    {telegramEditorOpen && <div
+      className="iv2-overlay"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeTelegramEditor(); }}
+    >
+      <section className="iv2-modal iv2-modal--wide" role="dialog" aria-modal="true" aria-label="Настройка Telegram Bot">
+        <header>
+          <div><h2>Telegram Bot</h2><p>Прямое подключение Telegram Bot API. Токен хранится зашифрованно для выбранной клиники.</p></div>
+          <button type="button" onClick={closeTelegramEditor} aria-label="Закрыть"><X size={20}/></button>
+        </header>
+        <TelegramBotSetup
+          config={telegramConfig}
+          onRefresh={loadTelegram}
+          onMessage={(type, text) => setMessage({ type, text })}
+        />
+        <footer><div><button type="button" onClick={closeTelegramEditor}>Закрыть</button></div></footer>
       </section>
     </div>}
 

@@ -1,10 +1,11 @@
 import type { Env } from './integrations';
 import { handleUserAdminRequest } from './userAdmin';
 import { hasPermission, permissionForRequest, resolveUserAccess, type AccessMap } from './accessControl';
+import { listUserCompanies, resolveCompanyId } from './companyContext';
 
-type JsonRecord = Record<string, unknown>;
-export type AuthEnv = Env & { SUPABASE_ANON_KEY?: string; SUPABASE_PUBLISHABLE_KEY?: string; AUTH_ALLOWED_EMAIL_DOMAINS?: string; AUTH_AUTO_APPROVE?: string };
-export interface AuthenticatedUser { id:string; email:string; name:string; avatarUrl:string|null; role:string; status:string; jobTitle?:string|null; positionId?:string|null; permissions?:AccessMap }
+type JsonRecord=Record<string,unknown>;
+export type AuthEnv=Env&{SUPABASE_ANON_KEY?:string;SUPABASE_PUBLISHABLE_KEY?:string;AUTH_ALLOWED_EMAIL_DOMAINS?:string;AUTH_AUTO_APPROVE?:string;CURRENT_COMPANY_ID?:string};
+export interface AuthenticatedUser{id:string;email:string;name:string;avatarUrl:string|null;role:string;status:string;jobTitle?:string|null;positionId?:string|null;permissions?:AccessMap}
 const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
 const text=(value:unknown):string=>typeof value==='string'?value.trim():'';
 function publicKey(env:AuthEnv){return text(env.SUPABASE_PUBLISHABLE_KEY)||text(env.SUPABASE_ANON_KEY)}
@@ -30,21 +31,24 @@ async function upsertUser(authUser:JsonRecord,env:AuthEnv):Promise<Authenticated
   return{id:text(row.id)||authId,email,name:text(row.name)||googleName,avatarUrl:row.avatar_url?text(row.avatar_url):avatar,role:text(row.role)||'viewer',status:text(row.status)||'invited'};
 }
 function origin(request:Request,env:AuthEnv){const requestOrigin=new URL(request.url).origin;try{return env.APP_ORIGIN?new URL(env.APP_ORIGIN).origin:requestOrigin}catch{return requestOrigin}}
+function requestedCompanyId(request:Request):string{return text(request.headers.get('x-imds-company-id'))}
+async function scopedEnv(request:Request,env:AuthEnv,user:AuthenticatedUser):Promise<AuthEnv>{const requested=requestedCompanyId(request);if(requested)return{...env,CURRENT_COMPANY_ID:await resolveCompanyId({...env,CURRENT_COMPANY_ID:requested},user.id)};const companies=await listUserCompanies(env,user.id);if(companies.length===1)return{...env,CURRENT_COMPANY_ID:companies[0].id};return env}
 export function isPublicApiPath(pathname:string){return pathname==='/api/health'||pathname==='/api/auth/config'||pathname==='/api/auth/google/start'||pathname==='/api/auth/refresh'||pathname==='/api/auth/logout'||pathname.startsWith('/api/webhooks/')}
 export async function authenticateRequest(request:Request,env:AuthEnv):Promise<AuthenticatedUser|null>{const authUser=await fetchAuthUser(request,env);return authUser?upsertUser(authUser,env):null}
 export async function authorizeApplicationRequest(request:Request,env:AuthEnv,user:AuthenticatedUser):Promise<Response|null>{
   if(user.role==='administrator')return null;
   const rule=permissionForRequest(new URL(request.url).pathname,request.method);if(!rule)return null;
-  const access=await resolveUserAccess(env,user.id,user.role);if(!hasPermission(access.permissions,rule.moduleId,rule.action))return json({error:'Недостаточно прав для этого действия',moduleId:rule.moduleId,action:rule.action},403);
+  const tenantEnv=await scopedEnv(request,env,user);if(!tenantEnv.CURRENT_COMPANY_ID)return json({error:'Выберите клинику для продолжения',code:'COMPANY_REQUIRED'},409);
+  const access=await resolveUserAccess(tenantEnv,user.id,user.role);if(!hasPermission(access.permissions,rule.moduleId,rule.action))return json({error:'Недостаточно прав для этого действия',moduleId:rule.moduleId,action:rule.action},403);
   return null;
 }
 export async function handleAuthRequest(request:Request,env:AuthEnv,url:URL):Promise<Response|null>{
-  if(url.pathname.startsWith('/api/admin/users')){const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status!=='active')return json({error:'Пользователь не активен'},403);const headers=new Headers(request.headers);headers.set('x-amanat-auth-user',user.id);headers.set('x-amanat-auth-role',user.role);return handleUserAdminRequest(new Request(request,{headers}),env,url)}
+  if(url.pathname.startsWith('/api/admin/users')){const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status!=='active')return json({error:'Пользователь не активен'},403);const tenantEnv=await scopedEnv(request,env,user);if(!tenantEnv.CURRENT_COMPANY_ID)return json({error:'Выберите клинику для продолжения',code:'COMPANY_REQUIRED'},409);const headers=new Headers(request.headers);headers.set('x-amanat-auth-user',user.id);headers.set('x-amanat-auth-role',user.role);return handleUserAdminRequest(new Request(request,{headers}),tenantEnv,url)}
   if(url.pathname==='/api/auth/config'&&request.method==='GET'){const settings=await readSettings(env);return json({googleEnabled:settings.googleEnabled,oauthMode:'worker',publicKeyConfigured:Boolean(publicKey(env)),diagnostic:settings.error})}
   if(url.pathname==='/api/auth/google/start'&&request.method==='GET'){const settings=await readSettings(env);if(!settings.googleEnabled)return Response.redirect(`${origin(request,env)}/?error_description=${encodeURIComponent(settings.error||'Google Provider выключен')}`,302);const authorize=new URL(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/authorize`);authorize.searchParams.set('provider','google');authorize.searchParams.set('redirect_to',`${origin(request,env)}/`);authorize.searchParams.set('scopes','openid email profile');return Response.redirect(authorize.toString(),302)}
   if(url.pathname==='/api/auth/refresh'&&request.method==='POST'){const body=await request.json().catch(()=>({})) as JsonRecord;const token=text(body.refresh_token);if(!token)return json({error:'refresh_token is required'},400);const key=authKey(env);const response=await fetch(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'},body:JSON.stringify({refresh_token:token})});return new Response(await response.text(),{status:response.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}})}
   if(url.pathname==='/api/auth/logout'&&request.method==='POST')return json({ok:true});
-  if(url.pathname==='/api/auth/me'&&request.method==='GET'){try{const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status==='blocked')return json({error:'Доступ пользователя заблокирован'},403);if(user.status!=='active')return json({error:'Аккаунт ожидает подтверждения администратора'},403);const access=await resolveUserAccess(env,user.id,user.role);return json({user:{...user,jobTitle:access.jobTitle,positionId:access.positionId,permissions:access.permissions}})}catch(error){return json({error:error instanceof Error?error.message:'Ошибка авторизации'},403)}}
+  if(url.pathname==='/api/auth/me'&&request.method==='GET'){try{const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status==='blocked')return json({error:'Доступ пользователя заблокирован'},403);if(user.status!=='active')return json({error:'Аккаунт ожидает подтверждения администратора'},403);const companies=await listUserCompanies(env,user.id);const requested=requestedCompanyId(request);let companyId:string|null=null;if(requested)companyId=await resolveCompanyId({...env,CURRENT_COMPANY_ID:requested},user.id);else if(companies.length===1)companyId=companies[0].id;const tenantEnv=companyId?{...env,CURRENT_COMPANY_ID:companyId}:env;const access=companyId?await resolveUserAccess(tenantEnv,user.id,user.role):null;return json({user:{...user,companyId,companies,jobTitle:access?.jobTitle||null,positionId:access?.positionId||null,permissions:access?.permissions||{}}})}catch(error){return json({error:error instanceof Error?error.message:'Ошибка авторизации'},403)}}
   return null;
 }
 export function authError(status=401,message='Необходим вход через Google'){return json({error:message},status)}
