@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, CircleHelp, Clock3, Database, Info, Route, ShieldCheck, TriangleAlert, X } from 'lucide-react';
+import { resolveInspectorKnowledge } from './dataInspectorCatalog';
 import './data-inspector.css';
 
 export type DataQuality = 'fresh' | 'delayed' | 'partial' | 'error' | 'unknown';
@@ -69,6 +70,10 @@ function inferNearbyBreakdown(root: HTMLSpanElement | null): DataBreakdownItem[]
   return [];
 }
 
+function unique(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 export default function DataInspector({
   title,
   description,
@@ -94,6 +99,10 @@ export default function DataInspector({
   const rootRef = useRef<HTMLSpanElement>(null);
   const qualityCopy = QUALITY_COPY[quality];
   const QualityIcon = qualityCopy.icon;
+  const knowledge = useMemo(() => resolveInspectorKnowledge(typeof window === 'undefined' ? '' : window.location.pathname, title), [title]);
+  const resolvedSources = useMemo(() => unique([...sources, ...(knowledge.sources || [])]), [knowledge.sources, sources]);
+  const resolvedFields = useMemo(() => unique([...fields, ...(knowledge.fields || [])]), [fields, knowledge.fields]);
+  const resolvedTechnical = useMemo(() => unique([...technical, ...(knowledge.technical || [])]), [knowledge.technical, technical]);
 
   useEffect(() => {
     if (!open) return;
@@ -120,15 +129,16 @@ export default function DataInspector({
     if (formula) lines.push(`IMDS применяет формулу: ${formula}.`);
     else lines.push('IMDS берёт фактические записи источников, нормализует их и агрегирует для текущего виджета.');
     if (filters.length) lines.push(`Перед расчётом применяются фильтры: ${filters.join(' · ')}.`);
-    if (sources.length) lines.push(`В расчёте участвуют данные: ${sources.join(', ')}.`);
+    if (resolvedSources.length) lines.push(`В расчёте участвуют данные: ${resolvedSources.join(', ')}.`);
     return lines;
-  }, [filters, formula, resolvedBreakdown, sources, why]);
+  }, [filters, formula, resolvedBreakdown, resolvedSources, why]);
 
   const resolvedLineage = useMemo(() => {
     if (lineage.length) return lineage;
-    const first = sources.length ? sources.slice(0, 3).join(' + ') : 'Источник данных';
+    if (knowledge.lineage?.length) return knowledge.lineage;
+    const first = resolvedSources.length ? resolvedSources.slice(0, 3).join(' + ') : 'Источник данных';
     return [first, 'IMDS Data Layer', formula ? 'Расчёт / нормализация' : 'Валидация / фильтры', title];
-  }, [formula, lineage, sources, title]);
+  }, [formula, knowledge.lineage, lineage, resolvedSources, title]);
 
   return <span ref={rootRef} className={`data-inspector ${compact ? 'data-inspector--compact' : ''} ${className}`.trim()}>
     <button
@@ -180,9 +190,9 @@ export default function DataInspector({
         </span>}
       </span>}
 
-      {sources.length > 0 && <span className="data-inspector__section">
+      {resolvedSources.length > 0 && <span className="data-inspector__section">
         <b>Источники</b>
-        <span className="data-inspector__chips">{sources.map((source) => <em key={source}>{source}</em>)}</span>
+        <span className="data-inspector__chips">{resolvedSources.map((source) => <em key={source}>{source}</em>)}</span>
       </span>}
 
       {resolvedLineage.length > 1 && <span className="data-inspector__section">
@@ -196,9 +206,9 @@ export default function DataInspector({
         </span>
       </span>}
 
-      {fields.length > 0 && <span className="data-inspector__section">
+      {resolvedFields.length > 0 && <span className="data-inspector__section">
         <b>Какие данные получает IMDS</b>
-        <span className="data-inspector__fields">{fields.map((field) => <code key={field}>{field}</code>)}</span>
+        <span className="data-inspector__fields">{resolvedFields.map((field) => <code key={field}>{field}</code>)}</span>
       </span>}
 
       {formula && <span className="data-inspector__section">
@@ -218,11 +228,11 @@ export default function DataInspector({
 
       <span className="data-inspector__updated"><Clock3 size={13}/> Обновлено: {friendlyUpdatedAt(updatedAt)}</span>
 
-      {technical.length > 0 && <span className="data-inspector__technical">
+      {resolvedTechnical.length > 0 && <span className="data-inspector__technical">
         <button type="button" onClick={() => setTechnicalOpen((value) => !value)}>
           <ShieldCheck size={14}/> Технические данные {technicalOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
         </button>
-        {technicalOpen && <span>{technical.map((line) => <code key={line}>{line}</code>)}</span>}
+        {technicalOpen && <span>{resolvedTechnical.map((line) => <code key={line}>{line}</code>)}</span>}
       </span>}
     </span>}
   </span>;
