@@ -6,6 +6,7 @@ import { handleConversionMatrix } from './conversionMatrix';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { handleCallCenterChat } from './callCenterChat';
+import { handleCallCenterTenantGuard, type CallCenterTenantEnv } from './callCenterTenantGuard';
 import { resolveCompanyId } from './companyContext';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
@@ -46,6 +47,7 @@ type MainEnv = AuthEnv
   & MetaSelectionEnv
   & InstagramDirectEnv
   & TelegramBotEnv
+  & CallCenterTenantEnv
   & TenantSyncEnv
   & TenantWebhookEnv
   & WabaEmbeddedSignupEnv
@@ -219,6 +221,8 @@ export default {
       if (salesFunnel) return salesFunnel;
       const voiceTranscription = await handleVoiceTranscriptionRequest(forwardedRequest, runtimeEnv, url);
       if (voiceTranscription) return voiceTranscription;
+      const callCenterTenant = await handleCallCenterTenantGuard(forwardedRequest, runtimeEnv, url);
+      if (callCenterTenant) return callCenterTenant;
       const callCenter = await handleCallCenterChat(forwardedRequest, runtimeEnv, url);
       if (callCenter) return callCenter;
       const conversionMatrix = await handleConversionMatrix(forwardedRequest, runtimeEnv, url);
