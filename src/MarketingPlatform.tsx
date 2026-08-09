@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { BarChart3, Bell, Cable, ChartNoAxesCombined, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bell, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import ImdsBrand from './components/ImdsBrand';
@@ -15,6 +15,7 @@ import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
 import { CustomersPage, GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
+import { AutomationStudioPage, DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -35,6 +36,8 @@ const navigation: NavGroup[] = [
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Чат', icon: MessageCircle, moduleId: 'communications.chat' },
     { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
+    { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
+    { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
   ]},
   { label: 'РЕКЛАМА', items: [
     { to: '/advertising', label: 'Рекламные кампании', icon: ChartNoAxesCombined, moduleId: 'advertising' },
@@ -42,13 +45,16 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/attribution', label: 'UTM и атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
-    { to: '/analytics', label: 'Аналитика и отчёты', icon: BarChart3, moduleId: 'analytics.reports' },
+    { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
+    { to: '/reports', label: 'Отчёты', icon: FileText, moduleId: 'analytics.reports' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
     { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
+    { to: '/automation', label: 'Automation Studio', icon: Workflow, moduleId: 'dashboard' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
+    { to: '/data-quality', label: 'Качество данных', icon: Database, moduleId: 'audit' },
     { to: '/notifications', label: 'Уведомления', icon: Bell, moduleId: 'integrations' },
     { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
     { to: '/architecture', label: 'Архитектура', icon: Workflow, moduleId: 'platform.architecture' },
@@ -92,12 +98,17 @@ function Shell() {
         <Route path="/customers" element={guard('crm.leads', <CustomersPage/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <SalesFunnelPage/>)} />
+        <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
+        <Route path="/whatsapp/templates" element={guard('communications.chat', <WhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
         <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
         <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
+        <Route path="/reports" element={guard('analytics.reports', <ReportsPage/>)} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
+        <Route path="/automation" element={guard('dashboard', <AutomationStudioPage/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationManager/>)} />
+        <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
