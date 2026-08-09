@@ -12,6 +12,6 @@ declare global {
 
 declare module './wabaClinicFlowOutreach' {
   interface WabaClinicFlowOutreachEnv {
-    [key: string]: unknown;
+    CURRENT_COMPANY_ID?: string;
   }
 }
