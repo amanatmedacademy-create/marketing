@@ -24,8 +24,16 @@ async function db<T>(env: AutomationEngineEnv, path: string, init: RequestInit =
   return (body ? JSON.parse(body) : null) as T;
 }
 
+function actionsFor(rule: Row): Row[] {
+  return Array.isArray(rule.actions) ? rule.actions.map(record).filter((action) => text(action.type)) : [];
+}
+
+function isExecutable(rule: Row): boolean {
+  return Boolean(text(rule.trigger_type) && actionsFor(rule).length);
+}
+
 function matchesLead(rule: Row, lead: Row): boolean {
-  const trigger = text(rule.trigger_type) || 'lead_created';
+  const trigger = text(rule.trigger_type);
   const config = record(rule.trigger_config);
   if (trigger === 'lead_created') {
     const source = text(config.source).toLowerCase();
@@ -73,23 +81,26 @@ async function createRun(env: AutomationEngineEnv, companyId: string, ruleId: st
 
 export async function runAutomationEngine(env: AutomationEngineEnv): Promise<{ rules: number; matched: number; executed: number; failed: number }> {
   const companyId = await resolveCompanyId(env);
-  const rules = await db<Row[]>(env, 'marketing_automations?enabled=eq.true&select=*&order=created_at.asc');
+  const allRules = await db<Row[]>(env, 'marketing_automations?enabled=eq.true&select=*&order=created_at.asc');
+  const rules = allRules.filter(isExecutable);
   let matched = 0; let executed = 0; let failed = 0;
   for (const rule of rules) {
+    const trigger = text(rule.trigger_type);
     const since = text(rule.last_checked_at) || new Date(Date.now() - 24 * 3600000).toISOString();
-    const leads = await db<Row[]>(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&updated_at=gt.${encodeURIComponent(since)}&select=id,name,phone,source,platform,utm_source,stage,manager,created_at,updated_at&order=updated_at.asc&limit=1000`);
+    const dateField = trigger === 'lead_created' ? 'created_at' : 'updated_at';
+    const leads = await db<Row[]>(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&${dateField}=gt.${encodeURIComponent(since)}&select=id,name,phone,source,platform,utm_source,stage,manager,created_at,updated_at&order=${dateField}.asc&limit=1000`);
     for (const lead of leads) {
       if (!matchesLead(rule, lead)) continue;
       matched += 1;
-      const eventKey = `${text(rule.trigger_type) || 'lead_created'}:${text(lead.id)}:${text(lead.updated_at) || text(lead.created_at)}`;
+      const eventAt = trigger === 'lead_created' ? text(lead.created_at) : text(lead.updated_at) || text(lead.created_at);
+      const eventKey = `${trigger}:${text(lead.id)}:${eventAt}`;
       const run = await createRun(env, companyId, text(rule.id), eventKey, text(lead.id));
       if (!run) continue;
-      const actions = Array.isArray(rule.actions) ? rule.actions.map(record) : [];
       const results: ActionResult[] = [];
       let errorText = '';
       try {
-        for (const action of actions) results.push(await executeAction(env, action, lead));
-        const allOk = results.length > 0 && results.every((item) => item.ok);
+        for (const action of actionsFor(rule)) results.push(await executeAction(env, action, lead));
+        const allOk = results.every((item) => item.ok);
         if (!allOk) errorText = results.filter((item) => !item.ok).map((item) => `${item.type}: ${item.detail || 'failed'}`).join('; ');
         await db(env, `marketing_automation_runs?id=eq.${encodeURIComponent(text(run.id))}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: allOk ? 'success' : 'failed', action_results: results, error: errorText || null, finished_at: new Date().toISOString() }) });
         if (allOk) executed += 1; else failed += 1;
