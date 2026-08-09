@@ -1,3 +1,5 @@
+import { CLINIC_FLOW_SCHEMA_VERSION } from './wabaClinicFlow';
+
 type Row = Record<string, unknown>;
 
 type Credential = {
@@ -27,7 +29,7 @@ export interface WabaClinicFlowOutreachEnv {
   META_GRAPH_VERSION?: string;
 }
 
-const TEMPLATE_NAME = 'imds_clinic_appointment';
+const TEMPLATE_NAME = `imds_clinic_booking_v${CLINIC_FLOW_SCHEMA_VERSION}`;
 const TEMPLATE_LANGUAGE = 'ru';
 const TEMPLATE_CATEGORY = 'MARKETING';
 const TEMPLATE_BODY = 'Здравствуйте! Чтобы подобрать удобное время для записи, заполните короткую форму.';
@@ -126,9 +128,9 @@ async function graphJson(url: string, accessToken: string, init: RequestInit = {
   return payload;
 }
 
-function clinicFlow(current: Credential): { flowId: string; status: string } {
+function clinicFlow(current: Credential): { flowId: string; status: string; schemaVersion: number } {
   const clinic = record(record(current.configSummary.flows).clinic);
-  return { flowId: text(clinic.flowId), status: text(clinic.status).toUpperCase() };
+  return { flowId: text(clinic.flowId), status: text(clinic.status).toUpperCase(), schemaVersion: Number(clinic.schemaVersion || 0) };
 }
 
 async function getTemplate(current: Credential): Promise<MetaTemplate | null> {
@@ -165,6 +167,7 @@ async function saveTemplateSummary(env: WabaClinicFlowOutreachEnv, current: Cred
           language: template.language,
           category: template.category,
           status: template.status,
+          schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
           updatedAt: new Date().toISOString(),
         },
       },
@@ -178,7 +181,9 @@ async function saveTemplateSummary(env: WabaClinicFlowOutreachEnv, current: Cred
 
 async function createTemplate(env: WabaClinicFlowOutreachEnv, current: Credential): Promise<MetaTemplate> {
   const flow = clinicFlow(current);
-  if (!flow.flowId || flow.status !== 'PUBLISHED') throw new Error('Сначала опубликуйте Flow «Запись в клинику»');
+  if (!flow.flowId || flow.status !== 'PUBLISHED' || flow.schemaVersion !== CLINIC_FLOW_SCHEMA_VERSION) {
+    throw new Error(`Сначала опубликуйте актуальный Flow v${CLINIC_FLOW_SCHEMA_VERSION} «Запись в клинику»`);
+  }
 
   const existing = await getTemplate(current);
   if (existing) {
@@ -241,9 +246,11 @@ async function sendClinicFlowTemplate(env: WabaClinicFlowOutreachEnv, request: R
 
   const current = await findCredential(env, companyId);
   const flow = clinicFlow(current);
-  if (!flow.flowId || flow.status !== 'PUBLISHED') return json({ error: 'Flow «Запись в клинику» ещё не опубликован' }, 409);
+  if (!flow.flowId || flow.status !== 'PUBLISHED' || flow.schemaVersion !== CLINIC_FLOW_SCHEMA_VERSION) {
+    return json({ error: `Flow «Запись в клинику» необходимо обновить до v${CLINIC_FLOW_SCHEMA_VERSION}` }, 409);
+  }
   const template = await getTemplate(current);
-  if (!template) return json({ error: 'Шаблон «Запись в клинику» ещё не создан. Создайте его в настройках WABA.', code: 'FLOW_TEMPLATE_MISSING' }, 409);
+  if (!template) return json({ error: `Шаблон ${TEMPLATE_NAME} ещё не создан. Создайте его в настройках WABA.`, code: 'FLOW_TEMPLATE_MISSING' }, 409);
   await saveTemplateSummary(env, current, template).catch(() => undefined);
   if (template.status !== 'APPROVED') {
     return json({
@@ -299,7 +306,7 @@ async function sendClinicFlowTemplate(env: WabaClinicFlowOutreachEnv, request: R
         whatsapp: result,
         whatsapp_type: 'flow_template',
         whatsapp_template: { name: template.name, language: template.language, category: template.category },
-        whatsapp_flow: { flow_id: flow.flowId, flow_token: flowToken, screen: 'APPOINTMENT' },
+        whatsapp_flow: { flow_id: flow.flowId, flow_token: flowToken, screen: 'APPOINTMENT', schema_version: CLINIC_FLOW_SCHEMA_VERSION },
       },
       created_at: sentAt,
     }),
@@ -340,6 +347,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
         category: template?.category || TEMPLATE_CATEGORY,
         status: template?.status || null,
         templateId: template?.id || null,
+        schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
       });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
@@ -362,6 +370,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
         category: template.category,
         status: template.status,
         templateId: template.id || null,
+        schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
       });
     } catch (error) {
       console.error('Clinic Flow template setup failed', error);
