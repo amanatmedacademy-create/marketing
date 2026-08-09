@@ -70,11 +70,11 @@ const routeRules: Array<{ test: (path: string) => boolean; moduleId: string }> =
   { test: (p) => p.startsWith('/api/leads') || p.startsWith('/api/operations/forms'), moduleId: 'crm.leads' },
   { test: (p) => p.startsWith('/api/operations/links'), moduleId: 'analytics.attribution' },
   { test: (p) => p.startsWith('/api/operations/media-plan'), moduleId: 'dashboard' },
-  { test: (p) => p.startsWith('/api/operations'), moduleId: 'dashboard' },
+  { test: (p) => p.startsWith('/api/operations') || p.startsWith('/api/automation'), moduleId: 'dashboard' },
   { test: (p) => p.startsWith('/api/integrations'), moduleId: 'integrations' },
   { test: (p) => p.startsWith('/api/ads') || p.startsWith('/api/meta') || p.startsWith('/api/tiktok'), moduleId: 'advertising' },
   { test: (p) => p.startsWith('/api/audit'), moduleId: 'audit' },
-  { test: (p) => p.startsWith('/api/analytics') || p.startsWith('/api/conversion'), moduleId: 'analytics.reports' },
+  { test: (p) => p.startsWith('/api/analytics') || p.startsWith('/api/conversion') || p.startsWith('/api/web-analytics') || p.startsWith('/api/assistant/marketing'), moduleId: 'analytics.reports' },
   { test: (p) => p.startsWith('/api/dashboard'), moduleId: 'dashboard' },
 ];
 
