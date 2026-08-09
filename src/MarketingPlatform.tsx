@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { BarChart3, Bell, Cable, ChartNoAxesCombined, LayoutDashboard, LockKeyhole, Menu, MessageCircle, MessageSquareText, PhoneCall, Search, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bell, Cable, ChartNoAxesCombined, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
+import ImdsBrand from './components/ImdsBrand';
 import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
@@ -41,7 +42,7 @@ function Shell() {
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
-      <div className="marketing-brand"><MessageSquareText/><div><b>IMDS</b><span>Marketing</span></div></div>
+      <div className="marketing-brand"><ImdsBrand compact /></div>
       <div className="marketing-nav-label">МАРКЕТИНГ</div>
       <nav>{visibleNav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
     </aside>

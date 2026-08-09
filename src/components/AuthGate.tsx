@@ -2,12 +2,12 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import {
   ArrowRight,
   CheckCircle2,
-  LineChart,
   LoaderCircle,
   LockKeyhole,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
+import ImdsBrand from './ImdsBrand';
 import {
   currentSession,
   loadAppUser,
@@ -115,8 +115,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   if (loading) return <div className="auth-screen auth-screen--loading">
     <div className="auth-loading-card">
-      <div className="auth-brand-mark"><LineChart size={27}/></div>
-      <span>AMANAT MED</span>
+      <ImdsBrand compact />
       <LoaderCircle className="spin" size={25}/>
       <p>Проверяем защищённую сессию</p>
     </div>
@@ -127,10 +126,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     <div className="auth-orb auth-orb--two"/>
     <div className="auth-layout">
       <section className="auth-showcase">
-        <div className="auth-brand">
-          <div className="auth-brand-mark"><LineChart size={24}/></div>
-          <div><b>AMANAT MED</b><span>Marketing Intelligence</span></div>
-        </div>
+        <div className="auth-brand"><ImdsBrand /></div>
         <div className="auth-copy">
           <div className="auth-eyebrow"><Sparkles size={14}/>Сквозная рекламная аналитика</div>
           <h1>Маркетинг, CRM и продажи — в одном контуре</h1>
@@ -156,7 +152,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       <section className="auth-login-panel">
         <div className="auth-login-card">
           <div className="auth-login-icon"><ShieldCheck size={28}/></div>
-          <span className="auth-login-product">AMANAT MED</span>
+          <span className="auth-login-product">IMDS MARKETING</span>
           <h2>Вход в систему</h2>
           <p>Используйте рабочий Google-аккаунт. При первом входе профиль будет зарегистрирован автоматически.</p>
           {error && <div className="auth-error" role="alert">{error}</div>}
@@ -166,7 +162,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             {!signingIn && <ArrowRight size={17}/>} 
           </button>
           {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
-          <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся AMANAT MED.</span></div>
+          <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся IMDS Marketing.</span></div>
           <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
         </div>
         <p className="auth-support">Проблемы со входом? Обратитесь к администратору системы.</p>
