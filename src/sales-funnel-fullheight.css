@@ -1,0 +1,27 @@
+/* Sales funnel full-height workspace: keep the pipeline focused on the kanban. */
+.funnel-v2-bottom{
+  display:none!important;
+}
+
+.funnel-v2-kanban-shell{
+  display:flex;
+  min-height:0;
+  flex-direction:column;
+}
+
+.funnel-v2-kanban-scroll{
+  height:clamp(680px,calc(100dvh - 300px),980px);
+  min-height:0;
+  flex:1 1 auto;
+}
+
+.funnel-v2-board,
+.funnel-v2-column{
+  min-height:100%;
+}
+
+@media(max-width:900px){
+  .funnel-v2-kanban-scroll{
+    height:clamp(560px,calc(100dvh - 230px),820px);
+  }
+}
