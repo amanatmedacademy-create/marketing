@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import InstagramDirectSetup, { type InstagramDirectConfig } from './InstagramDirectSetup';
+import TelegramBotSetup, { type TelegramBotConfig } from './TelegramBotSetup';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import { MetaSelectionPanel } from './MetaSelectionPanel';
 import WabaEmbeddedSignup from './WabaEmbeddedSignup';
@@ -135,6 +136,8 @@ export default function IntegrationManager() {
   const [wabaConfig, setWabaConfig] = useState<WabaConfigResponse | null>(null);
   const [instagramEditorOpen, setInstagramEditorOpen] = useState(false);
   const [instagramConfig, setInstagramConfig] = useState<InstagramDirectConfig | null>(null);
+  const [telegramEditorOpen, setTelegramEditorOpen] = useState(false);
+  const [telegramConfig, setTelegramConfig] = useState<TelegramBotConfig | null>(null);
   const [activeCard, setActiveCard] = useState<CardIntegrationProvider | null>(null);
   const [historyDays, setHistoryDays] = useState<number>(90);
   const [loading, setLoading] = useState(true);
@@ -222,7 +225,28 @@ export default function IntegrationManager() {
     };
   }, [instagramConfig]);
 
-  const availableCards = useMemo(() => [...cards, wabaCard, instagramCard], [cards, wabaCard, instagramCard]);
+  const telegramCard = useMemo<CardIntegrationSummary>(() => {
+    const values = telegramConfig?.values || {};
+    const connected = Boolean(telegramConfig?.connected);
+    return {
+      id: 'telegram',
+      name: 'Telegram Bot',
+      description: 'Прямое подключение Telegram Bot API: входящие и исходящие сообщения в едином чате IMDS.',
+      status: telegramConfig?.lastError ? 'error' : connected ? 'connected' : 'not_connected',
+      lastSyncedAt: telegramConfig?.lastVerifiedAt || null,
+      stats: connected ? [
+        { label: 'Бот', value: values.botUsername ? `@${values.botUsername}` : values.botName || values.botId || 'Подключён' },
+        { label: 'Webhook', value: values.webhook === 'configured' ? 'Автоматически' : 'Не настроен' },
+      ] : [],
+      fields: [
+        ...(values.botId ? [{ label: 'Bot ID', value: values.botId }] : []),
+        ...(values.botName ? [{ label: 'Название', value: values.botName }] : []),
+      ],
+      errorMessage: telegramConfig?.lastError || undefined,
+    };
+  }, [telegramConfig]);
+
+  const availableCards = useMemo(() => [...cards, wabaCard, instagramCard, telegramCard], [cards, wabaCard, instagramCard, telegramCard]);
   const connectedCount = availableCards.filter((item) => item.status === 'connected' || item.status === 'syncing').length;
 
   const applyConfigs = useCallback((result: IntegrationConfigResponse) => {
@@ -270,10 +294,25 @@ export default function IntegrationManager() {
     }
   }, [isAdmin]);
 
+  const loadTelegram = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/integrations/telegram/config', { headers: { accept: 'application/json' } });
+      const body = await response.text();
+      let result: TelegramBotConfig = {};
+      try { result = body ? JSON.parse(body) as TelegramBotConfig : {}; } catch { throw new Error(body || `Telegram status failed: ${response.status}`); }
+      if (!response.ok) throw new Error((result as { error?: string }).error || `Telegram status failed: ${response.status}`);
+      setTelegramConfig(result);
+    } catch (error) {
+      setTelegramConfig({ configured: false, connected: false, status: 'error', lastError: errorText(error) });
+    }
+  }, [isAdmin]);
+
   const load = useCallback(async () => {
     setLoading(true);
     void loadWaba();
     void loadInstagram();
+    void loadTelegram();
     try {
       const [nextStatus, nextConfigs] = await Promise.all([
         withTimeout(marketingApi.integrationStatus()),
@@ -286,7 +325,7 @@ export default function IntegrationManager() {
     } finally {
       setLoading(false);
     }
-  }, [applyConfigs, isAdmin, loadInstagram, loadWaba]);
+  }, [applyConfigs, isAdmin, loadInstagram, loadTelegram, loadWaba]);
 
   useEffect(() => {
     void load();
@@ -357,6 +396,11 @@ export default function IntegrationManager() {
   const closeInstagramEditor = () => {
     setInstagramEditorOpen(false);
     void loadInstagram();
+  };
+
+  const closeTelegramEditor = () => {
+    setTelegramEditorOpen(false);
+    void loadTelegram();
   };
 
   const startMetaOAuth = async () => {
@@ -507,6 +551,10 @@ export default function IntegrationManager() {
               setInstagramEditorOpen(true);
               return;
             }
+            if (card.id === 'telegram') {
+              setTelegramEditorOpen(true);
+              return;
+            }
             openEditor(card.id as IntegrationProvider);
           }}
         />)}
@@ -568,6 +616,25 @@ export default function IntegrationManager() {
           onMessage={(type, text) => setMessage({ type, text })}
         />
         <footer><div><button type="button" onClick={closeInstagramEditor}>Закрыть</button></div></footer>
+      </section>
+    </div>}
+
+    {telegramEditorOpen && <div
+      className="iv2-overlay"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeTelegramEditor(); }}
+    >
+      <section className="iv2-modal iv2-modal--wide" role="dialog" aria-modal="true" aria-label="Настройка Telegram Bot">
+        <header>
+          <div><h2>Telegram Bot</h2><p>Прямое подключение Telegram Bot API. Токен хранится зашифрованно для выбранной клиники.</p></div>
+          <button type="button" onClick={closeTelegramEditor} aria-label="Закрыть"><X size={20}/></button>
+        </header>
+        <TelegramBotSetup
+          config={telegramConfig}
+          onRefresh={loadTelegram}
+          onMessage={(type, text) => setMessage({ type, text })}
+        />
+        <footer><div><button type="button" onClick={closeTelegramEditor}>Закрыть</button></div></footer>
       </section>
     </div>}
 
