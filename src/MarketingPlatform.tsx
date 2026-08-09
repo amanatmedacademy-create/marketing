@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 're
 import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Search, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
+import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
 import ImdsBrand from './components/ImdsBrand';
 import IntegrationManager from './components/IntegrationManager';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
@@ -125,7 +126,7 @@ function Shell() {
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
-      </Routes></div>
+      </Routes><DataInspectorAutoLayer/></div>
     </main>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
