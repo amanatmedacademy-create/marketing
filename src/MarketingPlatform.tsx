@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
@@ -16,7 +16,7 @@ import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
-import { NotificationsPage, SegmentsPage } from './pages/ProductModules';
+import { NotificationsPage } from './pages/ProductModules';
 import { DataQualityPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
 import { Customer360Page, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
@@ -45,7 +45,6 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'РЕКЛАМА', items: [
     { to: '/advertising', label: 'Рекламные кампании', icon: ChartNoAxesCombined, moduleId: 'advertising' },
-    { to: '/segments', label: 'Аудитории и сегменты', icon: Layers3, moduleId: 'analytics.reports' },
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
@@ -112,7 +111,7 @@ function Shell() {
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <WhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
-        <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
+        <Route path="/segments" element={<Navigate to="/leads" replace/>} />
         <Route path="/attribution" element={<Navigate to="/analytics" replace/>} />
         <Route path="/utm-builder" element={guard('analytics.attribution', <UtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
