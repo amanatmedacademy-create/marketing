@@ -1,6 +1,8 @@
 export type CardIntegrationProvider =
   | 'meta'
   | 'tiktok'
+  | 'google_ads'
+  | 'ga4'
   | 'bitrix'
   | 'n8n'
   | 'waba'
