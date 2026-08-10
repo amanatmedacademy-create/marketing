@@ -34,6 +34,12 @@ const STAGE_LABELS: Record<string, string> = {
   Пришёл: 'Диагностика', Продажа: 'Курс оплачен', Отказ: 'Потерян'
 };
 
+const STAGE_CANONICAL: Record<string, string> = {
+  Новый: 'NEW', Квалификация: 'QUALIFICATION', Записан: 'APPOINTMENT',
+  Запись: 'APPOINTMENT', Пришёл: 'DIAGNOSTIC', Диагностика: 'DIAGNOSTIC',
+  Продажа: 'COURSE', 'Курс оплачен': 'COURSE', Отказ: 'LOST', Потерян: 'LOST',
+};
+
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp', INSTAGRAM: 'Instagram Direct', WEB: 'Сайт', PHONE: 'Телефон', OTHER: 'Другой'
 };
@@ -61,6 +67,17 @@ function fullName(lead: ExtendedLead) {
 
 function leadStage(row: LeadRow) {
   return row.funnel?.stage || row.lead.stage || 'NEW';
+}
+
+function canonicalStage(value?: string | null) {
+  const stage = String(value || 'NEW').trim();
+  return STAGE_CANONICAL[stage] || stage.toUpperCase();
+}
+
+function stageLabel(row: LeadRow) {
+  const raw = leadStage(row);
+  const canonical = canonicalStage(raw);
+  return STAGE_LABELS[canonical] || STAGE_LABELS[raw] || raw;
 }
 
 export function LeadsPage() {
@@ -137,9 +154,10 @@ export function LeadsPage() {
     const text = query.trim().toLowerCase();
     return rows.filter((row) => {
       const lead = row.lead;
+      const normalizedStage = canonicalStage(leadStage(row));
       if (source !== 'ALL' && lead.source !== source) return false;
-      if (stage !== 'ALL' && leadStage(row) !== stage) return false;
-      if (filter === 'NEW' && !['NEW', 'Новый'].includes(leadStage(row))) return false;
+      if (stage !== 'ALL' && normalizedStage !== stage) return false;
+      if (filter === 'NEW' && normalizedStage !== 'NEW') return false;
       if (filter === 'UNASSIGNED' && (row.manager || row.thread?.assignedUserId)) return false;
       if (filter === 'NO_PHONE' && phoneDigits(lead.phone)) return false;
       if (filter === 'PENDING_CALL' && row.call?.call_status !== 'PENDING') return false;
@@ -153,7 +171,7 @@ export function LeadsPage() {
 
   const metrics = useMemo(() => ({
     total: rows.length,
-    newLeads: rows.filter((row) => ['NEW', 'Новый'].includes(leadStage(row))).length,
+    newLeads: rows.filter((row) => canonicalStage(leadStage(row)) === 'NEW').length,
     unassigned: rows.filter((row) => !row.manager && !row.thread?.assignedUserId).length,
     pendingCalls: rows.filter((row) => row.call?.call_status === 'PENDING').length,
     unread: rows.filter((row) => Boolean(row.thread?.unreadCount)).length,
@@ -233,7 +251,7 @@ export function LeadsPage() {
           {filtered.map((row) => <tr key={row.lead.id} className={selectedId === row.lead.id ? 'selected' : ''} onClick={() => setSelectedId(row.lead.id)}>
             <td><div className="lead-client"><span>{fullName(row.lead).slice(0, 1).toUpperCase()}</span><div><b>{fullName(row.lead)}</b><small>{formatKzPhone(row.lead.phone) || row.lead.email || row.lead.social_username || 'Контакты не указаны'}</small>{row.duplicateCount > 0 && <em>Возможный дубль · {row.duplicateCount}</em>}</div></div></td>
             <td><b>{row.lead.source || 'Не указан'}</b><small>{row.thread ? CHANNEL_LABELS[row.thread.channel] || row.thread.channel : row.lead.platform || 'Канал не определён'}</small></td>
-            <td><span className={`lead-stage stage-${leadStage(row).toLowerCase()}`}>{STAGE_LABELS[leadStage(row)] || leadStage(row)}</span></td>
+            <td><span className={`lead-stage stage-${canonicalStage(leadStage(row)).toLowerCase()}`}>{stageLabel(row)}</span></td>
             <td>{row.manager?.fullName || row.thread?.assignedUser?.fullName || row.lead.manager || 'Не назначен'}</td>
             <td>{row.call?.call_status === 'PENDING' ? row.call.next_action || 'Позвонить клиенту' : row.lead.next_action || 'Не назначено'}</td>
             <td>{formatDate(row.lastContactAt)}</td>
@@ -249,13 +267,13 @@ export function LeadsPage() {
             {selected.thread && <a href={`/chat?conversation=${encodeURIComponent(selected.thread.id)}`}><MessageCircle size={17}/>Открыть чат</a>}
             {contactPhone && <a href={`tel:${contactPhone}`}><PhoneCall size={17}/>Позвонить</a>}
             {whatsappPhone && <a href={`https://wa.me/${whatsappPhone}`} target="_blank" rel="noreferrer"><ExternalLink size={17}/>WhatsApp</a>}
-            <a href={`/pipeline?lead=${encodeURIComponent(selected.funnel?.id || '')}`}><ExternalLink size={17}/>Воронка</a>
+            {selected.funnel ? <a href="/pipeline"><ExternalLink size={17}/>Открыть воронку</a> : <span title="Для этого лида сделка в воронке ещё не создана">Воронка не создана</span>}
           </div>
 
           <section><h3>Статус обработки</h3><div className="lead-status-grid">
             <article><MessageCircle/><span>Чат</span><b>{selected.thread ? `${CHANNEL_LABELS[selected.thread.channel] || selected.thread.channel} · ${selected.thread.status}` : 'Не создан'}</b><small>{selected.thread?.unreadCount ? `${selected.thread.unreadCount} непрочитано` : 'Нет непрочитанных'}</small></article>
             <article><PhoneCall/><span>Звонок</span><b>{selected.call?.call_status === 'PENDING' ? 'Ожидает звонка' : selected.call?.call_status === 'COMPLETED' ? 'Выполнен' : 'Нет задачи'}</b><small>{selected.call?.next_action || 'Следующее действие не назначено'}</small></article>
-            <article><CalendarClock/><span>Воронка</span><b>{STAGE_LABELS[leadStage(selected)] || leadStage(selected)}</b><small>{selected.funnel?.priority || 'Приоритет не задан'}</small></article>
+            <article><CalendarClock/><span>Воронка</span><b>{stageLabel(selected)}</b><small>{selected.funnel?.priority || 'Приоритет не задан'}</small></article>
             <article><UserRound/><span>Ответственный</span><b>{selected.manager?.fullName || selected.thread?.assignedUser?.fullName || 'Не назначен'}</b><small>{selected.manager?.role || ''}</small></article>
           </div></section>
 

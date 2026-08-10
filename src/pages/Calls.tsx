@@ -4,11 +4,8 @@ import {
   Clock3,
   Delete,
   Headphones,
-  Mic,
-  MicOff,
   Minus,
   PhoneCall,
-  PhoneOff,
   Search,
   Settings,
   Smartphone,
@@ -61,7 +58,7 @@ const keypad = [
   ['*', ''], ['0', '+'], ['#', ''],
 ] as const;
 
-type DialState = 'idle' | 'ready' | 'calling' | 'active';
+type DialState = 'idle' | 'ready' | 'calling';
 
 export default function Calls() {
   const [calls, setCalls] = useState<MarketingCall[]>([]);
@@ -75,8 +72,6 @@ export default function Calls() {
   const [dialNumber, setDialNumber] = useState('');
   const [dialState, setDialState] = useState<DialState>('idle');
   const [dialMessage, setDialMessage] = useState('');
-  const [muted, setMuted] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
   const [dialerOpen, setDialerOpen] = useState(false);
   const [dialerMinimized, setDialerMinimized] = useState(false);
 
@@ -98,24 +93,25 @@ export default function Calls() {
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    if (dialState !== 'active') return;
-    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [dialState]);
-
   const filtered = useMemo(() => calls.filter((call) => {
     const matchesOperator = operator === 'Все операторы' || (call.operator_name || 'Не назначен') === operator;
-    const haystack = [call.client_phone, call.operator_name, call.source, call.call_result, call.loss_reason, call.summary].filter(Boolean).join(' ').toLowerCase();
+    const haystack = [call.client_name, call.client_phone, call.operator_name, call.source, call.call_result, call.loss_reason, call.summary]
+      .filter(Boolean).join(' ').toLowerCase();
     return matchesOperator && haystack.includes(query.trim().toLowerCase());
   }), [calls, operator, query]);
 
-  const totals = useMemo(() => ({
-    calls: calls.length,
-    appointments: calls.filter((call) => call.appointment_created).length,
-    averageScore: calls.length ? calls.reduce((sum, call) => sum + Number(call.quality_score || 0), 0) / calls.length : 0,
-    noNextAction: calls.filter((call) => !call.next_action).length,
-  }), [calls]);
+  const totals = useMemo(() => {
+    const scoredCalls = calls.filter((call) => call.quality_score != null && Number.isFinite(Number(call.quality_score)));
+    return {
+      calls: calls.length,
+      appointments: calls.filter((call) => call.appointment_created).length,
+      averageScore: scoredCalls.length
+        ? scoredCalls.reduce((sum, call) => sum + Number(call.quality_score), 0) / scoredCalls.length
+        : null,
+      scoredCalls: scoredCalls.length,
+      noNextAction: calls.filter((call) => !call.next_action).length,
+    };
+  }, [calls]);
 
   const updateDialNumber = (value: string) => {
     const next = editablePhone(value);
@@ -169,16 +165,12 @@ export default function Calls() {
     }
   };
 
-  const endCall = () => {
-    setDialState('ready');
-    setElapsed(0);
-    setMuted(false);
-  };
-
   const selectForDial = (call: MarketingCall) => {
     setSelected(call);
     openDialer(call.client_phone || '');
   };
+
+  const filtersActive = Boolean(query.trim()) || operator !== 'Все операторы';
 
   return <div className="calls-page">
     <div className="calls-heading">
@@ -186,7 +178,7 @@ export default function Calls() {
       <div className="calls-heading-actions">
         <button type="button" className="calls-open-dialer" onClick={() => openDialer()}><PhoneCall/> Звонилка</button>
         <div className="calls-filters">
-          <label><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Телефон, оператор, причина"/></label>
+          <label><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клиент, телефон, оператор, причина"/></label>
           <select value={operator} onChange={(event) => setOperator(event.target.value)}><option>Все операторы</option>{operators.map((row) => <option key={row.operator_name}>{row.operator_name}</option>)}</select>
         </div>
       </div>
@@ -198,17 +190,17 @@ export default function Calls() {
       <section className="calls-metrics">
         <article><PhoneCall/><span>Звонки</span><strong>{number(totals.calls)}</strong></article>
         <article><CheckCircle2/><span>Записи</span><strong>{number(totals.appointments)}</strong><small>{percent(totals.appointments, totals.calls)}</small></article>
-        <article><Headphones/><span>Средняя оценка</span><strong>{totals.averageScore.toFixed(1)}</strong><small>из 100</small></article>
+        <article><Headphones/><span>Средняя оценка</span><strong>{totals.averageScore == null ? '—' : totals.averageScore.toFixed(1)}</strong><small>{totals.scoredCalls ? `из 100 · оценено ${totals.scoredCalls}` : 'Нет оценённых звонков'}</small></article>
         <article><Clock3/><span>Без следующего действия</span><strong>{number(totals.noNextAction)}</strong></article>
       </section>
 
       <section className="calls-layout">
         <div className="calls-list-panel">
-          <header><strong>Все звонки</strong><span>{filtered.length}</span></header>
+          <header><strong>Звонки</strong><span>{filtersActive ? `${filtered.length} из ${calls.length}` : filtered.length}</span></header>
           <div className="calls-list">
             {filtered.length === 0 && <div className="calls-empty">Нет звонков по выбранным фильтрам.</div>}
             {filtered.map((call) => <button type="button" key={call.id} className={selected?.id === call.id ? 'active' : ''} onClick={() => setSelected(call)} onDoubleClick={() => selectForDial(call)}>
-              <div><strong>{call.client_phone || 'Телефон не указан'}</strong><span>{call.operator_name || 'Не назначен'}</span></div>
+              <div><strong>{call.client_name || call.client_phone || 'Клиент не указан'}</strong><span>{call.client_name && call.client_phone ? call.client_phone : call.operator_name || 'Оператор не назначен'}</span></div>
               <div><b>{call.quality_score == null ? '—' : Number(call.quality_score).toFixed(0)}</b><small>{duration(call.duration_seconds)}</small></div>
               <p>{call.summary || call.call_result || 'Нет резюме'}</p>
               <footer><span>{dateTime(call.started_at)}</span><em className={call.appointment_created ? 'success' : ''}>{call.appointment_created ? 'Записан' : call.loss_reason || 'Без результата'}</em></footer>
@@ -218,9 +210,9 @@ export default function Calls() {
 
         <div className="call-detail">
           {!selected ? <div className="calls-empty">Выберите звонок.</div> : <>
-            <header><div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_phone || 'Телефон не указан'}</h2><p>{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div><div className="call-detail-actions"><button type="button" onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button><strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong></div></header>
+            <header><div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_name || selected.client_phone || 'Клиент не указан'}</h2><p>{selected.client_name && selected.client_phone ? `${selected.client_phone} · ` : ''}{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div><div className="call-detail-actions"><button type="button" disabled={!selected.client_phone} onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button><strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong></div></header>
             {selected.recording_url && <audio controls preload="none" src={selected.recording_url}/>} 
-            <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания'}</span><i>→</i><span>{selected.ad_id || 'Объявление'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
+            <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания не указана'}</span><i>→</i><span>{selected.ad_id || 'Объявление не указано'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
             <div className="call-detail-grid">
               <section><h3>Результат</h3><dl><div><dt>Итог</dt><dd>{selected.call_result || '—'}</dd></div><div><dt>Следующее действие</dt><dd>{selected.next_action || '—'}</dd></div><div><dt>Причина потери</dt><dd>{selected.loss_reason || '—'}</dd></div><div><dt>Дата записи</dt><dd>{dateTime(selected.appointment_at)}</dd></div></dl></section>
               <section><h3>Содержание</h3><dl><div><dt>Причина обращения</dt><dd>{selected.request_reason || '—'}</dd></div><div><dt>Боль пациента</dt><dd>{selected.patient_pain || '—'}</dd></div><div><dt>Возражения</dt><dd>{selected.objections?.length ? selected.objections.join(', ') : '—'}</dd></div><div><dt>Резюме</dt><dd>{selected.summary || '—'}</dd></div></dl></section>
@@ -251,7 +243,7 @@ export default function Calls() {
         </select>
 
         <div className="phone-number-screen">
-          <small>{dialState === 'active' ? duration(elapsed) : dialState === 'calling' ? 'Отправляем вызов…' : 'Введите номер'}</small>
+          <small>{dialState === 'calling' ? 'Отправляем callback…' : 'Введите номер'}</small>
           <input
             inputMode="tel"
             autoComplete="tel"
@@ -266,26 +258,23 @@ export default function Calls() {
             placeholder="+7 701 000 00 00"
             aria-label="Номер телефона"
           />
-          <button type="button" onClick={removeDigit} disabled={!dialNumber} title="Удалить цифру"><Delete/></button>
+          <button type="button" onClick={removeDigit} disabled={!dialNumber || dialState === 'calling'} title="Удалить цифру"><Delete/></button>
         </div>
 
-        <div className="phone-keypad">{keypad.map(([digit, letters]) => <button type="button" key={digit} onClick={() => appendDigit(digit)}><strong>{digit}</strong>{letters && <small>{letters}</small>}</button>)}</div>
+        <div className="phone-keypad">{keypad.map(([digit, letters]) => <button type="button" key={digit} disabled={dialState === 'calling'} onClick={() => appendDigit(digit)}><strong>{digit}</strong>{letters && <small>{letters}</small>}</button>)}</div>
 
         <div className="phone-call-controls">
-          <button type="button" className="phone-mute" disabled={dialState !== 'active'} onClick={() => setMuted((value) => !value)} title="Микрофон">{muted ? <MicOff/> : <Mic/>}</button>
-          {dialState !== 'active'
-            ? <button type="button" className="phone-start-call" disabled={dialState === 'idle' || dialState === 'calling'} onClick={() => void startCall()} title="Позвонить"><PhoneCall/></button>
-            : <button type="button" className="phone-end-call" onClick={endCall} title="Завершить"><PhoneOff/></button>}
+          <button type="button" className="phone-start-call" disabled={dialState === 'idle' || dialState === 'calling'} onClick={() => void startCall()} title="Отправить callback через Zadarma"><PhoneCall/></button>
           <a className="phone-settings" href="/integrations" title="Настройки телефонии"><Settings/></a>
         </div>
 
-        <div className="phone-call-status"><span>{dialState === 'calling' ? 'Запрос в Zadarma' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{telephony?.configured ? `Callback · ${telephony.extension}` : 'Телефония не настроена'}</small></div>
+        <div className="phone-call-status"><span>{dialState === 'calling' ? 'Запрос в Zadarma' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{telephony?.configured ? `Callback · линия ${telephony.extension}` : 'Телефония не настроена'}</small></div>
 
         {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span>{!telephony?.configured && <a href="/integrations">Подключить</a>}</div>}
 
         <div className="phone-recent-numbers">
           <header><strong>Недавние</strong><span>{Math.min(calls.length, 3)}</span></header>
-          {calls.slice(0, 3).map((call) => <button type="button" key={call.id} onClick={() => openDialer(call.client_phone)}><span>{call.client_phone || 'Без номера'}</span><small>{call.operator_name || 'Не назначен'}</small></button>)}
+          {calls.slice(0, 3).map((call) => <button type="button" key={call.id} disabled={!call.client_phone} onClick={() => openDialer(call.client_phone)}><span>{call.client_name || call.client_phone || 'Без контакта'}</span><small>{call.client_name && call.client_phone ? call.client_phone : call.operator_name || 'Не назначен'}</small></button>)}
           {!calls.length && <p>История пока пуста.</p>}
         </div>
       </div>}
