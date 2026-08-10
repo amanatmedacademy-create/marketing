@@ -4,6 +4,7 @@ import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, G
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
+import WorkspaceBuilderLayer from './components/WorkspaceBuilderLayer';
 import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
@@ -124,7 +125,7 @@ function Shell() {
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
-      </Routes><DataInspectorAutoLayer/></div>
+      </Routes><DataInspectorAutoLayer/><WorkspaceBuilderLayer/></div>
     </main>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
