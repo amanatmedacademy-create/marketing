@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BarChart3, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
@@ -16,7 +16,6 @@ import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
-import { NotificationsPage } from './pages/ProductModules';
 import { DataQualityPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
 import { Customer360Page, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
@@ -73,7 +72,6 @@ function DashboardRoute() {
 
 function Shell() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -95,7 +93,6 @@ function Shell() {
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <GlobalSearch />
         <div className="marketing-top-actions">
-          <button type="button" aria-label="Уведомления" onClick={() => navigate('/notifications')}><Bell size={18}/></button>
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
         </div>
@@ -124,7 +121,7 @@ function Shell() {
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
-        <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
+        <Route path="/notifications" element={<Navigate to="/integrations" replace/>} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
