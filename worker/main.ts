@@ -31,6 +31,7 @@ import { handleWabaFlowsRequest, type WabaFlowsEnv } from './wabaFlows';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
 import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
+import { handleZadarmaWebhook } from './zadarmaWebhook';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -133,6 +134,9 @@ export default {
     let requestEnv: MainEnv = env;
 
     const route = async (): Promise<Response> => {
+      const zadarmaWebhook = await handleZadarmaWebhook(request, env, url);
+      if (zadarmaWebhook) return zadarmaWebhook;
+
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url, ctx);
         if (callbackResponse) return callbackResponse;
