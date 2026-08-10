@@ -1,6 +1,8 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
+type ScopedEnv = Env & TenantScopedEnv;
 
 type AdManagerRow = Row & {
   key: string;
@@ -65,9 +67,10 @@ function dateRange(days: number, url: URL) {
 
 export async function handleAdManager(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/ad-manager') return null;
+  const companyId = requireCompanyId(env as ScopedEnv);
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 30), 1), 365);
   const { from, to } = dateRange(days, url);
-  const rows = await query<Row[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,account_status,currency,account_timezone,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,effective_status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&and=(report_date.gte.${from},report_date.lte.${to})&limit=50000`);
+  const rows = await query<Row[]>(env, `marketing_ads?select=report_date,source,platform,account_id,account_name,account_status,currency,account_timezone,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,effective_status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&company_id=eq.${encodeURIComponent(companyId)}&and=(report_date.gte.${from},report_date.lte.${to})&limit=50000`);
 
   const map = new Map<string, AdManagerRow>();
   for (const row of rows) {
