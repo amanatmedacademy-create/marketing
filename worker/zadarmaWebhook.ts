@@ -20,15 +20,11 @@ function secureEqual(left: string, right: string): boolean {
   return result === 0;
 }
 
-function base64(bytes: ArrayBuffer): string {
-  let binary = '';
-  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
 async function hmacSha1Base64(secret: string, value: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-  return base64(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value)));
+  const signed = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value)));
+  const hex = Array.from(signed, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return btoa(hex);
 }
 
 function dbHeaders(env: WebhookEnv, extra: HeadersInit = {}): Headers {
@@ -76,6 +72,23 @@ async function verifySignature(request: Request, env: WebhookEnv, event: string,
   if (!supplied || !secret || !input) return false;
   const expected = await hmacSha1Base64(secret, input);
   return secureEqual(supplied, expected);
+}
+
+async function recordWebhookEvent(env: WebhookEnv, companyId: string, event: string, payload: Row): Promise<void> {
+  const now = new Date().toISOString();
+  await db(env, 'telephony_settings?on_conflict=company_id', {
+    method: 'POST',
+    headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      company_id: companyId,
+      provider: 'zadarma',
+      last_webhook_event_at: now,
+      last_webhook_event_type: event,
+      last_webhook_pbx_call_id: text(payload.pbx_call_id) || null,
+      webhook_last_error: null,
+      updated_at: now,
+    }),
+  });
 }
 
 async function findCorrelationByPbx(env: WebhookEnv, companyId: string, pbxCallId: string): Promise<Row | null> {
@@ -197,6 +210,8 @@ export async function handleZadarmaWebhook(request: Request, baseEnv: WebhookEnv
   const event = text(payload.event).toUpperCase();
   if (!['NOTIFY_OUT_START', 'NOTIFY_OUT_END', 'NOTIFY_RECORD'].includes(event)) return json({ ok: true, ignored: event || 'unknown' });
   if (!await verifySignature(request, env, event, payload)) return json({ error: 'Invalid Zadarma signature' }, 401);
+
+  await recordWebhookEvent(env, companyId, event, payload).catch(() => undefined);
 
   if (event === 'NOTIFY_OUT_START') {
     const correlation = await matchOutboundStart(env, companyId, payload);
