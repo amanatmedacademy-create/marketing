@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from 're
 import { BarChart3, Bell, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, Layers3, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
+import DashboardCsvExport from './components/DashboardCsvExport';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
 import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
@@ -65,6 +66,13 @@ const navigation: NavGroup[] = [
   ]},
 ];
 
+function DashboardRoute() {
+  return <>
+    <DashboardCsvExport />
+    <MarketingDashboardSummary />
+  </>;
+}
+
 function Shell() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -95,7 +103,7 @@ function Shell() {
         </div>
       </header>
       <div className="marketing-content"><Routes>
-        <Route path="/" element={guard('dashboard', <MarketingDashboardSummary/>)} />
+        <Route path="/" element={guard('dashboard', <DashboardRoute/>)} />
         <Route path="/goals" element={<Navigate to="/" replace/>} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
