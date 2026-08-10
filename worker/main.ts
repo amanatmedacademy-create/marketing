@@ -29,6 +29,7 @@ import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './w
 import { handleWabaFlowsRequest, type WabaFlowsEnv } from './wabaFlows';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
+import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -52,6 +53,7 @@ type MainEnv = AuthEnv
   & WabaMessagingEnv
   & WabaMessagingV2Env
   & VoiceTranscriptionEnv
+  & ZadarmaTelephonyEnv
   & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
@@ -161,6 +163,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
 
+      const telephonyResponse = await handleZadarmaTelephony(forwardedRequest, runtimeEnv, url);
+      if (telephonyResponse) return telephonyResponse;
       const leadCapture = await handleLeadCaptureRequest(forwardedRequest, runtimeEnv, url);
       if (leadCapture) return leadCapture;
       const clinicFlowOutreach = await handleWabaClinicFlowOutreachRequest(forwardedRequest, runtimeEnv, url);
