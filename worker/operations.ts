@@ -1,8 +1,10 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type JsonRecord = Record<string, unknown>;
 type Resource = { table: string; order: string };
 type AuditStatus = 'success' | 'error' | 'warning';
+type ScopedEnv = Env & TenantScopedEnv;
 
 const resources: Record<string, Resource> = {
   campaigns: { table: 'marketing_campaigns', order: 'starts_on.desc.nullslast,created_at.desc' },
@@ -66,15 +68,16 @@ async function parseRows(response: Response): Promise<JsonRecord[]> {
   }
 }
 
-async function readEntity(env: Env, resource: Resource, id: string): Promise<JsonRecord | null> {
-  const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
+async function readEntity(env: ScopedEnv, resource: Resource, id: string): Promise<JsonRecord | null> {
+  const companyId = requireCompanyId(env);
+  const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*&limit=1`);
   if (!response.ok) return null;
   return (await parseRows(response))[0] || null;
 }
 
 async function logActivity(
   request: Request,
-  env: Env,
+  env: ScopedEnv,
   input: {
     eventType: string;
     message: string;
@@ -90,6 +93,7 @@ async function logActivity(
 ) {
   const actor = actorFromRequest(request);
   const payload = {
+    company_id: requireCompanyId(env),
     event_type: input.eventType,
     message: input.message,
     entity_type: input.entityType || null,
@@ -136,6 +140,8 @@ function addActivityFilters(params: URLSearchParams, url: URL) {
 
 export async function handleOperationsRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/operations/')) return null;
+  const scoped = env as ScopedEnv;
+  const companyId = requireCompanyId(scoped);
 
   const parts = url.pathname.split('/').filter(Boolean);
   const resourceName = parts[2];
@@ -145,7 +151,7 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
 
   if (request.method === 'GET') {
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 200), 1), 1000);
-    const params = new URLSearchParams({ select: '*', order: resource.order, limit: String(limit) });
+    const params = new URLSearchParams({ select: '*', company_id: `eq.${companyId}`, order: resource.order, limit: String(limit) });
     if (resourceName === 'activity') addActivityFilters(params, url);
     return proxy(await supabaseRequest(env, `${resource.table}?${params.toString()}`));
   }
@@ -157,11 +163,11 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
     const response = await supabaseRequest(env, resource.table, {
       method: 'POST',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, company_id: companyId }),
     });
     const rows = await parseRows(response);
     const created = rows[0] || null;
-    await logActivity(request, env, {
+    await logActivity(request, scoped, {
       eventType: `${resourceName}.created`,
       message: response.ok ? `Создан объект: ${String(payload.name || payload.title || resourceName)}` : `Ошибка создания объекта ${resourceName}`,
       module: resourceName,
@@ -169,22 +175,23 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
       status: response.ok ? 'success' : 'error',
       entityType: resourceName,
       entityId: created?.id ? String(created.id) : undefined,
-      newValues: created || payload,
+      newValues: created || { ...payload, company_id: companyId },
       metadata: { http_status: response.status },
     });
     return proxy(response);
   }
 
   if (request.method === 'PATCH' && id) {
-    const oldValues = await readEntity(env, resource, id);
+    const oldValues = await readEntity(scoped, resource, id);
+    if (!oldValues) return json({ error: 'Object not found in current clinic' }, 404);
     const payload = (await request.json()) as JsonRecord;
-    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
+    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=representation' },
-      body: JSON.stringify({ ...payload, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ ...payload, company_id: companyId, updated_at: new Date().toISOString() }),
     });
     const rows = await parseRows(response);
-    await logActivity(request, env, {
+    await logActivity(request, scoped, {
       eventType: `${resourceName}.updated`,
       message: response.ok ? `Обновлён объект ${id}` : `Ошибка обновления объекта ${id}`,
       module: resourceName,
@@ -200,12 +207,13 @@ export async function handleOperationsRequest(request: Request, env: Env, url: U
   }
 
   if (request.method === 'DELETE' && id) {
-    const oldValues = await readEntity(env, resource, id);
-    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}`, {
+    const oldValues = await readEntity(scoped, resource, id);
+    if (!oldValues) return json({ error: 'Object not found in current clinic' }, 404);
+    const response = await supabaseRequest(env, `${resource.table}?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}`, {
       method: 'DELETE',
       headers: { prefer: 'return=representation' },
     });
-    await logActivity(request, env, {
+    await logActivity(request, scoped, {
       eventType: `${resourceName}.deleted`,
       message: response.ok ? `Удалён объект ${id}` : `Ошибка удаления объекта ${id}`,
       module: resourceName,
