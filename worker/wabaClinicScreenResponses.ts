@@ -7,6 +7,8 @@ export interface ClinicScreenResponseEnv {
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+const accepted = (value: unknown): boolean => value === true || ['true', '1', 'yes', 'on'].includes(text(value).toLowerCase());
+const phoneDigits = (value: unknown): string => text(value).replace(/\D/g, '');
 
 function headers(env: ClinicScreenResponseEnv): Headers {
   const value = new Headers();
@@ -112,6 +114,14 @@ async function slots(env: ClinicScreenResponseEnv, companyId: string, doctorId: 
   return output;
 }
 
+function availabilityError(trigger: string, service: string, branchId: string, doctorId: string, selectedDate: string, branchCount: number, doctorCount: number, dateCount: number, timeCount: number): string {
+  if (trigger === 'service_selected' && service && !branchCount) return 'Для записи пока нет активных филиалов.';
+  if (trigger === 'branch_selected' && branchId && !doctorCount) return 'В выбранном филиале пока нет доступных врачей.';
+  if (trigger === 'doctor_selected' && doctorId && !dateCount) return 'У выбранного врача нет свободных слотов на ближайшие 21 день.';
+  if (trigger === 'date_selected' && selectedDate && !timeCount) return 'На эту дату свободного времени нет.';
+  return '';
+}
+
 async function appointmentScreen(env: ClinicScreenResponseEnv, companyId: string, data: Row): Promise<Row> {
   const trigger = text(data.trigger);
   const service = text(data.service);
@@ -136,7 +146,7 @@ async function appointmentScreen(env: ClinicScreenResponseEnv, companyId: string
       is_date_enabled: Boolean(service && branchId && doctorId && dates.length),
       time: times.map((item) => option(item.id, item.title, undefined, item.enabled)),
       is_time_enabled: Boolean(service && branchId && doctorId && selectedDate && times.length),
-      error_message: trigger === 'date_selected' && selectedDate && !times.length ? 'На эту дату свободного времени нет.' : '',
+      error_message: availabilityError(trigger, service, branchId, doctorId, selectedDate, branchRows.length, doctorRows.length, dates.length, times.length),
     },
   };
 }
@@ -174,8 +184,7 @@ export async function handleClinicScreenResponse(env: ClinicScreenResponseEnv, c
   const screen = text(body.screen).toUpperCase();
   const data = record(body.data);
 
-  // Meta sends client-side Flow errors back to the data endpoint. Acknowledge them
-  // instead of echoing an invalid screen payload or attempting a booking mutation.
+  // Meta's official endpoint examples acknowledge client-side Flow errors this way.
   if (data.error) {
     console.warn('WhatsApp Flow client error', { companyId, screen, error: data.error });
     return { data: { acknowledged: true } };
@@ -189,7 +198,13 @@ export async function handleClinicScreenResponse(env: ClinicScreenResponseEnv, c
     if (!text(data.name) || !text(data.phone) || !text(data.service) || !text(data.branch) || !text(data.doctor) || !text(data.time)) {
       return { screen: 'DETAILS', data: { ...data, error_message: 'Заполните обязательные поля и выберите время записи.' } };
     }
+    if (phoneDigits(data.phone).length < 10) {
+      return { screen: 'DETAILS', data: { ...data, error_message: 'Проверьте номер телефона пациента.' } };
+    }
     return summaryScreen(env, companyId, data);
+  }
+  if (screen === 'SUMMARY' && !accepted(data.terms)) {
+    return { screen: 'SUMMARY', data: { ...data, error_message: 'Подтвердите согласие на обработку данных для создания записи.' } };
   }
   return null;
 }
