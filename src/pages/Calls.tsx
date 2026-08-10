@@ -8,6 +8,7 @@ import {
   PhoneCall,
   Search,
   Settings,
+  Sparkles,
   Smartphone,
   X,
   XCircle,
@@ -42,7 +43,9 @@ function editablePhone(value: string): string {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) return String(error);
+  try { return (JSON.parse(error.message) as { error?: string }).error || error.message; }
+  catch { return error.message; }
 }
 
 function yesNo(value?: boolean | null) {
@@ -74,6 +77,8 @@ export default function Calls() {
   const [dialMessage, setDialMessage] = useState('');
   const [dialerOpen, setDialerOpen] = useState(false);
   const [dialerMinimized, setDialerMinimized] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +117,26 @@ export default function Calls() {
       noNextAction: calls.filter((call) => !call.next_action).length,
     };
   }, [calls]);
+
+  const analyzeCall = async (call: MarketingCall) => {
+    if (analyzingId) return;
+    setAnalyzingId(call.id);
+    setAnalysisMessage(null);
+    try {
+      const response = await fetch(`/api/growth/calls/${encodeURIComponent(call.id)}/analyze`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const raw = await response.text();
+      let payload: { error?: string; call?: MarketingCall } = {};
+      try { payload = raw ? JSON.parse(raw) as typeof payload : {}; } catch { payload = { error: raw }; }
+      if (!response.ok || !payload.call) throw new Error(payload.error || `HTTP ${response.status}`);
+      setCalls((items) => items.map((item) => item.id === call.id ? payload.call as MarketingCall : item));
+      setSelected(payload.call);
+      setAnalysisMessage(`AI-анализ завершён${payload.call.ai_confidence != null ? ` · уверенность ${Number(payload.call.ai_confidence).toFixed(0)}%` : ''}.`);
+    } catch (reason) {
+      setAnalysisMessage(errorText(reason));
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
 
   const updateDialNumber = (value: string) => {
     const next = editablePhone(value);
@@ -199,25 +224,27 @@ export default function Calls() {
           <header><strong>Звонки</strong><span>{filtersActive ? `${filtered.length} из ${calls.length}` : filtered.length}</span></header>
           <div className="calls-list">
             {filtered.length === 0 && <div className="calls-empty">Нет звонков по выбранным фильтрам.</div>}
-            {filtered.map((call) => <button type="button" key={call.id} className={selected?.id === call.id ? 'active' : ''} onClick={() => setSelected(call)} onDoubleClick={() => selectForDial(call)}>
+            {filtered.map((call) => <button type="button" key={call.id} className={selected?.id === call.id ? 'active' : ''} onClick={() => { setSelected(call); setAnalysisMessage(null); }} onDoubleClick={() => selectForDial(call)}>
               <div><strong>{call.client_name || call.client_phone || 'Клиент не указан'}</strong><span>{call.client_name && call.client_phone ? call.client_phone : call.operator_name || 'Оператор не назначен'}</span></div>
               <div><b>{call.quality_score == null ? '—' : Number(call.quality_score).toFixed(0)}</b><small>{duration(call.duration_seconds)}</small></div>
               <p>{call.summary || call.call_result || 'Нет резюме'}</p>
-              <footer><span>{dateTime(call.started_at)}</span><em className={call.appointment_created ? 'success' : ''}>{call.appointment_created ? 'Записан' : call.loss_reason || 'Без результата'}</em></footer>
+              <footer><span>{dateTime(call.started_at)}</span><em className={call.appointment_created ? 'success' : ''}>{call.appointment_created ? 'Записан' : call.loss_reason || (call.ai_analysis_status === 'completed' ? 'AI разобран' : 'Без результата')}</em></footer>
             </button>)}
           </div>
         </div>
 
         <div className="call-detail">
           {!selected ? <div className="calls-empty">Выберите звонок.</div> : <>
-            <header><div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_name || selected.client_phone || 'Клиент не указан'}</h2><p>{selected.client_name && selected.client_phone ? `${selected.client_phone} · ` : ''}{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div><div className="call-detail-actions"><button type="button" disabled={!selected.client_phone} onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button><strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong></div></header>
+            <header><div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_name || selected.client_phone || 'Клиент не указан'}</h2><p>{selected.client_name && selected.client_phone ? `${selected.client_phone} · ` : ''}{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div><div className="call-detail-actions"><button type="button" disabled={!selected.client_phone} onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button><button type="button" disabled={analyzingId === selected.id || selected.call_status !== 'COMPLETED' || !selected.transcript} onClick={() => void analyzeCall(selected)} title={selected.call_status !== 'COMPLETED' ? 'Нужен завершённый звонок' : !selected.transcript ? 'Сначала нужен транскрипт' : 'Запустить AI Call Intelligence'}><Sparkles/> {analyzingId === selected.id ? 'Анализ…' : selected.ai_analysis_status === 'completed' ? 'Переанализировать' : 'AI анализ'}</button><strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong></div></header>
+            {analysisMessage && <div className={selected.ai_analysis_status === 'completed' ? 'calls-state' : 'calls-state calls-state--error'}>{analysisMessage}</div>}
+            {selected.ai_analysis_status === 'failed' && selected.ai_analysis_error && <div className="calls-state calls-state--error">AI: {selected.ai_analysis_error}</div>}
             {selected.recording_url && <audio controls preload="none" src={selected.recording_url}/>} 
             <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания не указана'}</span><i>→</i><span>{selected.ad_id || 'Объявление не указано'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
             <div className="call-detail-grid">
               <section><h3>Результат</h3><dl><div><dt>Итог</dt><dd>{selected.call_result || '—'}</dd></div><div><dt>Следующее действие</dt><dd>{selected.next_action || '—'}</dd></div><div><dt>Причина потери</dt><dd>{selected.loss_reason || '—'}</dd></div><div><dt>Дата записи</dt><dd>{dateTime(selected.appointment_at)}</dd></div></dl></section>
               <section><h3>Содержание</h3><dl><div><dt>Причина обращения</dt><dd>{selected.request_reason || '—'}</dd></div><div><dt>Боль пациента</dt><dd>{selected.patient_pain || '—'}</dd></div><div><dt>Возражения</dt><dd>{selected.objections?.length ? selected.objections.join(', ') : '—'}</dd></div><div><dt>Резюме</dt><dd>{selected.summary || '—'}</dd></div></dl></section>
             </div>
-            <section className="call-quality"><h3>Контроль качества</h3><div><label>Выявил боль {yesNo(selected.detected_pain)}</label><label>Задал вопросы {yesNo(selected.asked_questions)}</label><label>Презентовал ценность {yesNo(selected.presented_value)}</label><label>Отработал возражение {yesNo(selected.handled_objection)}</label><label>Предложил время {yesNo(selected.offered_specific_time)}</label><label>Подтвердил запись {yesNo(selected.confirmed_appointment)}</label><label>Назвал следующий шаг {yesNo(selected.stated_next_step)}</label><label>Запланировал дожим {yesNo(selected.follow_up_planned)}</label></div></section>
+            <section className="call-quality"><h3>Контроль качества{selected.ai_analysis_status === 'completed' ? ` · AI ${selected.ai_confidence == null ? '' : `${Number(selected.ai_confidence).toFixed(0)}%`}` : ''}</h3><div><label>Выявил боль {yesNo(selected.detected_pain)}</label><label>Задал вопросы {yesNo(selected.asked_questions)}</label><label>Презентовал ценность {yesNo(selected.presented_value)}</label><label>Отработал возражение {yesNo(selected.handled_objection)}</label><label>Предложил время {yesNo(selected.offered_specific_time)}</label><label>Подтвердил запись {yesNo(selected.confirmed_appointment)}</label><label>Назвал следующий шаг {yesNo(selected.stated_next_step)}</label><label>Запланировал дожим {yesNo(selected.follow_up_planned)}</label></div></section>
             <section className="call-text"><h3>Нарушения</h3><p>{selected.script_violations?.length ? selected.script_violations.join(' · ') : 'Нарушений не зафиксировано'}</p></section>
             <section className="call-text"><h3>Расшифровка</h3><p>{selected.transcript || 'Расшифровка отсутствует'}</p></section>
           </>}
