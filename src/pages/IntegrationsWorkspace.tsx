@@ -1,5 +1,9 @@
 import IntegrationManager from '../components/IntegrationManager';
+import ZadarmaIntegrationPanel from '../components/ZadarmaIntegrationPanel';
 
 export default function IntegrationsWorkspace() {
-  return <IntegrationManager />;
+  return <>
+    <ZadarmaIntegrationPanel />
+    <IntegrationManager />
+  </>;
 }
