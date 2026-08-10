@@ -4,9 +4,8 @@ import { runAutomationEngine } from './automationEngine';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
-import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 
-type SecuredEnv = AuthEnv & ZadarmaTelephonyEnv & { FRONTEND_ADMIN_KEY?: string };
+type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string };
 
 function secureEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
@@ -41,8 +40,6 @@ export default {
         if (denied) return denied;
       }
     }
-    const telephonyResponse = await handleZadarmaTelephony(request, env, url);
-    if (telephonyResponse) return telephonyResponse;
     return app.fetch(request, env, ctx);
   },
 
