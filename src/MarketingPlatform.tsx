@@ -12,7 +12,7 @@ import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
-import { AttributionPage, MarketingArchitecturePage } from './components/MarketingModules';
+import { AttributionPage } from './components/MarketingModules';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
@@ -124,9 +124,9 @@ function Shell() {
         <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
-        <Route path="/architecture" element={guard('platform.architecture', <MarketingArchitecturePage/>)} />
+        <Route path="/architecture" element={<Navigate to="/integrations" replace/>} />
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
-      </Routes><DataInspectorAutoLayer/></div>
+      </Routes>{user.role === 'administrator' && <DataInspectorAutoLayer/>}</div>
     </main>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
