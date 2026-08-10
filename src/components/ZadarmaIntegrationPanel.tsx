@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clipboard, LoaderCircle, PhoneCall, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { useAuth } from './AuthGate';
-import './zadarma-integration.css';
+import '../zadarma-integration.css';
 
 type ProviderConfig = {
   provider: string;
