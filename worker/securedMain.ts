@@ -4,6 +4,7 @@ import { runAutomationEngine } from './automationEngine';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
+import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
 
 type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string };
 
@@ -55,6 +56,11 @@ export default {
       runScheduledRecovery(env as unknown as RecoveryEnv)
         .then((result) => console.log('Scheduled Recovery scan completed', result))
         .catch((error) => console.error('Scheduled Recovery scan failed', error)),
+    );
+    ctx.waitUntil(
+      runScheduledTelephonyProcessing(env as unknown as TelephonyProcessingSchedulerEnv)
+        .then((result) => console.log('Scheduled telephony processing completed', result))
+        .catch((error) => console.error('Scheduled telephony processing failed', error)),
     );
   },
 };
