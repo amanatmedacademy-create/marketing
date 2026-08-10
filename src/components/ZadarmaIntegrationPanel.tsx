@@ -32,6 +32,7 @@ type SettingsResponse = { settings: TelephonySettings };
 
 const asError = (error: unknown) => error instanceof Error ? error.message : String(error);
 const defaultSettings: TelephonySettings = { auto_transcribe: false, auto_analyze: false, recording_delay_seconds: 45, max_attempts: 3, retry_after_minutes: 15 };
+const defaultTelephonyStatus: TelephonyStatus = { configured: false, credentialScope: 'unconfigured' };
 
 async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -67,7 +68,7 @@ export default function ZadarmaIntegrationPanel() {
     try {
       const [configs, telephony, settingsResponse] = await Promise.all([
         jsonRequest<ConfigResponse>('/api/integrations/config'),
-        jsonRequest<TelephonyStatus>('/api/telephony/status').catch(() => ({ configured: false, credentialScope: 'unconfigured' })),
+        jsonRequest<TelephonyStatus>('/api/telephony/status').catch(() => defaultTelephonyStatus),
         jsonRequest<SettingsResponse>('/api/telephony/settings').catch(() => ({ settings: defaultSettings })),
       ]);
       const current = (configs.providers || []).find((item) => item.provider === 'zadarma') || null;
