@@ -154,8 +154,8 @@ export default function GrowthEnginePage() {
         {isAdmin && <div className="strategic-note" style={{ display: 'grid', gap: 10 }}>
           <strong>SLA текущей клиники</strong>
           <div className="strategic-actions" style={{ alignItems: 'center' }}>
-            <label>Ответ за <input type="number" min={30} max={86400} value={slaSeconds} onChange={(event) => setSlaSeconds(Number(event.target.value))} style={{ width: 110 }}/ > сек</label>
-            <label>Просрочка без ответа <input type="number" min={1} max={720} value={staleAfterHours} onChange={(event) => setStaleAfterHours(Number(event.target.value))} style={{ width: 90 }}/ > ч</label>
+            <label>Ответ за <input type="number" min={30} max={86400} value={slaSeconds} onChange={(event) => setSlaSeconds(Number(event.target.value))} style={{ width: 110 }} /> сек</label>
+            <label>Просрочка без ответа <input type="number" min={1} max={720} value={staleAfterHours} onChange={(event) => setStaleAfterHours(Number(event.target.value))} style={{ width: 90 }} /> ч</label>
             <button className="button" type="button" onClick={() => void saveResponseSettings()} disabled={savingResponseSettings}>{savingResponseSettings ? 'Сохранение…' : 'Сохранить SLA'}</button>
           </div>
         </div>}
