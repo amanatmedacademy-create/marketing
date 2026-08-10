@@ -19,11 +19,13 @@ import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
 import { GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
-import { DataQualityPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
+import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
+import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
 import ReportsPage from './pages/ReportsPage';
 import Customer360Page from './pages/Customer360Page';
-import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
-import { JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
+import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './pages/GrowthToolsSafePages';
+import JourneyAutomationPage from './pages/JourneyAutomationPage';
+import { MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
@@ -111,21 +113,21 @@ function Shell() {
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
-        <Route path="/whatsapp/templates" element={guard('communications.chat', <WhatsAppTemplatesPage/>)} />
+        <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
         <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
         <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
-        <Route path="/utm-builder" element={guard('analytics.attribution', <UtmBuilderPage/>)} />
+        <Route path="/utm-builder" element={guard('analytics.attribution', <SafeUtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
         <Route path="/reports" element={guard('analytics.reports', <ReportsPage/>)} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
         <Route path="/automation" element={guard('dashboard', <JourneyAutomationPage/>)} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
-        <Route path="/lead-forms" element={guard('crm.leads', <LeadFormsPage/>)} />
-        <Route path="/media-plan" element={guard('dashboard', <MediaPlanPage/>)} />
+        <Route path="/lead-forms" element={guard('crm.leads', <SafeLeadFormsPage/>)} />
+        <Route path="/media-plan" element={guard('dashboard', <SafeMediaPlanPage/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
-        <Route path="/data-quality" element={guard('audit', <DataQualityPage/>)} />
+        <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
         <Route path="/notifications" element={guard('integrations', <NotificationsPage/>)} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={<Navigate to="/integrations" replace/>} />
