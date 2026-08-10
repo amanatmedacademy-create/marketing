@@ -27,7 +27,8 @@ function isLegacyAdminRequest(request: Request, env: SecuredEnv): boolean {
 
 function bypassPermissionBoundary(pathname: string): boolean {
   return isPublicApiPath(pathname)
-    || pathname === '/api/integrations/meta/callback';
+    || pathname === '/api/integrations/meta/callback'
+    || pathname.startsWith('/api/telephony/zadarma/webhook/');
 }
 
 export default {
