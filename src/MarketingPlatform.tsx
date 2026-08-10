@@ -15,8 +15,8 @@ import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import MarketingOS from './pages/MarketingOS';
-import { GoalsPage, NotificationsPage, SegmentsPage } from './pages/ProductModules';
-import { DataQualityPage, ReportsPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
+import { NotificationsPage, SegmentsPage } from './pages/ProductModules';
+import { DataQualityPage, WhatsAppCampaignsPage, WhatsAppTemplatesPage } from './pages/MarketingSuitePages';
 import { LeadFormsPage, MediaPlanPage, UtmBuilderPage } from './pages/GrowthToolsPages';
 import { Customer360Page, JourneyAutomationPage, MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
@@ -30,7 +30,6 @@ type NavGroup = { label: string; items: NavItem[] };
 const navigation: NavGroup[] = [
   { label: 'ОБЗОР', items: [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, moduleId: 'dashboard' },
-    { to: '/goals', label: 'Цели и эффективность', icon: Goal, moduleId: 'dashboard' },
   ]},
   { label: 'CRM', items: [
     { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
@@ -51,7 +50,6 @@ const navigation: NavGroup[] = [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
     { to: '/attribution', label: 'Атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
     { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
-    { to: '/reports', label: 'Отчёты', icon: FileText, moduleId: 'analytics.reports' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
     { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
@@ -98,7 +96,7 @@ function Shell() {
       </header>
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <MarketingDashboardSummary/>)} />
-        <Route path="/goals" element={guard('dashboard', <GoalsPage/>)} />
+        <Route path="/goals" element={<Navigate to="/" replace/>} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
@@ -111,7 +109,7 @@ function Shell() {
         <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
         <Route path="/utm-builder" element={guard('analytics.attribution', <UtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
-        <Route path="/reports" element={guard('analytics.reports', <ReportsPage/>)} />
+        <Route path="/reports" element={<Navigate to="/" replace/>} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
         <Route path="/automation" element={guard('dashboard', <JourneyAutomationPage/>)} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
