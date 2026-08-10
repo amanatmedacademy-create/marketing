@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clipboard, LoaderCircle, PhoneCall, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
+import { CheckCircle2, Clipboard, LoaderCircle, PhoneCall, RefreshCw, ShieldCheck, Unplug, Webhook } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import '../zadarma-integration.css';
 
@@ -29,10 +29,22 @@ type TelephonySettings = {
   retry_after_minutes: number;
 };
 type SettingsResponse = { settings: TelephonySettings };
+type WebhookHealth = {
+  healthy: boolean;
+  expectedUrl: string;
+  configuredUrl?: string;
+  checkedAt?: string;
+  notifications?: Record<string, string>;
+  local?: {
+    callback?: { status?: string; requested_at?: string; matched_at?: string; completed_at?: string; pbx_call_id?: string; last_error?: string } | null;
+    call?: { id?: string; call_status?: string; pbx_call_id?: string; recording_external_id?: string; transcription_status?: string; started_at?: string; updated_at?: string } | null;
+  };
+};
 
 const asError = (error: unknown) => error instanceof Error ? error.message : String(error);
 const defaultSettings: TelephonySettings = { auto_transcribe: false, auto_analyze: false, recording_delay_seconds: 45, max_attempts: 3, retry_after_minutes: 15 };
 const defaultTelephonyStatus: TelephonyStatus = { configured: false, credentialScope: 'unconfigured' };
+const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 
 async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -53,6 +65,7 @@ export default function ZadarmaIntegrationPanel() {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [status, setStatus] = useState<TelephonyStatus | null>(null);
   const [settings, setSettings] = useState<TelephonySettings>(defaultSettings);
+  const [webhookHealth, setWebhookHealth] = useState<WebhookHealth | null>(null);
   const [form, setForm] = useState({ apiKey: '', apiSecret: '', pbxExtension: '' });
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
@@ -66,15 +79,17 @@ export default function ZadarmaIntegrationPanel() {
   const load = async () => {
     setBusy('load');
     try {
-      const [configs, telephony, settingsResponse] = await Promise.all([
+      const [configs, telephony, settingsResponse, webhook] = await Promise.all([
         jsonRequest<ConfigResponse>('/api/integrations/config'),
         jsonRequest<TelephonyStatus>('/api/telephony/status').catch(() => defaultTelephonyStatus),
         jsonRequest<SettingsResponse>('/api/telephony/settings').catch(() => ({ settings: defaultSettings })),
+        jsonRequest<WebhookHealth>('/api/integrations/zadarma/webhook-status').catch(() => null),
       ]);
       const current = (configs.providers || []).find((item) => item.provider === 'zadarma') || null;
       setConfig(current);
       setStatus(telephony);
       setSettings(settingsResponse.settings || defaultSettings);
+      setWebhookHealth(webhook);
       setForm((previous) => ({
         ...previous,
         pbxExtension: current?.values?.pbxExtension || telephony.extension || previous.pbxExtension,
@@ -117,6 +132,36 @@ export default function ZadarmaIntegrationPanel() {
     }
   };
 
+  const setupWebhook = async () => {
+    if (!isAdmin) return;
+    setBusy('webhook');
+    setMessage(null);
+    try {
+      const health = await jsonRequest<WebhookHealth>('/api/integrations/zadarma/webhook-setup', { method: 'POST', body: '{}' });
+      setWebhookHealth(health);
+      setMessage({ type: 'ok', text: 'Webhook Zadarma настроен и повторно проверен через API.' });
+    } catch (error) {
+      setMessage({ type: 'error', text: asError(error) });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const checkWebhook = async () => {
+    setBusy('webhook-check');
+    setMessage(null);
+    try {
+      const health = await jsonRequest<WebhookHealth>('/api/integrations/zadarma/webhook-status');
+      setWebhookHealth(health);
+      if (!health.healthy) setMessage({ type: 'error', text: 'Webhook Zadarma не полностью настроен. Нажмите «Настроить автоматически».' });
+    } catch (error) {
+      setWebhookHealth(null);
+      setMessage({ type: 'error', text: asError(error) });
+    } finally {
+      setBusy('');
+    }
+  };
+
   const saveProcessing = async () => {
     if (!isAdmin) return;
     setBusy('settings');
@@ -149,6 +194,7 @@ export default function ZadarmaIntegrationPanel() {
       await jsonRequest('/api/integrations/config/zadarma', { method: 'DELETE' });
       setConfig(null);
       setStatus({ configured: false, credentialScope: 'unconfigured' });
+      setWebhookHealth(null);
       setForm({ apiKey: '', apiSecret: '', pbxExtension: '' });
       setMessage({ type: 'ok', text: 'Zadarma отключена для выбранной клиники.' });
     } catch (error) {
@@ -175,6 +221,8 @@ export default function ZadarmaIntegrationPanel() {
     : status?.credentialScope === 'default-clinic-fallback'
       ? 'Legacy credentials основной клиники'
       : 'Credentials не настроены';
+  const callback = webhookHealth?.local?.callback;
+  const lastCall = webhookHealth?.local?.call;
 
   return <section className="zadarma-integration">
     <header className="zadarma-integration__head">
@@ -197,6 +245,15 @@ export default function ZadarmaIntegrationPanel() {
           {config && <button type="button" className="zadarma-integration__danger" onClick={() => void disconnect()} disabled={Boolean(busy)}><Unplug size={16}/> Отключить</button>}
         </div>
 
+        <div className="zadarma-integration__automation zadarma-integration__webhook">
+          <div><span>Webhook Zadarma</span><p>IMDS сам установит URL выбранной клиники и включит NOTIFY_OUT_START / NOTIFY_OUT_END, затем повторно проверит настройки через Zadarma API.</p></div>
+          <div className="zadarma-integration__webhook-state"><Webhook size={18}/><div><strong>{webhookHealth?.healthy ? 'Webhook готов' : connected ? 'Требуется проверка' : 'Сначала подключите API'}</strong><small>{webhookHealth?.checkedAt ? `Проверено ${dateTime(webhookHealth.checkedAt)}` : 'Проверка ещё не выполнялась'}</small></div></div>
+          <div className="zadarma-integration__actions">
+            {isAdmin && <button type="button" className="zadarma-integration__primary" onClick={() => void setupWebhook()} disabled={!connected || Boolean(busy)}>{busy === 'webhook' ? <LoaderCircle className="spin" size={16}/> : <Webhook size={16}/>} Настроить автоматически</button>}
+            <button type="button" onClick={() => void checkWebhook()} disabled={!connected || Boolean(busy)}>{busy === 'webhook-check' ? <LoaderCircle className="spin" size={16}/> : <RefreshCw size={16}/>} Проверить webhook</button>
+          </div>
+        </div>
+
         <div className="zadarma-integration__automation">
           <div><span>Автообработка записей</span><p>Выключено по умолчанию. Включайте только для клиники, где автоматическая отправка аудио на транскрипцию разрешена.</p></div>
           <label className="zadarma-switch"><input type="checkbox" checked={settings.auto_transcribe} disabled={!isAdmin || Boolean(busy)} onChange={(event) => setSettings({ ...settings, auto_transcribe: event.target.checked, auto_analyze: event.target.checked ? settings.auto_analyze : false })}/><span>Автотранскрипция</span></label>
@@ -213,8 +270,11 @@ export default function ZadarmaIntegrationPanel() {
       <aside className="zadarma-integration__side">
         <div><span>Контекст</span><strong>{scopeLabel}</strong><small>Внутренний номер: {status?.extension || form.pbxExtension || '—'}</small></div>
         <div><span>Webhook для Zadarma</span><code>{webhookUrl || 'Выберите клинику'}</code><button type="button" onClick={() => void copyWebhook()} disabled={!webhookUrl}><Clipboard size={15}/>{copied ? 'Скопировано' : 'Копировать URL'}</button></div>
+        <div><span>Webhook health</span><strong>{webhookHealth?.healthy ? 'Конфигурация совпадает' : 'Не подтверждено'}</strong><small>Remote URL: {webhookHealth?.configuredUrl || '—'}</small><small>OUT_START: {webhookHealth?.notifications?.notify_out_start || '—'} · OUT_END: {webhookHealth?.notifications?.notify_out_end || '—'}</small></div>
+        <div><span>Последний callback</span><strong>{callback?.status || 'Событий ещё нет'}</strong><small>{callback ? `${dateTime(callback.completed_at || callback.matched_at || callback.requested_at)} · PBX ${callback.pbx_call_id || '—'}` : 'Исходящие callback-запросы отсутствуют'}</small></div>
+        <div><span>Последний звонок Zadarma</span><strong>{lastCall?.call_status || 'Звонков ещё нет'}</strong><small>{lastCall ? `${dateTime(lastCall.started_at)} · запись ${lastCall.recording_external_id ? 'получена' : 'нет'}` : 'Новых Zadarma-звонков IMDS пока не создавал'}</small></div>
         <div><span>Автообработка</span><strong>{settings.auto_transcribe ? 'Транскрипция включена' : 'Выключена'}</strong><small>{settings.auto_transcribe ? (settings.auto_analyze ? 'После текста запускается AI Call Intelligence' : 'Только текст, без автоматического AI-анализа') : 'Ручная кнопка в разделе «Звонки» остаётся доступной'}</small></div>
-        <p>Укажите этот URL в уведомлениях виртуальной АТС Zadarma. Endpoint подписан и привязан к ID текущей клиники; события другой клиники не принимаются.</p>
+        <p>Webhook подписан и привязан к ID текущей клиники. IMDS не создаёт тестовый звонок при настройке — реальный health последнего события появится после первого исходящего вызова.</p>
       </aside>
     </div>
   </section>;
