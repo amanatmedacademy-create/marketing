@@ -4,6 +4,9 @@ export type ZadarmaTelephonyEnv = {
   ZADARMA_API_KEY?: string;
   ZADARMA_API_SECRET?: string;
   ZADARMA_PBX_EXTENSION?: string;
+  ZADARMA_TENANT_CONFIGURED?: string;
+  CURRENT_COMPANY_ID?: string;
+  DEFAULT_COMPANY_ID?: string;
 };
 
 const ZADARMA_API_BASE = 'https://api.zadarma.com';
@@ -133,7 +136,7 @@ async function signature(secret: string, path: string, params: Record<string, st
   return hmacSha1Base64(secret, `${path}${query}${md5Hex(query)}`);
 }
 
-async function zadarmaRequest(
+export async function zadarmaRequest(
   env: ZadarmaTelephonyEnv,
   path: string,
   params: Record<string, string> = {},
@@ -151,22 +154,30 @@ async function zadarmaRequest(
       authorization: `${key}: ${authSignature}`,
     },
   });
-  const text = await response.text();
+  const body = await response.text();
   let payload: JsonRecord = {};
   try {
-    payload = text ? JSON.parse(text) as JsonRecord : {};
+    payload = body ? JSON.parse(body) as JsonRecord : {};
   } catch {
-    throw new Error(`Zadarma ${response.status}: ${text || 'invalid JSON'}`);
+    throw new Error(`Zadarma ${response.status}: ${body || 'invalid JSON'}`);
   }
   if (!response.ok || payload.status === 'error') {
-    const message = asString(payload.message || payload.error || text) || `HTTP ${response.status}`;
+    const message = asString(payload.message || payload.error || body) || `HTTP ${response.status}`;
     throw new Error(`Zadarma: ${message}`);
   }
   return payload;
 }
 
+function tenantAllowed(env: ZadarmaTelephonyEnv): boolean {
+  const current = asString(env.CURRENT_COMPANY_ID);
+  const fallbackCompany = asString(env.DEFAULT_COMPANY_ID);
+  if (asString(env.ZADARMA_TENANT_CONFIGURED) === 'true') return true;
+  return Boolean(current && fallbackCompany && current === fallbackCompany);
+}
+
 function configured(env: ZadarmaTelephonyEnv): boolean {
-  return Boolean(asString(env.ZADARMA_API_KEY) && asString(env.ZADARMA_API_SECRET) && asString(env.ZADARMA_PBX_EXTENSION));
+  return tenantAllowed(env)
+    && Boolean(asString(env.ZADARMA_API_KEY) && asString(env.ZADARMA_API_SECRET) && asString(env.ZADARMA_PBX_EXTENSION));
 }
 
 export async function handleZadarmaTelephony(
@@ -177,15 +188,22 @@ export async function handleZadarmaTelephony(
   if (!url.pathname.startsWith('/api/telephony/')) return null;
 
   const extension = asString(env.ZADARMA_PBX_EXTENSION);
+  const tenantConfigured = asString(env.ZADARMA_TENANT_CONFIGURED) === 'true';
+  const usingLegacyDefaultFallback = !tenantConfigured && tenantAllowed(env);
 
   if (url.pathname === '/api/telephony/status' && request.method === 'GET') {
     return json({
       provider: 'zadarma',
       configured: configured(env),
-      extension: extension || null,
+      extension: configured(env) ? extension || null : null,
       mode: 'callback',
-      capabilities: ['outbound_callback', 'webrtc_key'],
+      credentialScope: tenantConfigured ? 'clinic' : usingLegacyDefaultFallback ? 'default-clinic-fallback' : 'unconfigured',
+      capabilities: ['outbound_callback', 'webrtc_key', 'recording_pull', 'transcription'],
     });
+  }
+
+  if (!tenantAllowed(env)) {
+    return json({ error: 'Zadarma не настроена для выбранной клиники. Добавьте отдельные credentials этой клиники.' }, 409);
   }
 
   if (url.pathname === '/api/telephony/test' && request.method === 'POST') {
