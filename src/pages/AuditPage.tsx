@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchAuditLog,
   fetchErrors,
@@ -112,7 +112,7 @@ export function AuditPage() {
       <div className="audit-tabs">
         <button type="button" className={tab === 'errors' ? 'active' : ''} onClick={() => setTab('errors')}>Ошибки</button>
         <button type="button" className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Аудит</button>
-        <button type="button" className="audit-refresh" onClick={() => void load()}>↻</button>
+        <button type="button" className="audit-refresh" onClick={() => void load()} disabled={loading} aria-label="Обновить журнал">↻</button>
       </div>
     </div>
 
@@ -161,8 +161,8 @@ export function AuditPage() {
         <table className="audit-table">
           <thead><tr><th>Время</th><th>Действие</th><th>Объект</th><th>Пользователь</th><th>IP</th><th>Correlation ID</th><th></th></tr></thead>
           <tbody>
-            {audit.map((record) => <>
-              <tr key={record.id}>
+            {audit.map((record) => <Fragment key={record.id}>
+              <tr>
                 <td>{formatDateTime(record.createdAt)}</td>
                 <td><span className="audit-action">{ACTION_LABELS[record.action] || record.action}</span><small className="audit-muted"> {record.action}</small></td>
                 <td>{record.entityType || '—'}{record.entityId && <small className="audit-muted"> {record.entityId.slice(0, 24)}</small>}</td>
@@ -171,10 +171,10 @@ export function AuditPage() {
                 <td className="audit-correlation">{record.correlationId || '—'}</td>
                 <td><button type="button" className="audit-button audit-button-ghost" onClick={() => setExpandedId((current) => current === record.id ? '' : record.id)}>{expandedId === record.id ? 'Скрыть' : 'До/после'}</button></td>
               </tr>
-              {expandedId === record.id && <tr key={`${record.id}-details`} className="audit-details-row">
+              {expandedId === record.id && <tr className="audit-details-row">
                 <td colSpan={7}><div className="audit-details"><div><strong>Before</strong><DetailsJson value={record.before} /></div><div><strong>After</strong><DetailsJson value={record.after} /></div><div><strong>User-Agent</strong><span className="audit-muted">{record.userAgent || '—'}</span></div></div></td>
               </tr>}
-            </>)}
+            </Fragment>)}
             {!audit.length && <tr><td colSpan={7} className="audit-empty">Записей аудита пока нет</td></tr>}
           </tbody>
         </table>
