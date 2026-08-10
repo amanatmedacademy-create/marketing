@@ -1,4 +1,5 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 // Колл-Центр: порт Unified Inbox из МИС в модуль «Чат».
 // Диалоги — marketing_conversations, сообщения — marketing_messages,
@@ -7,6 +8,7 @@ import type { Env } from './integrations';
 // marketing-chat-attachments.
 
 type Row = Record<string, unknown>;
+type ScopedEnv = Env & TenantScopedEnv;
 type ChatDirection = 'INBOUND' | 'OUTBOUND';
 type ChatStatus = 'OPEN' | 'PENDING' | 'CLOSED';
 
@@ -78,6 +80,9 @@ const numberValue = (row: Row, key: string) => {
 };
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const scopedEnv = (env: Env) => env as ScopedEnv;
+const companyId = (env: Env) => requireCompanyId(scopedEnv(env));
+const companyFilter = (env: Env) => `company_id=eq.${encodeURIComponent(companyId(env))}`;
 
 function requestRole(request: Request): string {
   return (request.headers.get(ROLE_HEADER) || '').trim().toLowerCase();
@@ -207,7 +212,7 @@ function mapUser(row: Row) {
 
 async function ensureThread(env: Env, threadId: string): Promise<Row | null> {
   if (!isUuid(threadId)) return null;
-  const rows = await db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&id=eq.${encodeURIComponent(threadId)}&archived_at=is.null&limit=1`);
+  const rows = await db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&id=eq.${encodeURIComponent(threadId)}&${companyFilter(env)}&archived_at=is.null&limit=1`);
   return rows[0] || null;
 }
 
@@ -218,13 +223,9 @@ async function ensureActiveUser(env: Env, id?: string | null): Promise<boolean> 
   return rows.length > 0;
 }
 
-// ---------------------------------------------------------------------------
-// Workspace
-// ---------------------------------------------------------------------------
-
 async function workspace(env: Env, requestId: string): Promise<Response> {
   const [threads, users] = await Promise.all([
-    db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&archived_at=is.null&order=last_message_at.desc.nullslast&limit=500`),
+    db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&${companyFilter(env)}&archived_at=is.null&order=last_message_at.desc.nullslast&limit=500`),
     db<Row[]>(env, '/marketing_users?select=id,name,role,status&status=eq.active&order=name.asc&limit=500')
   ]);
 
@@ -235,10 +236,10 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
 
   const [messages, contacts, funnelLeads] = await Promise.all([
     threadIds.length
-      ? db<Row[]>(env, `/marketing_messages?select=${MESSAGE_SELECT}&conversation_id=in.(${inFilter(threadIds)})&order=sent_at.desc&limit=5000`)
+      ? db<Row[]>(env, `/marketing_messages?select=${MESSAGE_SELECT}&${companyFilter(env)}&conversation_id=in.(${inFilter(threadIds)})&order=sent_at.desc&limit=5000`)
       : Promise.resolve([] as Row[]),
     contactIds.length
-      ? db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&id=in.(${inFilter(contactIds)})&limit=500`)
+      ? db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&${companyFilter(env)}&id=in.(${inFilter(contactIds)})&limit=500`)
       : Promise.resolve([] as Row[]),
     contactIds.length
       ? db<Row[]>(env, `/sales_funnel_leads?select=${FUNNEL_SELECT}&contact_id=in.(${inFilter(contactIds)})&order=updated_at.desc&limit=1000`)
@@ -258,9 +259,7 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
   messages.forEach((row) => {
     const message = mapMessage(row);
     if (!lastMessageMap.has(message.threadId)) lastMessageMap.set(message.threadId, message);
-    if (message.direction === 'INBOUND' && !message.readAt) {
-      unreadMap.set(message.threadId, (unreadMap.get(message.threadId) || 0) + 1);
-    }
+    if (message.direction === 'INBOUND' && !message.readAt) unreadMap.set(message.threadId, (unreadMap.get(message.threadId) || 0) + 1);
   });
 
   return json(requestId, {
@@ -279,10 +278,6 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Диалоги
-// ---------------------------------------------------------------------------
-
 async function createThread(request: Request, env: Env, requestId: string): Promise<Response> {
   const input = await request.json().catch(() => null) as ThreadInput | null;
   const leadId = input?.leadId?.trim() || '';
@@ -293,9 +288,9 @@ async function createThread(request: Request, env: Env, requestId: string): Prom
   let contact: Row | null = null;
   if (leadId) {
     if (!isUuid(leadId)) return json(requestId, { error: 'Некорректный контакт' }, 400);
-    const rows = await db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&id=eq.${encodeURIComponent(leadId)}&limit=1`);
+    const rows = await db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&id=eq.${encodeURIComponent(leadId)}&${companyFilter(env)}&limit=1`);
     contact = rows[0] || null;
-    if (!contact) return json(requestId, { error: 'Контакт не найден' }, 404);
+    if (!contact) return json(requestId, { error: 'Контакт не найден в текущей клинике' }, 404);
   }
 
   const title = input?.title?.trim() || (contact ? stringValue(contact, 'name') : '');
@@ -306,6 +301,7 @@ async function createThread(request: Request, env: Env, requestId: string): Prom
   const rows = await db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}`, {
     method: 'POST',
     body: JSON.stringify({
+      company_id: companyId(env),
       lead_id: leadId || null,
       title: title || phone,
       phone: phone || null,
@@ -340,15 +336,11 @@ async function updateThread(request: Request, env: Env, requestId: string, threa
     if (!title) return json(requestId, { error: 'Название диалога обязательно' }, 400);
     patch.title = title.slice(0, 160);
   }
-  const rows = await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=${THREAD_SELECT}`, {
+  const rows = await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&${companyFilter(env)}&select=${THREAD_SELECT}`, {
     method: 'PATCH', body: JSON.stringify(patch)
   });
   return rows[0] ? json(requestId, mapThreadBase(rows[0])) : json(requestId, { error: 'Диалог не обновлён' }, 502);
 }
-
-// ---------------------------------------------------------------------------
-// Сообщения
-// ---------------------------------------------------------------------------
 
 async function listMessages(env: Env, url: URL, requestId: string, threadId: string): Promise<Response> {
   const thread = await ensureThread(env, threadId);
@@ -360,6 +352,7 @@ async function listMessages(env: Env, url: URL, requestId: string, threadId: str
 
   const params = new URLSearchParams();
   params.set('select', MESSAGE_SELECT);
+  params.set('company_id', `eq.${companyId(env)}`);
   params.set('conversation_id', `eq.${threadId}`);
   params.set('order', 'sent_at.desc,id.desc');
   params.set('limit', String(limit + 1));
@@ -427,7 +420,7 @@ async function createMessage(request: Request, env: Env, requestId: string, thre
     const bytes = decodeBase64(attachment.base64);
     if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) return json(requestId, { error: 'Размер вложения должен быть от 1 байта до 5 МБ' }, 400);
     if (attachment.sizeBytes != null && Math.abs(attachment.sizeBytes - bytes.byteLength) > 8) return json(requestId, { error: 'Размер вложения не совпадает с переданными данными' }, 400);
-    attachmentPath = `${threadId}/${crypto.randomUUID()}-${name}`;
+    attachmentPath = `${companyId(env)}/${threadId}/${crypto.randomUUID()}-${name}`;
     attachmentName = name;
     attachmentMimeType = mimeType;
     attachmentSizeBytes = bytes.byteLength;
@@ -439,6 +432,7 @@ async function createMessage(request: Request, env: Env, requestId: string, thre
     const rows = await db<Row[]>(env, `/marketing_messages?select=${MESSAGE_SELECT}`, {
       method: 'POST',
       body: JSON.stringify({
+        company_id: companyId(env),
         conversation_id: threadId,
         direction,
         sender_name: input?.senderName?.trim() || null,
@@ -453,7 +447,7 @@ async function createMessage(request: Request, env: Env, requestId: string, thre
         created_at: sentAt
       })
     });
-    await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=id`, {
+    await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&${companyFilter(env)}&select=id`, {
       method: 'PATCH',
       body: JSON.stringify(direction === 'INBOUND'
         ? { last_message_at: sentAt, updated_at: sentAt, status: 'OPEN', unread_count: numberValue(thread, 'unread_count') + 1 }
@@ -470,10 +464,10 @@ async function markRead(env: Env, requestId: string, threadId: string): Promise<
   const thread = await ensureThread(env, threadId);
   if (!thread) return json(requestId, { error: 'Диалог не найден' }, 404);
   const readAt = new Date().toISOString();
-  await db<Row[]>(env, `/marketing_messages?conversation_id=eq.${encodeURIComponent(threadId)}&direction=eq.INBOUND&read_at=is.null&select=id`, {
+  await db<Row[]>(env, `/marketing_messages?conversation_id=eq.${encodeURIComponent(threadId)}&${companyFilter(env)}&direction=eq.INBOUND&read_at=is.null&select=id`, {
     method: 'PATCH', body: JSON.stringify({ read_at: readAt })
   });
-  await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&select=id`, {
+  await db<Row[]>(env, `/marketing_conversations?id=eq.${encodeURIComponent(threadId)}&${companyFilter(env)}&select=id`, {
     method: 'PATCH', body: JSON.stringify({ unread_count: 0 })
   });
   return json(requestId, { ok: true, readAt });
@@ -481,7 +475,7 @@ async function markRead(env: Env, requestId: string, threadId: string): Promise<
 
 async function downloadAttachment(env: Env, requestId: string, messageId: string): Promise<Response> {
   if (!isUuid(messageId)) return json(requestId, { error: 'Вложение не найдено' }, 404);
-  const rows = await db<Row[]>(env, `/marketing_messages?select=attachment_path,attachment_name,attachment_mime_type&id=eq.${encodeURIComponent(messageId)}&limit=1`);
+  const rows = await db<Row[]>(env, `/marketing_messages?select=attachment_path,attachment_name,attachment_mime_type&id=eq.${encodeURIComponent(messageId)}&${companyFilter(env)}&limit=1`);
   const row = rows[0];
   const path = row ? optionalString(row, 'attachment_path') : undefined;
   if (!path) return json(requestId, { error: 'Вложение не найдено' }, 404);
@@ -498,10 +492,6 @@ async function downloadAttachment(env: Env, requestId: string, messageId: string
   });
 }
 
-// ---------------------------------------------------------------------------
-// Маршрутизация
-// ---------------------------------------------------------------------------
-
 export async function handleCallCenterChat(request: Request, env: Env, url: URL): Promise<Response | null> {
   const path = url.pathname.replace(/\/+$/, '') || '/';
   if (!path.startsWith('/api/callcenter/')) return null;
@@ -512,6 +502,7 @@ export async function handleCallCenterChat(request: Request, env: Env, url: URL)
     return json(requestId, { error: 'Изменения в колл-центре доступны администратору и маркетологу' }, 403);
   }
   try {
+    requireCompanyId(scopedEnv(env));
     if (request.method === 'GET' && path === '/api/callcenter/workspace') return await workspace(env, requestId);
     if (request.method === 'POST' && path === '/api/callcenter/threads') return await createThread(request, env, requestId);
 
