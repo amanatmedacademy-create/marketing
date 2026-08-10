@@ -1,5 +1,6 @@
 import type { Env } from './integrations';
 import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
+import { isActiveCompanyUser, listActiveCompanyUsers } from './companyUsers';
 
 type Row = Record<string, unknown>;
 type ScopedEnv = Env & TenantScopedEnv;
@@ -104,7 +105,7 @@ async function workspace(request: Request, env: Env, url: URL, requestId: string
   if (query) params.set('or', `(title.ilike.*${query}*,phone.ilike.*${query}*,email.ilike.*${query}*,source.ilike.*${query}*,description.ilike.*${query}*)`);
   const [deals, users, events] = await Promise.all([
     db<Row[]>(env, `/crm_deals?${params.toString()}`),
-    db<Row[]>(env, `/marketing_users?select=${USER_SELECT}&status=eq.active&order=name.asc&limit=500`),
+    listActiveCompanyUsers(env, companyId, USER_SELECT),
     pipelineId ? db<Row[]>(env, `/crm_deal_stage_events?select=${EVENT_SELECT}&company_id=eq.${companyId}&pipeline_id=eq.${pipelineId}&order=created_at.desc&limit=200`) : Promise.resolve([] as Row[])
   ]);
   const selectedStages = stages.filter((stage) => text(stage, 'pipeline_id') === pipelineId);
@@ -172,8 +173,16 @@ async function saveDeal(request: Request, env: Env, requestId: string, id?: stri
   if (body.source !== undefined) patch.source = nullable(body.source, 120);
   if (body.description !== undefined) patch.description = nullable(body.description, 3000);
   if (body.priority !== undefined || !id) patch.priority = priority;
-  if (body.managerUserId !== undefined) patch.assignee_id = typeof body.managerUserId === 'string' && isUuid(body.managerUserId) ? body.managerUserId : null;
-  if (body.diagnostUserId !== undefined) patch.diagnost_user_id = typeof body.diagnostUserId === 'string' && isUuid(body.diagnostUserId) ? body.diagnostUserId : null;
+  if (body.managerUserId !== undefined) {
+    const managerId = typeof body.managerUserId === 'string' && isUuid(body.managerUserId) ? body.managerUserId : null;
+    if (managerId && !await isActiveCompanyUser(env, companyId, managerId)) return json(requestId, { error: 'Менеджер не принадлежит текущей клинике' }, 400);
+    patch.assignee_id = managerId;
+  }
+  if (body.diagnostUserId !== undefined) {
+    const diagnostId = typeof body.diagnostUserId === 'string' && isUuid(body.diagnostUserId) ? body.diagnostUserId : null;
+    if (diagnostId && !await isActiveCompanyUser(env, companyId, diagnostId)) return json(requestId, { error: 'Диагност не принадлежит текущей клинике' }, 400);
+    patch.diagnost_user_id = diagnostId;
+  }
   if (body.marketingLeadId !== undefined) {
     if (typeof body.marketingLeadId === 'string' && isUuid(body.marketingLeadId)) {
       const leads = await db<Row[]>(env, `/marketing_leads?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(body.marketingLeadId)}&limit=1`);
@@ -267,10 +276,8 @@ async function createStage(request: Request, env: Env, requestId: string): Promi
   const body = await request.json().catch(() => null) as { pipelineId?: string; name?: string; color?: string; probability?: number; stageType?: StageType; afterStageId?: string } | null;
   const name = nullable(body?.name, 120);
   if (!body?.pipelineId || !isUuid(body.pipelineId) || !name) return json(requestId, { error: 'Воронка и название стадии обязательны' }, 400);
-  await getPipelineAndStage(env, companyId, body.pipelineId, undefined).catch(async (error) => {
-    if (error instanceof Error && error.message === 'Стадия не найдена') return;
-    throw error;
-  });
+  const pipelineRows = await db<Row[]>(env, `/crm_pipelines?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(body.pipelineId)}&limit=1`);
+  if (!pipelineRows[0]) return json(requestId, { error: 'Воронка не принадлежит текущей клинике' }, 400);
   const type: StageType = ['open', 'won', 'lost'].includes(body.stageType || '') ? body.stageType as StageType : 'open';
   const stages = await db<Row[]>(env, `/crm_pipeline_stages?select=${STAGE_SELECT}&company_id=eq.${companyId}&pipeline_id=eq.${body.pipelineId}&order=position.asc`);
   const afterIndex = body.afterStageId ? stages.findIndex((item) => text(item, 'id') === body.afterStageId) : stages.length - 1;
