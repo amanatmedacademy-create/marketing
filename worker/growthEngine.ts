@@ -1,6 +1,7 @@
 import type { Env } from './integrations';
 import { analyzeMarketingCall } from './callIntelligence';
 import { processMetaGrowthConversions } from './metaGrowthConversions';
+import { handleRecoveryEngine, type RecoveryEnv } from './recoveryEngine';
 import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
@@ -65,8 +66,10 @@ async function overview(env: ScopedEnv): Promise<Response> {
 
   const slaSeconds = Math.max(30, num(responseSettings[0]?.sla_seconds) || 300);
   const staleAfterHours = Math.max(1, num(responseSettings[0]?.stale_after_hours) || 24);
-  const responseSeconds = leads.map((lead) => num(lead.first_response_seconds)).filter((value) => Number.isFinite(value) && value >= 0 && value > 0);
   const respondedLeads = leads.filter((lead) => Boolean(lead.first_response_at));
+  const responseSeconds = respondedLeads
+    .map((lead) => Number(lead.first_response_seconds))
+    .filter((value) => Number.isFinite(value) && value >= 0);
   const breachedLeads = respondedLeads.filter((lead) => num(lead.first_response_seconds) > slaSeconds);
   const now = Date.now();
   const unansweredLeads = leads.filter((lead) => !lead.first_response_at);
@@ -247,6 +250,8 @@ async function lostOpportunityById(request: Request, env: ScopedEnv, id: string)
 
 export async function handleGrowthEngine(request: Request, env: Env, url: URL): Promise<Response | null> {
   const scoped = env as ScopedEnv;
+  const recoveryResponse = await handleRecoveryEngine(request, env as RecoveryEnv, url);
+  if (recoveryResponse) return recoveryResponse;
   if (url.pathname === '/api/growth/overview' && request.method === 'GET') return overview(scoped);
   if (url.pathname === '/api/growth/journey' && request.method === 'GET') return journey(scoped, url);
   if (url.pathname === '/api/growth/conversions' && request.method === 'GET') return conversions(scoped, url);
