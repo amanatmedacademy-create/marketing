@@ -27,6 +27,10 @@ export interface MarketingLead {
   ad_id?: string | null;
   lead_created_at?: string | null;
   first_contact_at?: string | null;
+  first_response_at?: string | null;
+  first_response_seconds?: number | null;
+  first_response_channel?: string | null;
+  first_response_event_id?: string | null;
   qualified_at?: string | null;
   appointment_at?: string | null;
   arrived_at?: string | null;
@@ -77,6 +81,11 @@ export interface MarketingCall {
   stated_next_step?: boolean | null;
   follow_up_planned?: boolean | null;
   script_violations: string[];
+  ai_analysis_status?: 'idle' | 'processing' | 'completed' | 'failed';
+  ai_analysis_model?: string | null;
+  ai_analyzed_at?: string | null;
+  ai_analysis_error?: string | null;
+  ai_confidence?: number | null;
   created_at: string;
   updated_at: string;
 }
