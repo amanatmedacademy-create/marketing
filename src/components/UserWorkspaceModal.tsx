@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, KeyRound, LoaderCircle, LogOut, Pencil, ShieldCheck, Trash2, UserPlus, UserRound, UsersRound, X } from 'lucide-react';
+import { KeyRound, LoaderCircle, LogOut, Pencil, ShieldCheck, Trash2, UserPlus, UserRound, UsersRound, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import AccessMatrixPanel from './AccessMatrixPanel';
 import { DISPLAY_CURRENCIES, readDisplayCurrency, saveDisplayCurrency, type DisplayCurrency } from '../currency';
 import { createManagedUser, fetchManagedUsers, removeManagedUser, updateManagedUser, type ManagedUser, type ManagedUserRole, type ManagedUserStatus } from '../services/userAdmin';
 import '../user-workspace.css';
 
-type Tab = 'profile' | 'security' | 'notifications' | 'access' | 'users' | 'matrix';
+type Tab = 'profile' | 'security' | 'access' | 'users' | 'matrix';
 type UserDraft = { id?: string; name: string; email: string; role: ManagedUserRole; status: ManagedUserStatus };
 interface Props { mode: 'profile' | 'settings'; onClose: () => void }
 
 const roleLabels: Record<ManagedUserRole, string> = { administrator: 'Администратор', marketer: 'Маркетолог', analyst: 'Аналитик', viewer: 'Наблюдатель' };
 const statusLabels: Record<ManagedUserStatus, string> = { active: 'Активен', invited: 'Приглашён', blocked: 'Заблокирован' };
 const emptyDraft: UserDraft = { name: '', email: '', role: 'viewer', status: 'active' };
-const notifications = ['Ежедневный отчёт', 'Перерасход бюджета', 'ROAS ниже порога', 'Новый лид', 'Ошибка синхронизации'];
 
 export default function UserWorkspaceModal({ mode, onClose }: Props) {
   const { user, signOut } = useAuth();
@@ -29,7 +28,6 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
   const tabs: Array<{ id: Tab; label: string; icon: typeof UserRound; admin?: boolean }> = [
     { id: 'profile', label: 'Профиль', icon: UserRound },
     { id: 'security', label: 'Безопасность', icon: ShieldCheck },
-    { id: 'notifications', label: 'Уведомления', icon: Bell },
     { id: 'access', label: 'Мой доступ', icon: KeyRound },
     { id: 'users', label: 'Пользователи', icon: UsersRound, admin: true },
     { id: 'matrix', label: 'Матрица прав', icon: ShieldCheck, admin: true },
@@ -75,7 +73,6 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
         <main>
           {tab === 'profile' && <section><h3>Личные данные</h3><p>Профиль и рабочая должность.</p><div className="profile-card"><div className="user-workspace-avatar user-workspace-avatar--large">{initials}</div><div><strong>{user.name}</strong><span>{user.jobTitle || roleLabels[user.role as ManagedUserRole] || user.role}</span></div></div><div className="profile-grid"><label><span>Имя</span><input value={user.name || ''} readOnly/></label><label><span>Должность</span><input value={user.jobTitle || roleLabels[user.role as ManagedUserRole] || user.role} readOnly/></label><label className="profile-grid-full"><span>Email</span><input value={user.email || ''} readOnly/></label><label className="profile-grid-full"><span>Валюта</span><select value={currency} onChange={(event) => { const next = event.target.value as DisplayCurrency; setCurrency(next); saveDisplayCurrency(next); }}>{DISPLAY_CURRENCIES.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select></label></div></section>}
           {tab === 'security' && <section><h3>Безопасность</h3><p>Вход выполняется через защищённый Google OAuth. Пароли в IMDS не хранятся.</p><div className="workspace-card"><h4>Активная сессия</h4><div className="session-row"><div><strong>Текущая сессия</strong><span>Google OAuth · защищённый токен</span></div><em>Активна</em></div></div></section>}
-          {tab === 'notifications' && <section><h3>Уведомления</h3><p>События для текущего пользователя.</p><div className="notification-list">{notifications.map((item) => <label key={item}><div><strong>{item}</strong><span>Получать уведомление в интерфейсе</span></div><input type="checkbox" defaultChecked/><i/></label>)}</div></section>}
           {tab === 'access' && <section><h3>Мой доступ</h3><p>Эффективные права с учётом должности и персональных исключений.</p><div className="access-list">{accessRows.length ? accessRows.map(([moduleId, grant]) => <div key={moduleId}><span>{moduleId}</span><em>{grant.manage ? 'Полное управление' : Object.entries(grant).filter(([, value]) => value).map(([key]) => key).join(', ')}</em></div>) : <div><span>Нет назначенных модулей</span><em>Ограничено</em></div>}</div></section>}
           {tab === 'users' && <section><div className="users-head"><div><h3>Пользователи системы</h3><p>Аккаунты, базовые роли, должности и статусы.</p></div><button type="button" onClick={() => setDraft(emptyDraft)}><UserPlus size={15}/>Добавить</button></div>{error && <div className="users-error">{error}</div>}{loading ? <div className="users-loading"><LoaderCircle className="spin"/>Загрузка…</div> : <div className="users-list">{users.map((item) => <article key={item.id}><div className="user-row-avatar">{item.name[0]?.toUpperCase()}</div><div><strong>{item.name}</strong><span>{item.email}</span><small>{item.jobTitle || 'Должность не назначена'}</small></div><b>{roleLabels[item.role]}</b><em className={`user-status user-status--${item.status}`}>{statusLabels[item.status]}</em><div className="user-row-actions"><button type="button" onClick={() => setDraft({ id:item.id,name:item.name,email:item.email,role:item.role,status:item.status })}><Pencil size={15}/></button><button type="button" onClick={() => void deleteUser(item)}><Trash2 size={15}/></button></div></article>)}</div>}</section>}
           {tab === 'matrix' && <AccessMatrixPanel users={users}/>} 
