@@ -1,6 +1,7 @@
 import type { Env } from './integrations';
 import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
+import { runAppointmentRecovery } from './appointmentRecovery';
 
 type Row = Record<string, unknown>;
 export type RecoveryEnv = Env & TenantScopedEnv & WabaMessagingV2Env;
@@ -44,6 +45,8 @@ async function settings(env: RecoveryEnv, companyId: string): Promise<Row> {
     create_tasks: true,
     stale_lead_enabled: true,
     lost_opportunity_enabled: true,
+    appointment_recovery_enabled: true,
+    no_show_grace_minutes: 60,
     whatsapp_enabled: false,
     lost_task_delay_minutes: 15,
     whatsapp_template_name: null,
@@ -221,7 +224,15 @@ async function createLostRecovery(env: RecoveryEnv, companyId: string, lost: Row
 export async function runRecoveryForCurrentCompany(env: RecoveryEnv): Promise<Row> {
   const companyId = requireCompanyId(env);
   const [cfg, responseCfg] = await Promise.all([settings(env, companyId), responseSettings(env, companyId)]);
-  if (cfg.enabled !== true) return { enabled: false, scanned: 0, tasksCreated: 0, whatsappQueued: 0, message: 'Recovery Engine выключен для текущей клиники' };
+  if (cfg.enabled !== true) return {
+    enabled: false,
+    scanned: 0,
+    tasksCreated: 0,
+    whatsappQueued: 0,
+    appointmentNoShowCandidates: 0,
+    appointmentUnconfirmedCandidates: 0,
+    message: 'Recovery Engine выключен для текущей клиники',
+  };
 
   const now = Date.now();
   const staleHours = Math.max(1, num(responseCfg.stale_after_hours) || 24);
@@ -261,7 +272,23 @@ export async function runRecoveryForCurrentCompany(env: RecoveryEnv): Promise<Ro
     whatsappQueued += result.whatsappQueued;
   }
 
-  return { enabled: true, scanned: leads.length + lostRows.length, eligible, tasksCreated, whatsappQueued };
+  const appointment = await runAppointmentRecovery(env, companyId, {
+    appointment_recovery_enabled: cfg.appointment_recovery_enabled !== false,
+    create_tasks: cfg.create_tasks === true,
+    no_show_grace_minutes: num(cfg.no_show_grace_minutes) || 60,
+  });
+  tasksCreated += appointment.tasksCreated;
+  eligible += appointment.noShowCandidates + appointment.unconfirmedCandidates;
+
+  return {
+    enabled: true,
+    scanned: leads.length + lostRows.length + appointment.scanned,
+    eligible,
+    tasksCreated,
+    whatsappQueued,
+    appointmentNoShowCandidates: appointment.noShowCandidates,
+    appointmentUnconfirmedCandidates: appointment.unconfirmedCandidates,
+  };
 }
 
 async function getSettings(env: RecoveryEnv): Promise<Response> {
@@ -282,6 +309,8 @@ async function putSettings(request: Request, env: RecoveryEnv): Promise<Response
     create_tasks: input.createTasks !== false,
     stale_lead_enabled: input.staleLeadEnabled !== false,
     lost_opportunity_enabled: input.lostOpportunityEnabled !== false,
+    appointment_recovery_enabled: input.appointmentRecoveryEnabled !== false,
+    no_show_grace_minutes: Math.min(Math.max(Math.round(num(input.noShowGraceMinutes) || 60), 0), 10080),
     whatsapp_enabled: input.whatsappEnabled === true,
     lost_task_delay_minutes: Math.min(Math.max(Math.round(num(input.lostTaskDelayMinutes) || 15), 0), 10080),
     whatsapp_template_name: text(input.whatsappTemplateName) || null,
