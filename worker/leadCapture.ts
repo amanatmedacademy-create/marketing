@@ -39,6 +39,14 @@ async function db<T>(env: LeadCaptureEnv, path: string, init: RequestInit = {}):
   return (body ? JSON.parse(body) : null) as T;
 }
 
+async function refreshCrmMetrics(env: LeadCaptureEnv, companyId: string): Promise<void> {
+  await db(env, 'rpc/refresh_crm_daily_metrics', {
+    method: 'POST',
+    headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ p_company_id: companyId, p_date_from: null, p_date_to: null }),
+  });
+}
+
 function normalizePhone(value: string): string {
   let digits = value.replace(/\D/g, '');
   if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
@@ -85,6 +93,8 @@ export async function handleLeadCaptureRequest(request: Request, env: LeadCaptur
   const email = text(input.email);
   if (!name || !phone) return json({ error: 'Имя и телефон обязательны' }, 400);
 
+  const companyId = text(form.company_id);
+  if (!companyId) return json({ error: 'Форма не привязана к клинике' }, 409);
   const track = tracking(input, form);
   const source = text(form.source) || text(track.utm_source) || 'Web form';
   const campaign = text(form.campaign) || text(track.utm_campaign);
@@ -100,11 +110,12 @@ export async function handleLeadCaptureRequest(request: Request, env: LeadCaptur
   };
 
   const payload: Row = {
-    company_id: text(form.company_id),
+    company_id: companyId,
     name,
     phone,
     email: email || null,
     source,
+    platform: 'Web',
     campaign: campaign || null,
     stage: 'Новый',
     first_message: text(input.message) || 'Заявка с формы сайта',
@@ -120,6 +131,7 @@ export async function handleLeadCaptureRequest(request: Request, env: LeadCaptur
     body: JSON.stringify(payload),
   });
   const lead = rows[0] || {};
+  await refreshCrmMetrics(env, companyId);
   return json({
     ok: true,
     leadId: text(lead.id),
