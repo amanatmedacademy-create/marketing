@@ -20,6 +20,7 @@ import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 import { handleTenantDataApi } from './tenantDataApi';
 import { handleGrowthEngine } from './growthEngine';
+import { zadarmaRequest } from './zadarmaTelephony';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -100,11 +101,21 @@ async function handleFrontendIntegrationAction(request: Request, env: Env, url: 
   }
   if (url.pathname.startsWith('/api/integrations/test/') && request.method === 'POST') {
     const provider = url.pathname.split('/').pop() as IntegrationProvider;
-    if (!['bitrix', 'meta', 'tiktok', 'n8n'].includes(provider)) return json({ error: 'Неизвестная интеграция' }, 404, corsHeaders(request, env));
+    if (!['bitrix', 'meta', 'tiktok', 'n8n', 'zadarma'].includes(provider)) return json({ error: 'Неизвестная интеграция' }, 404, corsHeaders(request, env));
     if (provider === 'n8n') {
       const ok = Boolean(env.N8N_WEBHOOK_SECRET);
       await updateCredentialVerification(env, provider, ok, ok ? undefined : new Error('Webhook secret не настроен'));
       return json(ok ? { ok: true, message: 'n8n endpoint готов' } : { error: 'Webhook secret не настроен' }, ok ? 200 : 400, corsHeaders(request, env));
+    }
+    if (provider === 'zadarma') {
+      try {
+        const balance = await zadarmaRequest(env, '/v1/info/balance/');
+        await updateCredentialVerification(env, provider, true);
+        return json({ ok: true, message: 'Zadarma API доступна', balance }, 200, corsHeaders(request, env));
+      } catch (error) {
+        await updateCredentialVerification(env, provider, false, error);
+        return json({ error: error instanceof Error ? error.message : String(error) }, 400, corsHeaders(request, env));
+      }
     }
     try {
       const results = await runAllSyncs(env, { source: provider, days: 1 });
