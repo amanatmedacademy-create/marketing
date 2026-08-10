@@ -95,7 +95,7 @@ function Shell() {
         <GlobalSearch />
         <div className="marketing-top-actions">
           <CompanySwitcher />
-          <button type="button" aria-label="Уведомления" onClick={() => navigate('/notifications')}><Bell size={18}/></button>
+          {canView('integrations') && <button type="button" aria-label="Уведомления" onClick={() => navigate('/notifications')}><Bell size={18}/></button>}
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
         </div>
