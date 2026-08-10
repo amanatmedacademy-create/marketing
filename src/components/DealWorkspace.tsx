@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
-  ArrowLeft, CalendarClock, CheckCircle2, ChevronRight, CircleDollarSign, Clock3,
-  ExternalLink, History, Link2, LoaderCircle, Mail, MessageCircle, MessageSquareText,
-  NotebookPen, Phone, PhoneCall, Save, Send, SquareCheckBig, UserRound, X
+  ArrowLeft, CalendarClock, CheckCircle2, ChevronRight, Clock3, ExternalLink, History,
+  Link2, LoaderCircle, Mail, MessageCircle, MessageSquareText, NotebookPen, Phone,
+  PhoneCall, Save, Send, SquareCheckBig, UserRound, X
 } from 'lucide-react';
 import CustomerCommunicationDrawer, { type CustomerCommunicationContext } from './CustomerCommunicationDrawer';
+import { useDealWorkspaceController } from './DealWorkspaceController';
 import {
   createDealWorkspaceActivity,
   fetchDealWorkspace,
@@ -17,22 +18,11 @@ import {
   updateFunnelDeal,
   type FunnelDeal,
   type FunnelDealInput,
-  type FunnelPipeline,
-  type FunnelUser,
 } from '../services/salesFunnel';
 import '../deal-workspace.css';
 
-export const OPEN_DEAL_WORKSPACE_EVENT = 'amanat:open-deal-workspace';
-
-type WorkspaceEventDetail = {
-  deal: FunnelDeal;
-  pipeline: FunnelPipeline;
-  users: FunnelUser[];
-};
-
 type WorkspaceTab = 'general' | 'messages' | 'calls' | 'tasks' | 'history' | 'links';
 type ComposerMode = 'comment' | 'task' | 'note';
-
 type TimelineItem = {
   id: string;
   kind: 'activity' | 'message' | 'call' | 'stage';
@@ -40,7 +30,6 @@ type TimelineItem = {
   title: string;
   body?: string;
   author?: string;
-  direction?: string;
   activityId?: string;
   activityType?: string;
   completed?: boolean;
@@ -83,20 +72,12 @@ function draftFromDeal(deal: FunnelDeal): FunnelDealInput {
   };
 }
 
-function DealWorkspaceSkeleton() {
-  return <div className="deal-workspace-skeleton" aria-label="Загрузка карточки сделки">
-    <div className="skeleton-line wide"/><div className="skeleton-line medium"/>
-    <div className="skeleton-stages">{Array.from({ length: 6 }, (_, index) => <span key={index}/>)}</div>
-    <div className="skeleton-grid"><aside>{Array.from({ length: 8 }, (_, index) => <span key={index}/>)}</aside><main>{Array.from({ length: 5 }, (_, index) => <article key={index}/>)}</main></div>
-  </div>;
-}
-
 function EmptyPanel({ title, text }: { title: string; text: string }) {
   return <div className="deal-workspace-empty"><MessageSquareText/><strong>{title}</strong><span>{text}</span></div>;
 }
 
 export default function DealWorkspaceHost() {
-  const [context, setContext] = useState<WorkspaceEventDetail | null>(null);
+  const { context, close: closeController } = useDealWorkspaceController();
   const [deal, setDeal] = useState<FunnelDeal | null>(null);
   const [draft, setDraft] = useState<FunnelDealInput | null>(null);
   const [data, setData] = useState<DealWorkspacePayload | null>(null);
@@ -108,41 +89,55 @@ export default function DealWorkspaceHost() {
   const [composerText, setComposerText] = useState('');
   const [composerDueAt, setComposerDueAt] = useState('');
   const [posting, setPosting] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
   const [communication, setCommunication] = useState<CustomerCommunicationContext | null>(null);
-
-  const close = useCallback((fromPopState = false) => {
-    setCommunication(null);
-    setContext(null); setDeal(null); setDraft(null); setData(null); setError(''); setTab('general');
-    document.body.classList.remove('deal-workspace-open');
-    if (!fromPopState && window.location.pathname.includes('/pipeline/deal/')) {
-      window.history.pushState({}, '', '/pipeline');
-    }
-    requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
-  }, [scrollY]);
+  const scrollYRef = useRef(0);
 
   const load = useCallback(async (dealId: string) => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try { setData(await fetchDealWorkspace(dealId)); }
     catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить рабочую карточку'); }
     finally { setLoading(false); }
   }, []);
 
+  const close = useCallback((fromPopState = false) => {
+    setCommunication(null);
+    setDeal(null);
+    setDraft(null);
+    setData(null);
+    setError('');
+    setTab('general');
+    document.body.classList.remove('deal-workspace-open');
+    closeController();
+    if (!fromPopState && window.location.pathname.includes('/pipeline/deal/')) {
+      window.history.pushState({}, '', '/pipeline');
+    }
+    requestAnimationFrame(() => window.scrollTo({ top: scrollYRef.current, behavior: 'instant' }));
+  }, [closeController]);
+
   useEffect(() => {
-    const open = (event: Event) => {
-      const detail = (event as CustomEvent<WorkspaceEventDetail>).detail;
-      if (!detail?.deal || !detail?.pipeline) return;
-      setScrollY(window.scrollY);
-      setContext(detail); setDeal(detail.deal); setDraft(draftFromDeal(detail.deal)); setTab('general');
-      document.body.classList.add('deal-workspace-open');
-      window.history.pushState({ dealWorkspace: true, dealId: detail.deal.id }, '', `/pipeline/deal/${detail.deal.id}`);
-      void load(detail.deal.id);
-    };
-    const pop = () => { if (context) close(true); };
-    window.addEventListener(OPEN_DEAL_WORKSPACE_EVENT, open);
+    if (!context) return;
+    scrollYRef.current = window.scrollY;
+    setDeal(context.deal);
+    setDraft(draftFromDeal(context.deal));
+    setData(null);
+    setError('');
+    setTab('general');
+    setCommunication(null);
+    document.body.classList.add('deal-workspace-open');
+    const nextPath = `/pipeline/deal/${context.deal.id}`;
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ dealWorkspace: true, dealId: context.deal.id }, '', nextPath);
+    }
+    void load(context.deal.id);
+  }, [context, load]);
+
+  useEffect(() => {
+    if (!context) return;
+    const pop = () => close(true);
     window.addEventListener('popstate', pop);
-    return () => { window.removeEventListener(OPEN_DEAL_WORKSPACE_EVENT, open); window.removeEventListener('popstate', pop); };
-  }, [close, context, load]);
+    return () => window.removeEventListener('popstate', pop);
+  }, [close, context]);
 
   useEffect(() => {
     if (!context || communication) return;
@@ -150,6 +145,8 @@ export default function DealWorkspaceHost() {
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
   }, [close, communication, context]);
+
+  useEffect(() => () => document.body.classList.remove('deal-workspace-open'), []);
 
   const usersById = useMemo(() => new Map([
     ...(context?.users || []).map((user) => [user.id, user.fullName] as const),
@@ -169,7 +166,7 @@ export default function DealWorkspaceHost() {
     for (const item of data.messages) items.push({
       id: `message-${item.id}`, kind: 'message', at: item.sentAt,
       title: item.direction === 'inbound' ? 'Входящее сообщение' : 'Исходящее сообщение',
-      body: item.body || item.attachmentName, author: item.senderName, direction: item.direction,
+      body: item.body || item.attachmentName, author: item.senderName,
     });
     for (const item of data.calls) items.push({
       id: `call-${item.id}`, kind: 'call', at: item.startedAt,
@@ -199,6 +196,7 @@ export default function DealWorkspaceHost() {
   const currentStage = pipeline.stages.find((stage) => stage.id === deal.stageId);
   const managerName = usersById.get(deal.managerUserId || '') || 'Не назначен';
   const diagnostName = usersById.get(deal.diagnostUserId || '') || 'Не назначен';
+
   const openCommunication = (mode: 'chat' | 'call') => {
     if (!deal.phone) return;
     setCommunication({ mode, phone: deal.phone, name: deal.fullName, dealId: deal.id });
@@ -209,7 +207,8 @@ export default function DealWorkspaceHost() {
     try {
       const updated = await updateFunnelDeal(deal.id, draft);
       const next = { ...deal, ...updated, ...draft } as FunnelDeal;
-      setDeal(next); setDraft(draftFromDeal(next));
+      setDeal(next);
+      setDraft(draftFromDeal(next));
     } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось сохранить сделку'); }
     finally { setSaving(false); }
   };
@@ -219,7 +218,9 @@ export default function DealWorkspaceHost() {
     setSaving(true); setError('');
     try {
       const updated = await moveFunnelDeal(deal.id, { pipelineId: pipeline.id, stageId, position: Date.now() });
-      setDeal({ ...deal, ...updated, stageId }); setDraft((current) => current ? { ...current, stageId } : current);
+      const next = { ...deal, ...updated, stageId } as FunnelDeal;
+      setDeal(next);
+      setDraft((current) => current ? { ...current, stageId } : current);
       await load(deal.id);
     } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось изменить стадию'); }
     finally { setSaving(false); }
@@ -230,15 +231,23 @@ export default function DealWorkspaceHost() {
     if (!composerText.trim()) return;
     setPosting(true); setError('');
     try {
-      await createDealWorkspaceActivity(deal.id, { type: composerMode as DealWorkspaceActivityType, body: composerText.trim(), dueAt: composerMode === 'task' ? composerDueAt || null : null });
-      setComposerText(''); setComposerDueAt(''); await load(deal.id);
+      await createDealWorkspaceActivity(deal.id, {
+        type: composerMode as DealWorkspaceActivityType,
+        body: composerText.trim(),
+        dueAt: composerMode === 'task' ? composerDueAt || null : null,
+      });
+      setComposerText('');
+      setComposerDueAt('');
+      await load(deal.id);
     } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось добавить активность'); }
     finally { setPosting(false); }
   };
 
   const toggleTask = async (activityId: string, completed: boolean) => {
-    try { await updateDealWorkspaceActivity(deal.id, activityId, { completed: !completed }); await load(deal.id); }
-    catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось обновить задачу'); }
+    try {
+      await updateDealWorkspaceActivity(deal.id, activityId, { completed: !completed });
+      await load(deal.id);
+    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Не удалось обновить задачу'); }
   };
 
   return <>
@@ -320,7 +329,7 @@ export default function DealWorkspaceHost() {
               <footer>{composerMode === 'task' ? <label><CalendarClock/><input type="datetime-local" value={composerDueAt} onChange={(event) => setComposerDueAt(event.target.value)}/></label> : <span/>}<button type="submit" disabled={posting || !composerText.trim()}>{posting ? <LoaderCircle className="spin"/> : <Send/>} Добавить</button></footer>
             </form>}
 
-            {loading && <DealWorkspaceSkeleton/>}
+            {loading && <div className="deal-workspace-skeleton"><div className="skeleton-line wide"/><div className="skeleton-line medium"/><div className="skeleton-stages">{Array.from({ length: 6 }, (_, index) => <span key={index}/>)}</div></div>}
             {!loading && tab === 'links' && <div className="deal-workspace-links">
               <article><MessageCircle/><div><strong>Диалоги</strong><span>{data?.conversations.length || 0} связанных разговоров</span></div><a href="/chat">Открыть чат <ExternalLink/></a></article>
               <article><PhoneCall/><div><strong>Звонки</strong><span>{data?.calls.length || 0} звонков по клиенту</span></div><a href="/calls">Открыть звонки <ExternalLink/></a></article>

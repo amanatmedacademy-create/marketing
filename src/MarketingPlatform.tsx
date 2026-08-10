@@ -5,6 +5,7 @@ import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
 import DealWorkspaceHost from './components/DealWorkspace';
+import { DealWorkspaceProvider } from './components/DealWorkspaceController';
 import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
@@ -104,7 +105,7 @@ function Shell() {
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
-        <Route path="/pipeline/*" element={guard('crm.pipeline', <><SalesFunnelPage/><DealWorkspaceHost/></>)} />
+        <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <WhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
