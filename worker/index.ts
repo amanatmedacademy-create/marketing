@@ -18,6 +18,7 @@ import { handleIntegrationLifecycle } from './integrationLifecycle';
 import { handleGoogleIntegrationRequest } from './googleIntegrations';
 import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
+import { handleTenantDataApi } from './tenantDataApi';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -144,6 +145,8 @@ export default {
       const runtimeEnv = await hydrateIntegrationEnv(env);
       if (url.pathname === '/api/health') return json({ ok: true, service: 'amanat-marketing-api', supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname === '/api/exchange-rates' && request.method === 'GET') return handleRates(request, runtimeEnv);
+      const tenantDataResponse = await handleTenantDataApi(request, runtimeEnv, url);
+      if (tenantDataResponse) return tenantDataResponse;
       const frontendIntegrationResponse = await handleFrontendIntegrationAction(request, runtimeEnv, url);
       if (frontendIntegrationResponse) return frontendIntegrationResponse;
       const integrationResponse = await handleIntegrationRequest(request, runtimeEnv, url);
