@@ -28,6 +28,7 @@ import { handleWabaEmbeddedSignupRequest, type WabaEmbeddedSignupEnv } from './w
 import { handleWabaFlowsRequest, type WabaFlowsEnv } from './wabaFlows';
 import { handleWabaMessagingRequest, type WabaMessagingEnv } from './wabaMessaging';
 import { handleWabaMessagingV2Request, type WabaMessagingV2Env } from './wabaMessagingV2';
+import { handleWorkspaceBuilderRequest } from './workspaceBuilder';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
@@ -165,6 +166,8 @@ export default {
       if (tenantWebhook) return tenantWebhook;
       const auditApi = await handleAuditApi(forwardedRequest, runtimeEnv, url);
       if (auditApi) return auditApi;
+      const workspaceBuilder = await handleWorkspaceBuilderRequest(forwardedRequest, runtimeEnv, url);
+      if (workspaceBuilder) return workspaceBuilder;
       const tenantSync = await handleTenantSyncRequest(forwardedRequest, runtimeEnv, url);
       if (tenantSync) return tenantSync;
       const chatResponse = await handleMarketingChat(forwardedRequest, runtimeEnv, url);
