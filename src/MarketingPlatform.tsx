@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { BarChart3, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { Activity, BarChart3, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
@@ -21,6 +21,7 @@ import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
 import Customer360Page from './pages/Customer360Page';
+import GrowthEnginePage from './pages/GrowthEnginePage';
 import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './pages/GrowthToolsSafePages';
 import JourneyAutomationPage from './pages/JourneyAutomationPage';
 import { MarketingAiPage } from './pages/StrategicPlatformPages';
@@ -52,6 +53,7 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
+    { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports' },
     { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
@@ -118,6 +120,7 @@ function Shell() {
         <Route path="/attribution" element={<Navigate to="/analytics" replace/>} />
         <Route path="/utm-builder" element={guard('analytics.attribution', <SafeUtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
+        <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>)} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
         <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
         <Route path="/automation" element={guard('dashboard', <JourneyAutomationPage/>)} />
