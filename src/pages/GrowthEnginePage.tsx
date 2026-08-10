@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, RefreshCw, RotateCcw, Send, Target, TrendingUp } from 'lucide-react';
+import { ArrowRight, Clock3, Headphones, RefreshCw, RotateCcw, Send, Target, TrendingUp } from 'lucide-react';
 import { useAuth } from '../components/AuthGate';
 import '../strategic-platform.css';
 
 type Destination = { provider: string; external_destination_id: string; enabled: boolean; config?: Record<string, unknown> };
+type SpeedToLead = { slaSeconds: number; staleAfterHours: number; leads: number; respondedLeads: number; unansweredLeads: number; staleUnansweredLeads: number; withinSla: number; breached: number; averageSeconds: number | null; medianSeconds: number | null };
+type CallIntelligence = { calls: number; completedCalls: number; analyzableCalls: number; analyzedCalls: number; failedAnalyses: number; averageQualityScore: number | null; detectedLostCalls: number; appointments: number };
 type GrowthOverview = {
   funnel: Record<string, number>;
   journeyEvents: number;
@@ -13,6 +15,8 @@ type GrowthOverview = {
   sentConversions: number;
   skippedConversions: number;
   destinations?: Destination[];
+  speedToLead?: SpeedToLead;
+  callIntelligence?: CallIntelligence;
 };
 
 type JourneyEvent = { id: string; lead_id?: string | null; event_type: string; occurred_at: string; channel?: string | null; source?: string | null; campaign_id?: string | null; value?: number; currency?: string; metadata?: Record<string, unknown> };
@@ -21,7 +25,15 @@ type ConversionEvent = { id: string; lead_id?: string | null; event_name: string
 
 const money = (value: number, currency = 'KZT') => new Intl.NumberFormat('ru-RU', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
-const labels: Record<string, string> = { lead_created: 'Лид', first_contact: 'Первый контакт', qualified: 'Целевой', call: 'Звонок', conversation: 'Диалог', message: 'Сообщение', appointment_booked: 'Запись', arrived: 'Приход', deal_created: 'Сделка', rejected: 'Отказ', sale: 'Продажа', lead: 'Lead', qualified_lead: 'Qualified Lead', purchase: 'Purchase' };
+const responseTime = (seconds?: number | null) => {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
+  const value = Math.max(0, Math.round(Number(seconds)));
+  if (value < 60) return `${value} сек`;
+  if (value < 3600) return `${Math.floor(value / 60)} мин ${value % 60} сек`;
+  return `${Math.floor(value / 3600)} ч ${Math.floor((value % 3600) / 60)} мин`;
+};
+const percent = (value: number, total: number) => total ? `${((value / total) * 100).toFixed(0)}%` : '—';
+const labels: Record<string, string> = { lead_created: 'Лид', first_contact: 'Первый контакт', first_response: 'Первый ответ клиники', qualified: 'Целевой', call: 'Звонок', conversation: 'Диалог', message: 'Сообщение', appointment_booked: 'Запись', arrived: 'Приход', deal_created: 'Сделка', rejected: 'Отказ', sale: 'Продажа', lead: 'Lead', qualified_lead: 'Qualified Lead', purchase: 'Purchase' };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -41,8 +53,11 @@ export default function GrowthEnginePage() {
   const [lost, setLost] = useState<LostOpportunity[]>([]);
   const [conversions, setConversions] = useState<ConversionEvent[]>([]);
   const [metaDatasetId, setMetaDatasetId] = useState('');
+  const [slaSeconds, setSlaSeconds] = useState(300);
+  const [staleAfterHours, setStaleAfterHours] = useState(24);
   const [loading, setLoading] = useState(true);
   const [syncingMeta, setSyncingMeta] = useState(false);
+  const [savingResponseSettings, setSavingResponseSettings] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -58,6 +73,10 @@ export default function GrowthEnginePage() {
       setOverview(summary); setJourney(journeyRows); setLost(lostRows); setConversions(conversionRows);
       const meta = summary.destinations?.find((item) => item.provider === 'meta');
       setMetaDatasetId(meta?.external_destination_id || '');
+      if (summary.speedToLead) {
+        setSlaSeconds(summary.speedToLead.slaSeconds);
+        setStaleAfterHours(summary.speedToLead.staleAfterHours);
+      }
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Ошибка загрузки Growth Engine'); }
     finally { setLoading(false); }
   };
@@ -69,10 +88,22 @@ export default function GrowthEnginePage() {
   ].map(([key, label]) => ({ key, label, value: overview?.funnel[key] || 0 })), [overview]);
   const openLost = lost.filter((item) => item.status === 'open' || item.status === 'recovering');
   const pending = conversions.filter((item) => ['pending', 'processing', 'failed'].includes(item.sync_status));
+  const speed = overview?.speedToLead;
+  const calls = overview?.callIntelligence;
 
   const updateOpportunity = async (id: string, status: LostOpportunity['status']) => {
     try { await api(`/api/growth/lost-opportunities/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status }) }); await load(); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось обновить возможность'); }
+  };
+
+  const saveResponseSettings = async () => {
+    setSavingResponseSettings(true); setMessage(null); setSuccess(null);
+    try {
+      await api('/api/growth/response-settings', { method: 'PUT', body: JSON.stringify({ slaSeconds, staleAfterHours }) });
+      setSuccess('SLA первого ответа сохранён для текущей клиники.');
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось сохранить SLA'); }
+    finally { setSavingResponseSettings(false); }
   };
 
   const saveMetaDestination = async () => {
@@ -96,19 +127,50 @@ export default function GrowthEnginePage() {
 
   return <div className="strategic-page">
     <div className="strategic-head">
-      <div><span>IMDS / Healthcare Growth OS</span><h1>Growth Engine</h1><p>Единый контур от первого рекламного касания до записи, прихода, продажи и возврата потерянной выручки. Все данные изолированы по выбранной клинике.</p></div>
+      <div><span>IMDS / Healthcare Growth OS</span><h1>Growth Engine</h1><p>Единый контур от первого рекламного касания до первого ответа клиники, записи, прихода, продажи и возврата потерянной выручки.</p></div>
       <button className="button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/>{loading ? 'Обновление…' : 'Обновить'}</button>
     </div>
     {message && <div className="alert alert--error">{message}</div>}
     {success && <div className="alert">{success}</div>}
 
     <div className="strategic-status">
-      <article><span>Событий пути пациента</span><strong>{overview?.journeyEvents || 0}</strong></article>
+      <article><span>Медиана первого ответа</span><strong>{responseTime(speed?.medianSeconds)}</strong></article>
+      <article><span>Ответили в SLA</span><strong>{speed ? percent(speed.withinSla, speed.respondedLeads) : '—'}</strong><small>{speed ? `${speed.withinSla} из ${speed.respondedLeads}` : 'Нет данных'}</small></article>
+      <article><span>Без ответа</span><strong>{speed?.unansweredLeads ?? 0}</strong><small>{speed?.staleUnansweredLeads ? `просрочено: ${speed.staleUnansweredLeads}` : 'просроченных нет'}</small></article>
+      <article><span>AI разобрано звонков</span><strong>{calls?.analyzedCalls ?? 0}</strong><small>{calls?.analyzableCalls ? `доступно: ${calls.analyzableCalls}` : 'нет транскриптов'}</small></article>
       <article><span>Открытых потерь</span><strong>{overview?.openLostOpportunities || 0}</strong></article>
       <article><span>Потенциально вернуть</span><strong>{money(overview?.recoverableValue || 0)}</strong></article>
-      <article><span>Offline conversions в очереди</span><strong>{overview?.pendingConversions || 0}</strong></article>
-      <article><span>Offline conversions отправлено</span><strong>{overview?.sentConversions || 0}</strong></article>
-      <article><span>Без рекламного идентификатора</span><strong>{overview?.skippedConversions || 0}</strong></article>
+    </div>
+
+    <div className="strategic-grid strategic-grid--equal">
+      <section className="panel">
+        <div className="google-card-head"><div><h2>Speed-to-Lead</h2><p>Первый фактический ответ сотрудника: исходящее сообщение или завершённый звонок. Входящий контакт пациента не считается ответом клиники.</p></div><Clock3 size={20}/></div>
+        <div className="customer-facts">
+          <div><span>Среднее время</span><b>{responseTime(speed?.averageSeconds)}</b></div>
+          <div><span>SLA</span><b>{responseTime(speed?.slaSeconds)}</b></div>
+          <div><span>Нарушили SLA</span><b>{speed?.breached ?? 0}</b></div>
+          <div><span>Просрочены без ответа</span><b>{speed?.staleUnansweredLeads ?? 0}</b></div>
+        </div>
+        {isAdmin && <div className="strategic-note" style={{ display: 'grid', gap: 10 }}>
+          <strong>SLA текущей клиники</strong>
+          <div className="strategic-actions" style={{ alignItems: 'center' }}>
+            <label>Ответ за <input type="number" min={30} max={86400} value={slaSeconds} onChange={(event) => setSlaSeconds(Number(event.target.value))} style={{ width: 110 }}/ > сек</label>
+            <label>Просрочка без ответа <input type="number" min={1} max={720} value={staleAfterHours} onChange={(event) => setStaleAfterHours(Number(event.target.value))} style={{ width: 90 }}/ > ч</label>
+            <button className="button" type="button" onClick={() => void saveResponseSettings()} disabled={savingResponseSettings}>{savingResponseSettings ? 'Сохранение…' : 'Сохранить SLA'}</button>
+          </div>
+        </div>}
+      </section>
+
+      <section className="panel">
+        <div className="google-card-head"><div><h2>AI Call Intelligence</h2><p>AI заполняет существующую карточку звонка только по фактическому транскрипту и автоматически передаёт подтверждённую причину потери в Lost Revenue.</p></div><Headphones size={20}/></div>
+        <div className="customer-facts">
+          <div><span>Завершённые</span><b>{calls?.completedCalls ?? 0}</b></div>
+          <div><span>С транскриптом</span><b>{calls?.analyzableCalls ?? 0}</b></div>
+          <div><span>Средняя AI-оценка</span><b>{calls?.averageQualityScore == null ? '—' : `${calls.averageQualityScore.toFixed(1)}/100`}</b></div>
+          <div><span>AI выявил потери</span><b>{calls?.detectedLostCalls ?? 0}</b></div>
+        </div>
+        <div className="strategic-note">Анализ запускается на странице «Звонки». PENDING-звонки и звонки без транскрипта не оцениваются — система не генерирует вымышленные показатели.</div>
+      </section>
     </div>
 
     <section className="panel">
@@ -123,7 +185,7 @@ export default function GrowthEnginePage() {
       </section>
 
       <section className="panel">
-        <div className="google-card-head"><div><h2>Offline Conversions</h2><p>Нижняя часть воронки для Meta CAPI; Google/TikTok используют ту же очередь и будут подключены следующим адаптером.</p></div><Target size={20}/></div>
+        <div className="google-card-head"><div><h2>Offline Conversions</h2><p>Нижняя часть воронки для Meta CAPI; Google/TikTok используют ту же очередь и будут подключены отдельными адаптерами.</p></div><Target size={20}/></div>
         {isAdmin && <div className="strategic-note" style={{ display: 'grid', gap: 10 }}>
           <label><strong>Meta Dataset / Pixel ID</strong></label>
           <div className="strategic-actions" style={{ alignItems: 'center' }}>
@@ -131,7 +193,7 @@ export default function GrowthEnginePage() {
             <button className="button" type="button" onClick={() => void saveMetaDestination()} disabled={!metaDatasetId.trim()}>Сохранить</button>
             <button className="button" type="button" onClick={() => void syncMeta()} disabled={syncingMeta || !metaDatasetId.trim()}><Send size={14}/>{syncingMeta ? 'Отправка…' : 'Отправить в Meta'}</button>
           </div>
-          <small>Qualified Lead → Lead, Appointment → Schedule, Arrival → CompleteRegistration, Sale → Purchase. Телефон/email хешируются SHA-256; событие помечается sent только после успешного ответа Meta.</small>
+          <small>Qualified Lead → Lead, Appointment → Schedule, Arrival → CompleteRegistration, Sale → Purchase. Событие помечается sent только после успешного ответа Meta.</small>
         </div>}
         <div className="run-list">{conversions.length ? conversions.map((item) => <div className="run-item" key={item.id}><i className={`run-dot ${item.sync_status === 'sent' ? 'success' : item.sync_status === 'failed' ? 'failed' : ''}`}/><div><b>{labels[item.event_name] || item.event_name} → {item.destination}</b><small>{dateTime(item.occurred_at)}{item.value > 0 ? ` · ${money(item.value, item.currency)}` : ''}{item.last_error ? ` · ${item.last_error}` : ''}</small></div><span className="badge">{item.sync_status}</span></div>) : <div className="suite-state">Конверсионных событий пока нет.</div>}</div>
         {pending.length > 0 && <div className="strategic-note">В очереди {pending.length} событий. Growth Engine не помечает их отправленными, пока рекламный коннектор фактически не подтвердит доставку.</div>}
