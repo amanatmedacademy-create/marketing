@@ -78,6 +78,7 @@ export default function Calls() {
   const [dialerOpen, setDialerOpen] = useState(false);
   const [dialerMinimized, setDialerMinimized] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -118,8 +119,16 @@ export default function Calls() {
     };
   }, [calls]);
 
+  const refreshCall = async (callId: string) => {
+    const rows = await marketingApi.calls({ limit: 500 });
+    setCalls(rows);
+    const refreshed = rows.find((item) => item.id === callId) || null;
+    setSelected(refreshed);
+    return refreshed;
+  };
+
   const analyzeCall = async (call: MarketingCall) => {
-    if (analyzingId) return;
+    if (analyzingId || transcribingId) return;
     setAnalyzingId(call.id);
     setAnalysisMessage(null);
     try {
@@ -135,6 +144,28 @@ export default function Calls() {
       setAnalysisMessage(errorText(reason));
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const transcribeCall = async (call: MarketingCall) => {
+    if (transcribingId || analyzingId) return;
+    setTranscribingId(call.id);
+    setAnalysisMessage(null);
+    try {
+      const result = await telephonyApi.transcribe(call.id);
+      const refreshed = await refreshCall(call.id);
+      if (result.analysisError) {
+        setAnalysisMessage(`Расшифровка готова. AI-анализ не завершён: ${result.analysisError}`);
+      } else if (result.analysisSkipped) {
+        setAnalysisMessage(`Расшифровка готова. ${result.analysisSkipped}`);
+      } else {
+        setAnalysisMessage(`Расшифровка и AI-анализ завершены${refreshed?.ai_confidence != null ? ` · уверенность ${Number(refreshed.ai_confidence).toFixed(0)}%` : ''}.`);
+      }
+    } catch (reason) {
+      setAnalysisMessage(errorText(reason));
+      await refreshCall(call.id).catch(() => null);
+    } finally {
+      setTranscribingId(null);
     }
   };
 
@@ -174,7 +205,7 @@ export default function Calls() {
     if (normalized.replace(/\D/g, '').length < 10) return;
     setDialNumber(formatPhone(normalized));
     if (!telephony?.configured) {
-      setDialMessage('Zadarma пока не настроена. Добавьте API key, API secret и внутренний номер АТС в Cloudflare.');
+      setDialMessage('Zadarma не настроена для выбранной клиники. Подключите её в разделе «Интеграции».');
       setDialState('ready');
       return;
     }
@@ -228,15 +259,33 @@ export default function Calls() {
               <div><strong>{call.client_name || call.client_phone || 'Клиент не указан'}</strong><span>{call.client_name && call.client_phone ? call.client_phone : call.operator_name || 'Оператор не назначен'}</span></div>
               <div><b>{call.quality_score == null ? '—' : Number(call.quality_score).toFixed(0)}</b><small>{duration(call.duration_seconds)}</small></div>
               <p>{call.summary || call.call_result || 'Нет резюме'}</p>
-              <footer><span>{dateTime(call.started_at)}</span><em className={call.appointment_created ? 'success' : ''}>{call.appointment_created ? 'Записан' : call.loss_reason || (call.ai_analysis_status === 'completed' ? 'AI разобран' : 'Без результата')}</em></footer>
+              <footer><span>{dateTime(call.started_at)}</span><em className={call.appointment_created ? 'success' : ''}>{call.appointment_created ? 'Записан' : call.loss_reason || (call.ai_analysis_status === 'completed' ? 'AI разобран' : call.transcription_status === 'completed' ? 'Расшифрован' : 'Без результата')}</em></footer>
             </button>)}
           </div>
         </div>
 
         <div className="call-detail">
           {!selected ? <div className="calls-empty">Выберите звонок.</div> : <>
-            <header><div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_name || selected.client_phone || 'Клиент не указан'}</h2><p>{selected.client_name && selected.client_phone ? `${selected.client_phone} · ` : ''}{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div><div className="call-detail-actions"><button type="button" disabled={!selected.client_phone} onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button><button type="button" disabled={analyzingId === selected.id || selected.call_status !== 'COMPLETED' || !selected.transcript} onClick={() => void analyzeCall(selected)} title={selected.call_status !== 'COMPLETED' ? 'Нужен завершённый звонок' : !selected.transcript ? 'Сначала нужен транскрипт' : 'Запустить AI Call Intelligence'}><Sparkles/> {analyzingId === selected.id ? 'Анализ…' : selected.ai_analysis_status === 'completed' ? 'Переанализировать' : 'AI анализ'}</button><strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong></div></header>
-            {analysisMessage && <div className={selected.ai_analysis_status === 'completed' ? 'calls-state' : 'calls-state calls-state--error'}>{analysisMessage}</div>}
+            <header>
+              <div><span>{dateTime(selected.started_at)}</span><h2>{selected.client_name || selected.client_phone || 'Клиент не указан'}</h2><p>{selected.client_name && selected.client_phone ? `${selected.client_phone} · ` : ''}{selected.operator_name || 'Оператор не назначен'} · {duration(selected.duration_seconds)}</p></div>
+              <div className="call-detail-actions">
+                <button type="button" disabled={!selected.client_phone} onClick={() => selectForDial(selected)}><PhoneCall/> Набрать</button>
+                {!selected.transcript && <button
+                  type="button"
+                  disabled={transcribingId === selected.id || analyzingId === selected.id || selected.call_status !== 'COMPLETED' || !(selected.recording_url || selected.pbx_call_id || selected.recording_external_id)}
+                  onClick={() => void transcribeCall(selected)}
+                  title={selected.call_status !== 'COMPLETED'
+                    ? 'Нужен завершённый звонок'
+                    : !(selected.recording_url || selected.pbx_call_id || selected.recording_external_id)
+                      ? 'Zadarma ещё не передала идентификатор записи'
+                      : 'Получить запись, расшифровать и запустить AI Call Intelligence'}
+                ><Sparkles/> {transcribingId === selected.id ? 'Расшифровка…' : 'Транскрибировать + AI'}</button>}
+                {selected.transcript && <button type="button" disabled={analyzingId === selected.id || transcribingId === selected.id || selected.call_status !== 'COMPLETED'} onClick={() => void analyzeCall(selected)} title={selected.call_status !== 'COMPLETED' ? 'Нужен завершённый звонок' : 'Запустить AI Call Intelligence'}><Sparkles/> {analyzingId === selected.id ? 'Анализ…' : selected.ai_analysis_status === 'completed' ? 'Переанализировать' : 'AI анализ'}</button>}
+                <strong>{selected.quality_score == null ? '—' : `${Number(selected.quality_score).toFixed(0)}/100`}</strong>
+              </div>
+            </header>
+            {analysisMessage && <div className={selected.ai_analysis_status === 'completed' || selected.transcription_status === 'completed' ? 'calls-state' : 'calls-state calls-state--error'}>{analysisMessage}</div>}
+            {selected.transcription_status === 'failed' && selected.transcription_error && <div className="calls-state calls-state--error">Транскрипция: {selected.transcription_error}</div>}
             {selected.ai_analysis_status === 'failed' && selected.ai_analysis_error && <div className="calls-state calls-state--error">AI: {selected.ai_analysis_error}</div>}
             {selected.recording_url && <audio controls preload="none" src={selected.recording_url}/>} 
             <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания не указана'}</span><i>→</i><span>{selected.ad_id || 'Объявление не указано'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
@@ -246,7 +295,7 @@ export default function Calls() {
             </div>
             <section className="call-quality"><h3>Контроль качества{selected.ai_analysis_status === 'completed' ? ` · AI ${selected.ai_confidence == null ? '' : `${Number(selected.ai_confidence).toFixed(0)}%`}` : ''}</h3><div><label>Выявил боль {yesNo(selected.detected_pain)}</label><label>Задал вопросы {yesNo(selected.asked_questions)}</label><label>Презентовал ценность {yesNo(selected.presented_value)}</label><label>Отработал возражение {yesNo(selected.handled_objection)}</label><label>Предложил время {yesNo(selected.offered_specific_time)}</label><label>Подтвердил запись {yesNo(selected.confirmed_appointment)}</label><label>Назвал следующий шаг {yesNo(selected.stated_next_step)}</label><label>Запланировал дожим {yesNo(selected.follow_up_planned)}</label></div></section>
             <section className="call-text"><h3>Нарушения</h3><p>{selected.script_violations?.length ? selected.script_violations.join(' · ') : 'Нарушений не зафиксировано'}</p></section>
-            <section className="call-text"><h3>Расшифровка</h3><p>{selected.transcript || 'Расшифровка отсутствует'}</p></section>
+            <section className="call-text"><h3>Расшифровка</h3><p>{selected.transcript || (selected.transcription_status === 'processing' ? 'Расшифровка выполняется…' : 'Расшифровка отсутствует')}</p></section>
           </>}
         </div>
       </section>
@@ -295,7 +344,7 @@ export default function Calls() {
           <a className="phone-settings" href="/integrations" title="Настройки телефонии"><Settings/></a>
         </div>
 
-        <div className="phone-call-status"><span>{dialState === 'calling' ? 'Запрос в Zadarma' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{telephony?.configured ? `Callback · линия ${telephony.extension}` : 'Телефония не настроена'}</small></div>
+        <div className="phone-call-status"><span>{dialState === 'calling' ? 'Запрос в Zadarma' : dialNumber ? formatPhone(normalizePhone(dialNumber)) : 'Номер не выбран'}</span><small>{telephony?.configured ? `Callback · линия ${telephony.extension}` : 'Телефония не настроена для выбранной клиники'}</small></div>
 
         {dialMessage && <div className="phone-dialer-message"><span>{dialMessage}</span>{!telephony?.configured && <a href="/integrations">Подключить</a>}</div>}
 
