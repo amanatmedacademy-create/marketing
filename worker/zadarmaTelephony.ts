@@ -1,6 +1,8 @@
 type JsonRecord = Record<string, unknown>;
 
 export type ZadarmaTelephonyEnv = {
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   ZADARMA_API_KEY?: string;
   ZADARMA_API_SECRET?: string;
   ZADARMA_PBX_EXTENSION?: string;
@@ -180,6 +182,91 @@ function configured(env: ZadarmaTelephonyEnv): boolean {
     && Boolean(asString(env.ZADARMA_API_KEY) && asString(env.ZADARMA_API_SECRET) && asString(env.ZADARMA_PBX_EXTENSION));
 }
 
+function dbHeaders(env: ZadarmaTelephonyEnv, extra: HeadersInit = {}): Headers {
+  const serviceRole = asString(env.SUPABASE_SERVICE_ROLE_KEY);
+  const next = new Headers(extra);
+  next.set('apikey', serviceRole);
+  next.set('authorization', `Bearer ${serviceRole}`);
+  next.set('content-type', 'application/json');
+  next.set('accept', 'application/json');
+  return next;
+}
+
+async function db<T>(env: ZadarmaTelephonyEnv, path: string, init: RequestInit = {}): Promise<T> {
+  const base = asString(env.SUPABASE_URL).replace(/\/$/, '');
+  if (!base || !asString(env.SUPABASE_SERVICE_ROLE_KEY)) throw new Error('Supabase service role не настроен');
+  const response = await fetch(`${base}/rest/v1/${path}`, { ...init, headers: dbHeaders(env, init.headers), cache: 'no-store' });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Telephony DB ${response.status}: ${raw.slice(0, 1000)}`);
+  return (raw ? JSON.parse(raw) : null) as T;
+}
+
+async function createCallRequest(request: Request, env: ZadarmaTelephonyEnv, phone: string, extension: string): Promise<{ callId: string; requestId: string }> {
+  const companyId = asString(env.CURRENT_COMPANY_ID);
+  if (!companyId) throw new Error('Не выбрана текущая клиника');
+  const userId = asString(request.headers.get('x-amanat-auth-user'));
+  const now = new Date();
+  const calls = await db<JsonRecord[]>(env, 'marketing_calls?select=id', {
+    method: 'POST',
+    headers: { prefer: 'return=representation' },
+    body: JSON.stringify({
+      company_id: companyId,
+      operator_user_id: /^[0-9a-f-]{36}$/i.test(userId) ? userId : null,
+      client_phone: `+${phone}`,
+      source: 'ZADARMA',
+      channel: 'PHONE',
+      call_status: 'PENDING',
+      started_at: now.toISOString(),
+      duration_seconds: 0,
+      transcription_status: 'idle',
+      metadata: { provider: 'zadarma', direction: 'OUTBOUND', extension },
+    }),
+  });
+  const callId = asString(calls[0]?.id);
+  if (!callId) throw new Error('Не удалось создать карточку исходящего звонка');
+
+  try {
+    const callbacks = await db<JsonRecord[]>(env, 'telephony_callback_requests?select=id', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify({
+        company_id: companyId,
+        marketing_call_id: callId,
+        extension,
+        destination: phone,
+        status: 'requested',
+        requested_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + 10 * 60 * 1000).toISOString(),
+      }),
+    });
+    const requestId = asString(callbacks[0]?.id);
+    if (!requestId) throw new Error('Не удалось создать correlation request');
+    return { callId, requestId };
+  } catch (error) {
+    await db(env, `marketing_calls?id=eq.${encodeURIComponent(callId)}&company_id=eq.${encodeURIComponent(companyId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ call_status: 'CANCELLED', call_result: 'Ошибка подготовки Zadarma callback', updated_at: new Date().toISOString() }),
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function markRequestFailed(env: ZadarmaTelephonyEnv, ids: { callId: string; requestId: string }, error: unknown): Promise<void> {
+  const companyId = asString(env.CURRENT_COMPANY_ID);
+  const message = error instanceof Error ? error.message : String(error);
+  const now = new Date().toISOString();
+  await Promise.all([
+    db(env, `telephony_callback_requests?id=eq.${encodeURIComponent(ids.requestId)}&company_id=eq.${encodeURIComponent(companyId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'failed', last_error: message.slice(0, 1000), completed_at: now, updated_at: now }),
+    }).catch(() => undefined),
+    db(env, `marketing_calls?id=eq.${encodeURIComponent(ids.callId)}&company_id=eq.${encodeURIComponent(companyId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ call_status: 'CANCELLED', call_result: message.slice(0, 500), updated_at: now }),
+    }).catch(() => undefined),
+  ]);
+}
+
 export async function handleZadarmaTelephony(
   request: Request,
   env: ZadarmaTelephonyEnv,
@@ -198,7 +285,7 @@ export async function handleZadarmaTelephony(
       extension: configured(env) ? extension || null : null,
       mode: 'callback',
       credentialScope: tenantConfigured ? 'clinic' : usingLegacyDefaultFallback ? 'default-clinic-fallback' : 'unconfigured',
-      capabilities: ['outbound_callback', 'webrtc_key', 'recording_pull', 'transcription'],
+      capabilities: ['outbound_callback', 'webrtc_key', 'recording_pull', 'transcription', 'signed_webhook'],
     });
   }
 
@@ -227,11 +314,14 @@ export async function handleZadarmaTelephony(
   }
 
   if (url.pathname === '/api/telephony/calls' && request.method === 'POST') {
-    if (!configured(env)) return json({ error: 'Zadarma не настроена. Добавьте API key, API secret и PBX extension.' }, 400);
+    if (!configured(env)) return json({ error: 'Zadarma не настроена. Добавьте API key, API secret и внутренний номер АТС.' }, 400);
     const payload = await request.json().catch(() => ({})) as JsonRecord;
     const phone = cleanPhone(payload.phone);
     if (phone.length < 10) return json({ error: 'Некорректный номер телефона' }, 400);
+
+    let ids: { callId: string; requestId: string } | null = null;
     try {
+      ids = await createCallRequest(request, env, phone, extension);
       const result = await zadarmaRequest(env, '/v1/request/callback/', {
         from: extension,
         to: phone,
@@ -243,9 +333,12 @@ export async function handleZadarmaTelephony(
         mode: 'callback',
         extension,
         phone: `+${phone}`,
+        marketingCallId: ids.callId,
+        correlationRequestId: ids.requestId,
         result,
       });
     } catch (error) {
+      if (ids) await markRequestFailed(env, ids, error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
   }
