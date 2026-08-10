@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import DealWorkspaceHost from './components/DealWorkspace';
-import InternalCommunicationBridge from './components/InternalCommunicationBridge';
 import MarketingPlatform from './MarketingPlatform';
 import './styles.css';
 import './analytics.css';
@@ -24,7 +23,6 @@ function Root() {
   return <>
     <MarketingPlatform />
     <DealWorkspaceHost />
-    <InternalCommunicationBridge />
   </>;
 }
 
