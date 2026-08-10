@@ -1,5 +1,6 @@
 import type { Env } from './integrations';
 import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
+import { isActiveCompanyUser, listActiveCompanyUsers } from './companyUsers';
 
 // Колл-Центр: порт Unified Inbox из МИС в модуль «Чат».
 // Диалоги — marketing_conversations, сообщения — marketing_messages,
@@ -219,14 +220,16 @@ async function ensureThread(env: Env, threadId: string): Promise<Row | null> {
 async function ensureActiveUser(env: Env, id?: string | null): Promise<boolean> {
   if (!id) return true;
   if (!isUuid(id)) return false;
+  if (!await isActiveCompanyUser(env, companyId(env), id)) return false;
   const rows = await db<Row[]>(env, `/marketing_users?select=id&id=eq.${encodeURIComponent(id)}&status=eq.active&limit=1`);
   return rows.length > 0;
 }
 
 async function workspace(env: Env, requestId: string): Promise<Response> {
+  const tenantId = companyId(env);
   const [threads, users] = await Promise.all([
     db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&${companyFilter(env)}&archived_at=is.null&order=last_message_at.desc.nullslast&limit=500`),
-    db<Row[]>(env, '/marketing_users?select=id,name,role,status&status=eq.active&order=name.asc&limit=500')
+    listActiveCompanyUsers(env, tenantId, 'id,name,role,status')
   ]);
 
   const threadIds = threads.map((row) => stringValue(row, 'id')).filter(Boolean);
@@ -283,7 +286,7 @@ async function createThread(request: Request, env: Env, requestId: string): Prom
   const leadId = input?.leadId?.trim() || '';
   const channel = (input?.channel || 'WHATSAPP').toUpperCase();
   if (!CHANNELS.includes(channel)) return json(requestId, { error: 'Недопустимый канал' }, 400);
-  if (!await ensureActiveUser(env, input?.assignedUserId || null)) return json(requestId, { error: 'Выбранный сотрудник не найден или заблокирован' }, 400);
+  if (!await ensureActiveUser(env, input?.assignedUserId || null)) return json(requestId, { error: 'Выбранный сотрудник не найден в текущей клинике или заблокирован' }, 400);
 
   let contact: Row | null = null;
   if (leadId) {
@@ -301,7 +304,7 @@ async function createThread(request: Request, env: Env, requestId: string): Prom
   const rows = await db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}`, {
     method: 'POST',
     body: JSON.stringify({
-      company_id: companyId(env),
+      company_id: tenantIdForWrite(env),
       lead_id: leadId || null,
       title: title || phone,
       phone: phone || null,
@@ -317,6 +320,10 @@ async function createThread(request: Request, env: Env, requestId: string): Prom
   return rows[0] ? json(requestId, mapThreadBase(rows[0]), 201) : json(requestId, { error: 'Диалог не создан' }, 502);
 }
 
+function tenantIdForWrite(env: Env): string {
+  return companyId(env);
+}
+
 async function updateThread(request: Request, env: Env, requestId: string, threadId: string): Promise<Response> {
   const current = await ensureThread(env, threadId);
   if (!current) return json(requestId, { error: 'Диалог не найден' }, 404);
@@ -328,7 +335,7 @@ async function updateThread(request: Request, env: Env, requestId: string, threa
     patch.status = input.status;
   }
   if (input.assignedUserId !== undefined) {
-    if (!await ensureActiveUser(env, input.assignedUserId)) return json(requestId, { error: 'Выбранный сотрудник не найден или заблокирован' }, 400);
+    if (!await ensureActiveUser(env, input.assignedUserId)) return json(requestId, { error: 'Выбранный сотрудник не найден в текущей клинике или заблокирован' }, 400);
     patch.assigned_user_id = input.assignedUserId || null;
   }
   if (input.title !== undefined) {
