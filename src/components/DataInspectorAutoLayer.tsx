@@ -9,7 +9,6 @@ type RouteInfo = { title: string; description: string; sources: string[]; fields
 
 const ROUTES: Record<string, RouteInfo> = {
   '/': { title: 'Дашборд маркетинга', description: 'Сводный управленческий экран маркетинга: лиды, воронка, расходы, выручка и эффективность.', sources: ['IMDS CRM', 'Meta / TikTok Ads', 'IMDS Analytics'], fields: ['leads', 'target_leads', 'appointments', 'arrived', 'sales', 'spend', 'revenue'], technical: ['/api/dashboard', '/api/sources', '/api/leads', '/api/ads', '/api/ads/currencies', '/api/exchange-rates'] },
-  '/goals': { title: 'Цели и эффективность', description: 'Сопоставляет плановые цели с фактическими маркетинговыми KPI.', sources: ['IMDS Analytics', 'CRM', 'Advertising'], fields: ['goal', 'actual', 'progress', 'period'] },
   '/leads': { title: 'Лиды', description: 'Единый CRM-реестр обращений и их текущего состояния.', sources: ['marketing_leads', 'Call Center', 'Sales Funnel', 'Calls'], fields: ['id', 'name', 'phone', 'source', 'campaign', 'stage', 'manager', 'next_action', 'updated_at'], quality: 'fresh', technical: ['/api/leads', '/api/callcenter/workspace', '/api/calls', '/api/funnel/workspace'] },
   '/customers': { title: 'Клиенты 360°', description: 'Объединяет CRM-профиль и историю взаимодействий клиента.', sources: ['marketing_leads', 'Call Center', 'Sales Funnel'], fields: ['customer_id', 'contacts', 'touchpoints', 'stage', 'messages', 'sales'] },
   '/pipeline': { title: 'Воронка продаж', description: 'Показывает сделки по стадиям, ответственным и следующим действиям.', sources: ['Sales Funnel', 'IMDS CRM'], fields: ['pipeline_id', 'stage_id', 'marketing_lead_id', 'manager_user_id', 'amount', 'status'], quality: 'fresh', technical: ['/api/funnel/workspace'] },
@@ -20,7 +19,6 @@ const ROUTES: Record<string, RouteInfo> = {
   '/attribution': { title: 'Атрибуция', description: 'Связывает рекламный источник и UTM с CRM-результатом.', sources: ['marketing_leads', 'marketing_ads', 'UTM / click IDs'], fields: ['utm_source', 'utm_medium', 'utm_campaign', 'campaign_id', 'adset_id', 'ad_id', 'fbclid', 'gclid', 'ttclid'], quality: 'partial', technical: ['priority: ad_id → adset_id → campaign_id → unattributed'] },
   '/integrations': { title: 'Интеграции', description: 'Подключённые внешние системы, их состояние и синхронизации.', sources: ['Provider APIs', 'Encrypted integration credentials', 'Integration runs'], fields: ['provider', 'status', 'last_sync', 'last_error'], technical: ['/api/integrations/status', '/api/integrations/config', '/api/integrations/sync'] },
   '/data-quality': { title: 'Качество данных', description: 'Контроль полноты, свежести и согласованности данных.', sources: ['IMDS validation', 'CRM', 'Advertising', 'Integrations'], fields: ['check', 'severity', 'source', 'record_count', 'last_seen', 'status'], quality: 'fresh' },
-  '/reports': { title: 'Отчёты', description: 'Управленческие отчёты по маркетингу и продажам.', sources: ['IMDS Analytics', 'CRM', 'Advertising'], fields: ['period', 'dimensions', 'metrics', 'filters', 'totals'] },
 };
 
 const SPECIALS: Array<{ aliases: string[]; data: Partial<Definition> }> = [
