@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CheckCircle2, Database, Download, FileText, RefreshCw, Send, UsersRound, Workflow } from 'lucide-react';
+import { AlertTriangle, BarChart3, CheckCircle2, Database, Download, FileText, RefreshCw, Send, UsersRound } from 'lucide-react';
 import { fetchChatWorkspace, sendWhatsAppTemplate, type ChatThread, type WhatsAppTemplate } from '../services/callCenterChat';
 import { marketingApi, type DashboardDailyRow, type MarketingLead, type SourceSummaryRow } from '../services/api';
-import { operationsApi, type AutomationRule } from '../services/operations';
 import '../marketing-suite.css';
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
@@ -118,19 +117,6 @@ export function WhatsAppTemplatesPage() {
   return <div className="stack suite-page"><PageHeader eyebrow="WABA Template Library" title="WhatsApp-шаблоны" text="Библиотека approved-шаблонов из текущего WhatsApp Business Account." action={<button className="button" onClick={() => void load()}><RefreshCw size={16}/>Обновить</button>}/>{message && <div className="alert">{message}</div>}
     <div className="suite-kpis"><article><FileText/><span>Доступно</span><strong>{number(templates.length)}</strong></article><article><CheckCircle2/><span>Flow «Запись»</span><strong>{clinicStatus || '—'}</strong></article></div>
     <section className="panel"><div className="suite-section-title"><div><h2>Шаблоны Meta</h2><p>API возвращает только одобренные и поддерживаемые шаблоны.</p></div><button className="button" onClick={() => void createClinicTemplate()}>Создать шаблон записи</button></div>{loading?<State text="Загружаем шаблоны…"/>:<div className="suite-template-grid">{templates.map(template => <article key={`${template.name}-${template.language}`}><header><span>{template.category || 'TEMPLATE'}</span><b>{template.status}</b></header><h3>{template.name}</h3><p>{template.body}</p><footer><span>{template.language}</span><span>{template.parameterCount} параметров</span></footer></article>)}</div>}</section>
-  </div>;
-}
-
-export function AutomationStudioPage() {
-  const [rules, setRules] = useState<AutomationRule[]>([]); const [loading,setLoading]=useState(true); const [message,setMessage]=useState<string|null>(null);
-  const [form,setForm]=useState({name:'',trigger_text:'',action_text:''});
-  const load=async()=>{setLoading(true);try{setRules(await operationsApi.automations.list());}catch(error){setMessage(error instanceof Error?error.message:'Не удалось загрузить автоматизации');}finally{setLoading(false);}};
-  useEffect(()=>{void load();},[]);
-  const create=async()=>{if(!form.name.trim()||!form.trigger_text.trim()||!form.action_text.trim())return; try{setRules(await operationsApi.automations.create({...form,enabled:true}));setForm({name:'',trigger_text:'',action_text:''});}catch(error){setMessage(error instanceof Error?error.message:'Не удалось создать правило');}};
-  const toggle=async(rule:AutomationRule)=>{try{setRules(await operationsApi.automations.update(rule.id,{enabled:!rule.enabled}));}catch(error){setMessage(error instanceof Error?error.message:'Не удалось обновить правило');}};
-  return <div className="stack suite-page"><PageHeader eyebrow="Marketing Automation" title="Automation Studio" text="Рабочий конструктор правил на существующем Operations API: триггер → действие → состояние." action={<button className="button" onClick={()=>void load()}><RefreshCw size={16}/>Обновить</button>}/>{message&&<div className="alert">{message}</div>}
-    <div className="suite-two-col"><section className="panel suite-form"><h2>Новое правило</h2><label>Название<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Триггер<textarea value={form.trigger_text} onChange={e=>setForm({...form,trigger_text:e.target.value})} placeholder="Например: новый лид из Instagram"/></label><label>Действие<textarea value={form.action_text} onChange={e=>setForm({...form,action_text:e.target.value})} placeholder="Например: отправить WhatsApp шаблон"/></label><button className="button button--primary" onClick={()=>void create()}><Workflow size={16}/>Создать правило</button></section>
-      <section className="panel"><h2>Активные сценарии</h2>{loading?<State text="Загружаем автоматизации…"/>:<div className="suite-automation-list">{rules.map(rule=><article key={rule.id}><div className="suite-journey-node"><span>TRIGGER</span><b>{rule.trigger_text}</b></div><i>→</i><div className="suite-journey-node"><span>ACTION</span><b>{rule.action_text}</b></div><button className={rule.enabled?'status-pill status-pill--ok':'status-pill'} onClick={()=>void toggle(rule)}>{rule.enabled?'Включено':'Выключено'}</button></article>)}</div>}</section></div>
   </div>;
 }
 
