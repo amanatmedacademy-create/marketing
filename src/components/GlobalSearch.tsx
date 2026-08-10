@@ -59,7 +59,7 @@ export default function GlobalSearch() {
       id: `lead:${lead.id}`,
       title: lead.name || lead.phone || 'Лид без имени',
       meta: [lead.phone, lead.stage, lead.source || lead.platform].filter(Boolean).join(' · '),
-      route: '/leads',
+      route: `/leads?lead=${encodeURIComponent(lead.id)}`,
       kind: 'lead',
     }));
 
@@ -76,7 +76,7 @@ export default function GlobalSearch() {
         id: `customer:${key}`,
         title: lead.name || lead.phone || 'Клиент',
         meta: [lead.phone, lead.email, 'Customer 360'].filter(Boolean).join(' · '),
-        route: '/customers',
+        route: `/customers?customer=${encodeURIComponent(key)}`,
         kind: 'customer',
       });
     }
@@ -88,7 +88,9 @@ export default function GlobalSearch() {
       id: `campaign:${row.row_key}`,
       title: row.campaign_name || row.creative_name || 'Рекламная кампания',
       meta: [row.platform, row.adset_name, row.creative_name].filter(Boolean).join(' · '),
-      route: '/advertising',
+      route: row.campaign_id
+        ? `/advertising?campaign=${encodeURIComponent(row.campaign_id)}`
+        : `/advertising?q=${encodeURIComponent(row.campaign_name || row.creative_name || '')}`,
       kind: 'campaign',
     }));
 
@@ -126,6 +128,6 @@ export default function GlobalSearch() {
         </button>;
       })}
       {results.length > 0 && <footer>Enter — открыть первый результат · Esc — закрыть</footer>}
-    </div>}
+    </div>
   </div>;
 }
