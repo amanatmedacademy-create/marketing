@@ -1,6 +1,8 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
+type ScopedEnv = Env & TenantScopedEnv;
 type StageType = 'open' | 'won' | 'lost';
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
@@ -23,29 +25,20 @@ class UpstreamError extends Error {
   }
 }
 
-function role(request: Request): string {
-  return (request.headers.get(ROLE_HEADER) || '').trim().toLowerCase();
-}
+function role(request: Request): string { return (request.headers.get(ROLE_HEADER) || '').trim().toLowerCase(); }
 function actorId(request: Request): string | null {
   const value = (request.headers.get(USER_HEADER) || '').trim();
   return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value) ? value : null;
 }
 function canWrite(request: Request): boolean { return WRITE_ROLES.includes(role(request)); }
 function canManage(request: Request): boolean { return MANAGE_ROLES.includes(role(request)); }
-function headers(requestId: string): HeadersInit {
-  return { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-request-id': requestId };
-}
-function json(requestId: string, body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: headers(requestId) });
-}
+function headers(requestId: string): HeadersInit { return { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-request-id': requestId }; }
+function json(requestId: string, body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: headers(requestId) }); }
 function text(row: Row, key: string): string {
   const value = row[key];
   return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
 }
-function optional(row: Row, key: string): string | undefined {
-  const value = text(row, key).trim();
-  return value || undefined;
-}
+function optional(row: Row, key: string): string | undefined { const value = text(row, key).trim(); return value || undefined; }
 function numberValue(row: Row, key: string): number {
   const value = row[key];
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -53,9 +46,7 @@ function numberValue(row: Row, key: string): number {
   return 0;
 }
 function bool(row: Row, key: string): boolean { return row[key] === true; }
-function nullable(value: unknown, max = 500): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
-}
+function nullable(value: unknown, max = 500): string | null { return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null; }
 function isUuid(value: string): boolean { return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value); }
 
 function dbHeaders(env: Env, init: RequestInit): Headers {
@@ -76,49 +67,23 @@ async function db<T>(env: Env, path: string, init: RequestInit = {}): Promise<T>
   return response.json() as Promise<T>;
 }
 
-async function resolveCompanyId(env: Env, request: Request): Promise<string> {
-  const userId = actorId(request);
-  if (userId) {
-    const memberships = await db<Row[]>(env, `/crm_company_members?select=company_id&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&limit=1`);
-    const companyId = optional(memberships[0] || {}, 'company_id');
-    if (companyId) return companyId;
-  }
-  const companies = await db<Row[]>(env, '/crm_companies?select=id&order=created_at.asc&limit=2');
-  if (companies.length !== 1) throw new Error('Не удалось однозначно определить компанию');
-  return text(companies[0], 'id');
+async function resolveCompanyId(env: Env, _request: Request): Promise<string> {
+  return requireCompanyId(env as ScopedEnv);
 }
 
 function mapStage(row: Row) {
-  return {
-    id: text(row, 'id'), pipelineId: text(row, 'pipeline_id'), name: text(row, 'name'), color: text(row, 'color') || '#64748b',
-    position: numberValue(row, 'position'), probability: numberValue(row, 'probability'), stageType: text(row, 'stage_type') as StageType,
-    createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at')
-  };
+  return { id: text(row, 'id'), pipelineId: text(row, 'pipeline_id'), name: text(row, 'name'), color: text(row, 'color') || '#64748b', position: numberValue(row, 'position'), probability: numberValue(row, 'probability'), stageType: text(row, 'stage_type') as StageType, createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at') };
 }
 function mapPipeline(row: Row, stages: Row[]) {
-  return {
-    id: text(row, 'id'), name: text(row, 'name'), isDefault: bool(row, 'is_default'), position: numberValue(row, 'position'),
-    stages: stages.filter((stage) => text(stage, 'pipeline_id') === text(row, 'id')).sort((a, b) => numberValue(a, 'position') - numberValue(b, 'position')).map(mapStage),
-    createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at')
-  };
+  return { id: text(row, 'id'), name: text(row, 'name'), isDefault: bool(row, 'is_default'), position: numberValue(row, 'position'), stages: stages.filter((stage) => text(stage, 'pipeline_id') === text(row, 'id')).sort((a, b) => numberValue(a, 'position') - numberValue(b, 'position')).map(mapStage), createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at') };
 }
 function mapDeal(row: Row) {
   return {
-    id: text(row, 'id'), pipelineId: text(row, 'pipeline_id'), stageId: text(row, 'stage_id'), marketingLeadId: optional(row, 'marketing_lead_id'),
-    contactId: optional(row, 'contact_id'), fullName: text(row, 'title'), phone: optional(row, 'phone'), email: optional(row, 'email'), source: optional(row, 'source') || 'Маркетинг',
-    priority: (text(row, 'priority') || 'MEDIUM') as Priority, managerUserId: optional(row, 'assignee_id'), diagnostUserId: optional(row, 'diagnost_user_id'),
-    description: optional(row, 'description'), amount: numberValue(row, 'amount'), currency: text(row, 'currency') || 'KZT', status: text(row, 'status'),
-    position: numberValue(row, 'position'), paid: bool(row, 'paid'), lostReason: optional(row, 'lost_reason'), nextAction: optional(row, 'next_action'),
-    nextActionAt: optional(row, 'next_action_at'), stageEnteredAt: text(row, 'stage_entered_at'), createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at'),
-    wonAt: optional(row, 'won_at'), lostAt: optional(row, 'lost_at')
+    id: text(row, 'id'), pipelineId: text(row, 'pipeline_id'), stageId: text(row, 'stage_id'), marketingLeadId: optional(row, 'marketing_lead_id'), contactId: optional(row, 'contact_id'), fullName: text(row, 'title'), phone: optional(row, 'phone'), email: optional(row, 'email'), source: optional(row, 'source') || 'Маркетинг', priority: (text(row, 'priority') || 'MEDIUM') as Priority, managerUserId: optional(row, 'assignee_id'), diagnostUserId: optional(row, 'diagnost_user_id'), description: optional(row, 'description'), amount: numberValue(row, 'amount'), currency: text(row, 'currency') || 'KZT', status: text(row, 'status'), position: numberValue(row, 'position'), paid: bool(row, 'paid'), lostReason: optional(row, 'lost_reason'), nextAction: optional(row, 'next_action'), nextActionAt: optional(row, 'next_action_at'), stageEnteredAt: text(row, 'stage_entered_at'), createdAt: text(row, 'created_at'), updatedAt: text(row, 'updated_at'), wonAt: optional(row, 'won_at'), lostAt: optional(row, 'lost_at')
   };
 }
-function mapUser(row: Row) {
-  return { id: text(row, 'id'), fullName: optional(row, 'full_name') || text(row, 'name') || [text(row, 'first_name'), text(row, 'last_name')].filter(Boolean).join(' '), role: text(row, 'role') };
-}
-function mapEvent(row: Row) {
-  return { id: text(row, 'id'), dealId: text(row, 'deal_id'), pipelineId: text(row, 'pipeline_id'), fromStageId: optional(row, 'from_stage_id'), toStageId: text(row, 'to_stage_id'), actorUserId: optional(row, 'actor_user_id'), reason: optional(row, 'reason'), createdAt: text(row, 'created_at') };
-}
+function mapUser(row: Row) { return { id: text(row, 'id'), fullName: optional(row, 'full_name') || text(row, 'name') || [text(row, 'first_name'), text(row, 'last_name')].filter(Boolean).join(' '), role: text(row, 'role') }; }
+function mapEvent(row: Row) { return { id: text(row, 'id'), dealId: text(row, 'deal_id'), pipelineId: text(row, 'pipeline_id'), fromStageId: optional(row, 'from_stage_id'), toStageId: text(row, 'to_stage_id'), actorUserId: optional(row, 'actor_user_id'), reason: optional(row, 'reason'), createdAt: text(row, 'created_at') }; }
 
 async function workspace(request: Request, env: Env, url: URL, requestId: string): Promise<Response> {
   const companyId = await resolveCompanyId(env, request);
@@ -153,19 +118,13 @@ async function workspace(request: Request, env: Env, url: URL, requestId: string
     return sum + numberValue(deal, 'amount') * (numberValue(stage || {}, 'probability') / 100);
   }, 0);
   const overdue = openDeals.filter((deal) => optional(deal, 'next_action_at') && new Date(text(deal, 'next_action_at')).getTime() < Date.now()).length;
-  return json(requestId, {
-    companyId,
-    pipelines: pipelines.map((pipeline) => mapPipeline(pipeline, stages)),
-    selectedPipelineId: pipelineId,
-    deals: deals.map(mapDeal), users: users.map(mapUser), events: events.map(mapEvent),
-    stats: { total: deals.length, open: openDeals.length, won: wonDeals.length, lost: lostDeals.length, wonAmount: wonDeals.reduce((sum, deal) => sum + numberValue(deal, 'amount'), 0), weightedAmount, overdue }
-  });
+  return json(requestId, { companyId, pipelines: pipelines.map((pipeline) => mapPipeline(pipeline, stages)), selectedPipelineId: pipelineId, deals: deals.map(mapDeal), users: users.map(mapUser), events: events.map(mapEvent), stats: { total: deals.length, open: openDeals.length, won: wonDeals.length, lost: lostDeals.length, wonAmount: wonDeals.reduce((sum, deal) => sum + numberValue(deal, 'amount'), 0), weightedAmount, overdue } });
 }
 
 async function contacts(request: Request, env: Env, url: URL, requestId: string): Promise<Response> {
-  await resolveCompanyId(env, request);
+  const companyId = await resolveCompanyId(env, request);
   const q = (url.searchParams.get('q') || '').trim().slice(0, 120).replace(/[,*()]/g, ' ');
-  const params = new URLSearchParams({ select: CONTACT_SELECT, order: 'updated_at.desc', limit: '50' });
+  const params = new URLSearchParams({ select: CONTACT_SELECT, company_id: `eq.${companyId}`, order: 'updated_at.desc', limit: '50' });
   if (q) params.set('or', `(name.ilike.*${q}*,phone.ilike.*${q}*,email.ilike.*${q}*)`);
   const rows = await db<Row[]>(env, `/marketing_leads?${params.toString()}`);
   return json(requestId, rows.map((row) => ({ id: text(row, 'id'), fullName: text(row, 'name'), phone: optional(row, 'phone'), email: optional(row, 'email'), source: optional(row, 'source'), description: optional(row, 'first_message'), crmDealId: optional(row, 'crm_deal_id') })));
@@ -176,12 +135,18 @@ async function getPipelineAndStage(env: Env, companyId: string, pipelineId?: str
   if (!resolvedPipelineId) {
     const rows = await db<Row[]>(env, `/crm_pipelines?select=id&company_id=eq.${companyId}&order=is_default.desc,position.asc&limit=1`);
     resolvedPipelineId = text(rows[0] || {}, 'id');
+  } else {
+    const rows = await db<Row[]>(env, `/crm_pipelines?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(resolvedPipelineId)}&limit=1`);
+    if (!rows[0]) throw new Error('Воронка не принадлежит текущей клинике');
   }
   if (!resolvedPipelineId) throw new Error('Воронка не найдена');
   let resolvedStageId = stageId || '';
   if (!resolvedStageId) {
     const rows = await db<Row[]>(env, `/crm_pipeline_stages?select=id&company_id=eq.${companyId}&pipeline_id=eq.${resolvedPipelineId}&stage_type=eq.open&order=position.asc&limit=1`);
     resolvedStageId = text(rows[0] || {}, 'id');
+  } else {
+    const rows = await db<Row[]>(env, `/crm_pipeline_stages?select=id&company_id=eq.${companyId}&pipeline_id=eq.${resolvedPipelineId}&id=eq.${encodeURIComponent(resolvedStageId)}&limit=1`);
+    if (!rows[0]) throw new Error('Стадия не принадлежит текущей клинике');
   }
   if (!resolvedStageId) throw new Error('Стадия не найдена');
   return { pipelineId: resolvedPipelineId, stageId: resolvedStageId };
@@ -194,11 +159,13 @@ async function saveDeal(request: Request, env: Env, requestId: string, id?: stri
   if (!body) return json(requestId, { error: 'Тело запроса не распознано' }, 400);
   const fullName = nullable(body.fullName, 200);
   if (!id && !fullName) return json(requestId, { error: 'Имя клиента обязательно' }, 400);
+  if (id) {
+    const existing = await db<Row[]>(env, `/crm_deals?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(id)}&deleted_at=is.null&limit=1`);
+    if (!existing[0]) return json(requestId, { error: 'Сделка не найдена в текущей клинике' }, 404);
+  }
   const pipeline = await getPipelineAndStage(env, companyId, typeof body.pipelineId === 'string' ? body.pipelineId : undefined, typeof body.stageId === 'string' ? body.stageId : undefined);
   const priority = typeof body.priority === 'string' && PRIORITIES.includes(body.priority as Priority) ? body.priority : 'MEDIUM';
-  const patch: Row = {
-    company_id: companyId, pipeline_id: pipeline.pipelineId, stage_id: pipeline.stageId, updated_at: new Date().toISOString()
-  };
+  const patch: Row = { company_id: companyId, pipeline_id: pipeline.pipelineId, stage_id: pipeline.stageId, updated_at: new Date().toISOString() };
   if (fullName) patch.title = fullName;
   if (body.phone !== undefined) patch.phone = nullable(body.phone, 60);
   if (body.email !== undefined) patch.email = nullable(body.email, 254);
@@ -207,7 +174,13 @@ async function saveDeal(request: Request, env: Env, requestId: string, id?: stri
   if (body.priority !== undefined || !id) patch.priority = priority;
   if (body.managerUserId !== undefined) patch.assignee_id = typeof body.managerUserId === 'string' && isUuid(body.managerUserId) ? body.managerUserId : null;
   if (body.diagnostUserId !== undefined) patch.diagnost_user_id = typeof body.diagnostUserId === 'string' && isUuid(body.diagnostUserId) ? body.diagnostUserId : null;
-  if (body.marketingLeadId !== undefined) patch.marketing_lead_id = typeof body.marketingLeadId === 'string' && isUuid(body.marketingLeadId) ? body.marketingLeadId : null;
+  if (body.marketingLeadId !== undefined) {
+    if (typeof body.marketingLeadId === 'string' && isUuid(body.marketingLeadId)) {
+      const leads = await db<Row[]>(env, `/marketing_leads?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(body.marketingLeadId)}&limit=1`);
+      if (!leads[0]) return json(requestId, { error: 'Лид не принадлежит текущей клинике' }, 400);
+      patch.marketing_lead_id = body.marketingLeadId;
+    } else patch.marketing_lead_id = null;
+  }
   if (body.amount !== undefined) {
     const amount = Number(body.amount);
     if (!Number.isFinite(amount) || amount < 0) return json(requestId, { error: 'Некорректная сумма' }, 400);
@@ -217,14 +190,12 @@ async function saveDeal(request: Request, env: Env, requestId: string, id?: stri
   if (body.lostReason !== undefined) patch.lost_reason = nullable(body.lostReason, 1000);
   if (body.nextAction !== undefined) patch.next_action = nullable(body.nextAction, 1000);
   if (body.nextActionAt !== undefined) patch.next_action_at = nullable(body.nextActionAt, 80);
-  if (!id) {
-    patch.position = Date.now(); patch.currency = 'KZT'; patch.created_by = actorId(request); patch.created_at = new Date().toISOString();
-  }
+  if (!id) { patch.position = Date.now(); patch.currency = 'KZT'; patch.created_by = actorId(request); patch.created_at = new Date().toISOString(); }
   const path = id ? `/crm_deals?id=eq.${encodeURIComponent(id)}&company_id=eq.${companyId}&deleted_at=is.null&select=${DEAL_SELECT}` : `/crm_deals?select=${DEAL_SELECT}`;
   const rows = await db<Row[]>(env, path, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(patch) });
   if (!rows[0]) return json(requestId, { error: id ? 'Сделка не обновлена' : 'Сделка не создана' }, 502);
   if (patch.marketing_lead_id) {
-    await db<Row[]>(env, `/marketing_leads?id=eq.${patch.marketing_lead_id}`, { method: 'PATCH', body: JSON.stringify({ crm_deal_id: text(rows[0], 'id'), updated_at: new Date().toISOString() }) });
+    await db<Row[]>(env, `/marketing_leads?id=eq.${patch.marketing_lead_id}&company_id=eq.${companyId}`, { method: 'PATCH', body: JSON.stringify({ crm_deal_id: text(rows[0], 'id'), updated_at: new Date().toISOString() }) });
   }
   return json(requestId, mapDeal(rows[0]), id ? 200 : 201);
 }
@@ -234,6 +205,9 @@ async function moveDeal(request: Request, env: Env, requestId: string, id: strin
   const companyId = await resolveCompanyId(env, request);
   const body = await request.json().catch(() => null) as { pipelineId?: string; stageId?: string; position?: number; reason?: string } | null;
   if (!body?.pipelineId || !body.stageId || !isUuid(body.pipelineId) || !isUuid(body.stageId)) return json(requestId, { error: 'Не указана целевая воронка или стадия' }, 400);
+  const existing = await db<Row[]>(env, `/crm_deals?select=id&company_id=eq.${companyId}&id=eq.${encodeURIComponent(id)}&deleted_at=is.null&limit=1`);
+  if (!existing[0]) return json(requestId, { error: 'Сделка не найдена в текущей клинике' }, 404);
+  await getPipelineAndStage(env, companyId, body.pipelineId, body.stageId);
   const rows = await db<Row[]>(env, '/rpc/crm_move_deal', { method: 'POST', body: JSON.stringify({ deal_id_value: id, pipeline_id_value: body.pipelineId, stage_id_value: body.stageId, position_value: Number.isFinite(body.position) ? body.position : null, reason_value: nullable(body.reason, 1000), actor_user_id_value: actorId(request) }) });
   const row = Array.isArray(rows) ? rows[0] : rows;
   if (!row || text(row, 'company_id') !== companyId) return json(requestId, { error: 'Сделка не перемещена' }, 502);
@@ -293,6 +267,10 @@ async function createStage(request: Request, env: Env, requestId: string): Promi
   const body = await request.json().catch(() => null) as { pipelineId?: string; name?: string; color?: string; probability?: number; stageType?: StageType; afterStageId?: string } | null;
   const name = nullable(body?.name, 120);
   if (!body?.pipelineId || !isUuid(body.pipelineId) || !name) return json(requestId, { error: 'Воронка и название стадии обязательны' }, 400);
+  await getPipelineAndStage(env, companyId, body.pipelineId, undefined).catch(async (error) => {
+    if (error instanceof Error && error.message === 'Стадия не найдена') return;
+    throw error;
+  });
   const type: StageType = ['open', 'won', 'lost'].includes(body.stageType || '') ? body.stageType as StageType : 'open';
   const stages = await db<Row[]>(env, `/crm_pipeline_stages?select=${STAGE_SELECT}&company_id=eq.${companyId}&pipeline_id=eq.${body.pipelineId}&order=position.asc`);
   const afterIndex = body.afterStageId ? stages.findIndex((item) => text(item, 'id') === body.afterStageId) : stages.length - 1;
@@ -300,7 +278,7 @@ async function createStage(request: Request, env: Env, requestId: string): Promi
   const previousPosition = afterIndex >= 0 ? numberValue(stages[afterIndex], 'position') : 0;
   const position = next ? Math.floor((previousPosition + numberValue(next, 'position')) / 2) : previousPosition + 100;
   if (next && position === previousPosition) {
-    for (let index = 0; index < stages.length; index += 1) await db<Row[]>(env, `/crm_pipeline_stages?id=eq.${text(stages[index], 'id')}`, { method: 'PATCH', body: JSON.stringify({ position: (index + 1) * 100 }) });
+    for (let index = 0; index < stages.length; index += 1) await db<Row[]>(env, `/crm_pipeline_stages?id=eq.${text(stages[index], 'id')}&company_id=eq.${companyId}`, { method: 'PATCH', body: JSON.stringify({ position: (index + 1) * 100 }) });
   }
   const rows = await db<Row[]>(env, `/crm_pipeline_stages?select=${STAGE_SELECT}`, { method: 'POST', body: JSON.stringify({ company_id: companyId, pipeline_id: body.pipelineId, name, color: typeof body.color === 'string' && /^#[0-9a-f]{6}$/i.test(body.color) ? body.color : '#64748b', position: next && position === previousPosition ? (afterIndex + 2) * 100 - 50 : position, probability: Math.max(0, Math.min(100, Math.trunc(Number(body.probability) || 0))), stage_type: type }) });
   return rows[0] ? json(requestId, mapStage(rows[0]), 201) : json(requestId, { error: 'Стадия не создана' }, 502);
@@ -339,6 +317,7 @@ export async function handleSalesFunnelV2(request: Request, env: Env, url: URL):
   if (!path.startsWith('/api/funnel/')) return null;
   const requestId = crypto.randomUUID();
   try {
+    requireCompanyId(env as ScopedEnv);
     if (request.method === 'GET' && path === '/api/funnel/workspace') return workspace(request, env, url, requestId);
     if (request.method === 'GET' && path === '/api/funnel/contacts') return contacts(request, env, url, requestId);
     if (request.method === 'POST' && path === '/api/funnel/leads') return saveDeal(request, env, requestId);
