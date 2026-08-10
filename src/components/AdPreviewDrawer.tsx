@@ -29,8 +29,6 @@ type PreviewResponse = {
   content: AdPreviewContent;
 };
 
-type AdIndexRow = { ad_id: string; ad_name: string; creative_name?: string };
-type AdIndexResponse = { rows?: AdIndexRow[] };
 type MetaPreviewFrame = { src: string; width?: number; height?: number };
 type PreviewLayout = { width: number; height: number; scale: number };
 
@@ -39,10 +37,6 @@ const modeLabels: Array<{ id: Mode; label: string; icon: typeof Monitor }> = [
   { id: 'instagram', label: 'Instagram', icon: ImageIcon },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
 ];
-
-function normalize(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
-}
 
 function safeExternalUrl(value?: string) {
   if (!value) return '';
@@ -104,11 +98,9 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-
     const measure = () => {
       const rect = host.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
-
       const border = isDesktop ? 2 : 16;
       const chrome = isDesktop ? 36 : 52;
       const maxWidth = isDesktop ? 590 : 440;
@@ -118,10 +110,8 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
       const scale = Math.max(0.1, Math.min(screenWidth / intrinsicWidth, isDesktop ? 1.15 : 1.25));
       const naturalHeight = Math.ceil(intrinsicHeight * scale + chrome + border);
       const height = Math.max(isDesktop ? 240 : 360, Math.min(rect.height - 2, naturalHeight));
-
       setLayout({ width: Math.floor(width), height: Math.floor(height), scale });
     };
-
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);
@@ -129,31 +119,11 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
   }, [intrinsicHeight, intrinsicWidth, isDesktop]);
 
   return <div className="ad-preview-device-host" ref={hostRef}>
-    <div
-      className={`ad-preview-device ${isDesktop ? 'device-desktop' : 'device-phone'} mode-${mode}`}
-      style={{ width: layout.width, height: layout.height }}
-    >
-      {isDesktop ? <div className="ad-preview-desktop-chrome">
-        <div className="ad-preview-window-dots"><i/><i/><i/></div>
-        <div className="ad-preview-address">Meta Ads Preview</div>
-      </div> : <div className="ad-preview-phone-chrome">
-        <span className="ad-preview-phone-time">9:41</span>
-        <span className="ad-preview-phone-speaker"/>
-        <span className="ad-preview-phone-status">● ●</span>
-      </div>}
+    <div className={`ad-preview-device ${isDesktop ? 'device-desktop' : 'device-phone'} mode-${mode}`} style={{ width: layout.width, height: layout.height }}>
+      {isDesktop ? <div className="ad-preview-desktop-chrome"><div className="ad-preview-window-dots"><i/><i/><i/></div><div className="ad-preview-address">Meta Ads Preview</div></div> : <div className="ad-preview-phone-chrome"><span className="ad-preview-phone-time">9:41</span><span className="ad-preview-phone-speaker"/><span className="ad-preview-phone-status">● ●</span></div>}
       <div className="ad-preview-device-screen">
-        <div
-          className="ad-preview-native-content"
-          style={{ width: intrinsicWidth * layout.scale, height: intrinsicHeight * layout.scale }}
-        >
-          <iframe
-            className="ad-preview-native-frame"
-            title="Meta ad preview"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            referrerPolicy="no-referrer"
-            src={frame.src}
-            style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${layout.scale})` }}
-          />
+        <div className="ad-preview-native-content" style={{ width: intrinsicWidth * layout.scale, height: intrinsicHeight * layout.scale }}>
+          <iframe className="ad-preview-native-frame" title="Meta ad preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms" referrerPolicy="no-referrer" src={frame.src} style={{ width: intrinsicWidth, height: intrinsicHeight, transform: `scale(${layout.scale})` }}/>
         </div>
       </div>
       {!isDesktop && <div className="ad-preview-phone-home"><span/></div>}
@@ -161,87 +131,18 @@ function DeviceMetaPreview({ frame, mode }: { frame: MetaPreviewFrame; mode: Mod
   </div>;
 }
 
-function extractAdId(row: HTMLElement, nameIndex: Map<string, string>): string {
-  const explicit = (row.innerText || '').match(/(?:Объявление|Ad)\s*[·:]\s*(\d{5,})/i)?.[1];
-  if (explicit) return explicit;
-  const label = row.querySelector('strong, .v36-tree-label b')?.textContent || '';
-  return nameIndex.get(normalize(label)) || '';
-}
-
-function isAdRow(row: HTMLElement): boolean {
-  if (row.classList.contains('v36-level-ad')) return true;
-  if (!row.closest('.ads-table-wrap')) return false;
-  return Boolean(row.querySelector('strong')) && !row.closest('thead');
-}
-
-function injectPreviewButtons(nameIndex: Map<string, string>) {
-  document.querySelectorAll<HTMLElement>('tr').forEach((row) => {
-    if (!isAdRow(row) || row.dataset.adPreviewReady === 'true') return;
-    const adId = extractAdId(row, nameIndex);
-    if (!adId) return;
-    const target = row.querySelector<HTMLElement>('.v36-tree-label > div, td:nth-child(3), td:nth-child(2)') || row.querySelector<HTMLElement>('td');
-    if (!target) return;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ad-preview-trigger';
-    button.dataset.adId = adId;
-    button.textContent = 'Превью';
-    button.setAttribute('aria-label', 'Открыть превью объявления');
-    target.appendChild(button);
-    row.dataset.adPreviewReady = 'true';
-  });
-}
-
-export default function AdPreviewEnhancer() {
-  const [adId, setAdId] = useState('');
+export default function AdPreviewDrawer({ adId, onClose }: { adId: string | null; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('desktop');
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [nameIndex, setNameIndex] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    let active = true;
-    fetch('/api/analytics/ad-manager?days=365')
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await response.text());
-        return response.json() as Promise<AdIndexResponse>;
-      })
-      .then((data) => {
-        if (!active) return;
-        const counts = new Map<string, string[]>();
-        for (const row of data.rows || []) {
-          const key = normalize(row.ad_name || row.creative_name || '');
-          if (!key || !row.ad_id) continue;
-          counts.set(key, [...(counts.get(key) || []), row.ad_id]);
-        }
-        setNameIndex(new Map([...counts.entries()].filter(([, ids]) => new Set(ids).size === 1).map(([key, ids]) => [key, ids[0]])));
-      })
-      .catch(() => undefined);
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    const run = () => injectPreviewButtons(nameIndex);
-    run();
-    const observer = new MutationObserver(run);
-    observer.observe(document.body, { childList: true, subtree: true });
-    const click = (event: MouseEvent) => {
-      const trigger = (event.target as HTMLElement).closest<HTMLElement>('.ad-preview-trigger');
-      if (!trigger?.dataset.adId) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setPreview(null);
-      setError('');
-      setAdId(trigger.dataset.adId);
-      setMode('desktop');
-    };
-    document.addEventListener('click', click, true);
-    return () => {
-      observer.disconnect();
-      document.removeEventListener('click', click, true);
-    };
-  }, [nameIndex]);
+    if (!adId) return;
+    setMode('desktop');
+    setPreview(null);
+    setError('');
+  }, [adId]);
 
   useEffect(() => {
     if (!adId) return;
@@ -265,10 +166,10 @@ export default function AdPreviewEnhancer() {
 
   useEffect(() => {
     if (!adId) return;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setAdId(''); };
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
-  }, [adId]);
+  }, [adId, onClose]);
 
   const content = preview?.content;
   const destinationUrl = safeExternalUrl(content?.destinationUrl);
@@ -278,17 +179,10 @@ export default function AdPreviewEnhancer() {
   if (!adId) return null;
 
   return <div className="ad-preview-layer" role="dialog" aria-modal="true" aria-label="Предпросмотр объявления">
-    <button className="ad-preview-backdrop" type="button" aria-label="Закрыть" onClick={() => setAdId('')}/>
+    <button className="ad-preview-backdrop" type="button" aria-label="Закрыть" onClick={onClose}/>
     <aside className="ad-preview-drawer">
-      <header>
-        <div><span>AD PREVIEW</span><h2>{content?.adName || `Объявление ${adId}`}</h2></div>
-        <button type="button" onClick={() => setAdId('')} aria-label="Закрыть"><X size={20}/></button>
-      </header>
-
-      <nav className="ad-preview-modes">
-        {modeLabels.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={mode === id ? 'active' : ''} onClick={() => setMode(id)}><Icon size={15}/>{label}</button>)}
-      </nav>
-
+      <header><div><span>AD PREVIEW</span><h2>{content?.adName || `Объявление ${adId}`}</h2></div><button type="button" onClick={onClose} aria-label="Закрыть"><X size={20}/></button></header>
+      <nav className="ad-preview-modes">{modeLabels.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={mode === id ? 'active' : ''} onClick={() => setMode(id)}><Icon size={15}/>{label}</button>)}</nav>
       <section className={`ad-preview-stage mode-${mode}`}>
         {loading && <div className="ad-preview-state"><LoaderCircle className="spin"/><span>Загружаем контент из Meta…</span></div>}
         {error && <div className="ad-preview-state error"><div><strong>Не удалось загрузить превью</strong><p>{error}</p></div></div>}
@@ -302,7 +196,6 @@ export default function AdPreviewEnhancer() {
           {preview?.previewError && <small className="ad-preview-warning">Meta не вернула готовый формат для выбранного размещения. Показан фактический контент креатива.</small>}
         </article>}
       </section>
-
       {content && <footer className="ad-preview-meta"><span>ID: {content.adId}{preview?.previewFormat ? ` · ${preview.previewFormat}` : ''}</span>{destinationUrl && <a href={destinationUrl} target="_blank" rel="noreferrer">Открыть ссылку <ExternalLink size={13}/></a>}</footer>}
     </aside>
   </div>;

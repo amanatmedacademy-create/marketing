@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import AdPreviewEnhancer from './components/AdPreviewEnhancer';
 import AuthGate from './components/AuthGate';
 import DealWorkspaceHost from './components/DealWorkspace';
 import InternalCommunicationBridge from './components/InternalCommunicationBridge';
@@ -24,7 +23,6 @@ function Root() {
 
   return <>
     <MarketingPlatform />
-    <AdPreviewEnhancer />
     <DealWorkspaceHost />
     <InternalCommunicationBridge />
   </>;
