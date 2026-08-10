@@ -2,11 +2,12 @@ import app from './index';
 import { handleAdManager } from './adManager';
 import { handleAdPreview, type AdPreviewEnv } from './adPreview';
 import { handleAnalytics } from './analytics';
-import { handleConversionMatrix } from './conversionMatrix';
-import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
+import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { handleCallCenterChat } from './callCenterChat';
+import { handleCallTranscription, type CallTranscriptionEnv } from './callTranscription';
 import { resolveCompanyId } from './companyContext';
+import { handleConversionMatrix } from './conversionMatrix';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
 import { handleLeadCaptureRequest, type LeadCaptureEnv } from './leadCapture';
@@ -54,6 +55,7 @@ type MainEnv = AuthEnv
   & WabaMessagingV2Env
   & VoiceTranscriptionEnv
   & ZadarmaTelephonyEnv
+  & CallTranscriptionEnv
   & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
@@ -163,6 +165,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
 
+      const callTranscription = await handleCallTranscription(forwardedRequest, runtimeEnv, url);
+      if (callTranscription) return callTranscription;
       const telephonyResponse = await handleZadarmaTelephony(forwardedRequest, runtimeEnv, url);
       if (telephonyResponse) return telephonyResponse;
       const leadCapture = await handleLeadCaptureRequest(forwardedRequest, runtimeEnv, url);
@@ -189,10 +193,10 @@ export default {
       if (metaSdkResponse) return metaSdkResponse;
       const metaOAuthStartResponse = handleMetaOAuthStart(forwardedRequest, runtimeEnv, url);
       if (metaOAuthStartResponse) return metaOAuthStartResponse;
-      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
-      if (metaOAuthResponse) return metaOAuthResponse;
       const metaSelectionResponse = await handleMetaSelectionRequest(forwardedRequest, runtimeEnv, url);
       if (metaSelectionResponse) return metaSelectionResponse;
+      const metaOAuthResponse = await handleMetaOAuthRequest(forwardedRequest, runtimeEnv, url, ctx);
+      if (metaOAuthResponse) return metaOAuthResponse;
       const metaCatalogResponse = await handleMetaCatalogRequest(forwardedRequest, runtimeEnv, url);
       if (metaCatalogResponse) return metaCatalogResponse;
       const metaBackfillResponse = await handleMetaBackfillRequest(forwardedRequest, runtimeEnv, url);
