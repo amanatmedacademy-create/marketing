@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
+  Building2,
   CheckCircle2,
   LoaderCircle,
   LockKeyhole,
@@ -9,16 +10,20 @@ import {
 } from 'lucide-react';
 import ImdsBrand from './ImdsBrand';
 import {
+  activeCompanyId,
   currentSession,
   loadAppUser,
+  setActiveCompanyId,
   signOutSession,
   startGoogleSignIn,
   type AppUser,
+  type UserCompany,
 } from '../services/auth';
 
 interface AuthContextValue {
   user: AppUser;
   signOut: () => Promise<void>;
+  switchCompany: (companyId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -38,10 +43,32 @@ function GoogleIcon() {
   </svg>;
 }
 
+function CompanyPicker({ companies, onSelect, busy }: { companies: UserCompany[]; onSelect: (id: string) => void; busy: boolean }) {
+  return <div className="auth-screen">
+    <div className="auth-orb auth-orb--one"/>
+    <div className="auth-orb auth-orb--two"/>
+    <section className="auth-login-panel" style={{ margin: 'auto', minHeight: '100vh' }}>
+      <div className="auth-login-card">
+        <div className="auth-login-icon"><Building2 size={28}/></div>
+        <span className="auth-login-product">IMDS TECH</span>
+        <h2>Выберите клинику</h2>
+        <p>Все данные, сотрудники, интеграции и реклама будут открыты только в контексте выбранной клиники.</p>
+        <div style={{ display: 'grid', gap: 10, width: '100%' }}>
+          {companies.map((company) => <button key={company.id} type="button" className="google-login" disabled={busy} onClick={() => onSelect(company.id)}>
+            <Building2 size={19}/><span style={{ flex: 1, textAlign: 'left' }}>{company.name}<small style={{ display: 'block', opacity: .7 }}>{company.role}</small></span><ArrowRight size={17}/>
+          </button>)}
+        </div>
+        <div className="auth-security-note"><ShieldCheck size={15}/><span>Сервер проверяет членство пользователя при каждом переключении клиники.</span></div>
+      </div>
+    </section>
+  </div>;
+}
+
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +93,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         const session = await currentSession();
         if (session?.access_token) headers.set('authorization', `Bearer ${session.access_token}`);
       }
+      const companyId = activeCompanyId();
+      if (companyId && !headers.has('x-imds-company-id')) headers.set('x-imds-company-id', companyId);
       return nativeFetch(input, { ...init, headers });
     };
 
@@ -111,7 +140,23 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     setError(null);
   };
 
-  const context = useMemo(() => user ? { user, signOut } : null, [user]);
+  const switchCompany = async (companyId: string) => {
+    if (!companyId || switching) return;
+    const previous = activeCompanyId();
+    setSwitching(true);
+    setError(null);
+    try {
+      setActiveCompanyId(companyId);
+      await loadAppUser();
+      window.location.reload();
+    } catch (reason) {
+      setActiveCompanyId(previous || null);
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setSwitching(false);
+    }
+  };
+
+  const context = useMemo(() => user ? { user, signOut, switchCompany } : null, [user]);
 
   if (loading) return <div className="auth-screen auth-screen--loading">
     <div className="auth-loading-card">
@@ -120,6 +165,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       <p>Проверяем защищённую сессию</p>
     </div>
   </div>;
+
+  if (user?.companies && user.companies.length > 1 && !user.companyId) {
+    return <CompanyPicker companies={user.companies} onSelect={(id) => void switchCompany(id)} busy={switching}/>;
+  }
 
   if (!user || !context) return <div className="auth-screen">
     <div className="auth-orb auth-orb--one"/>
