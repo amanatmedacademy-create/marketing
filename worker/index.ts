@@ -19,6 +19,7 @@ import { handleGoogleIntegrationRequest } from './googleIntegrations';
 import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 import { handleTenantDataApi } from './tenantDataApi';
+import { handleGrowthEngine } from './growthEngine';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -150,6 +151,8 @@ export default {
       }
       const tenantDataResponse = await handleTenantDataApi(request, runtimeEnv, url);
       if (tenantDataResponse) return tenantDataResponse;
+      const growthResponse = await handleGrowthEngine(request, runtimeEnv, url);
+      if (growthResponse) return growthResponse;
       const frontendIntegrationResponse = await handleFrontendIntegrationAction(request, runtimeEnv, url);
       if (frontendIntegrationResponse) return frontendIntegrationResponse;
       const integrationResponse = await handleIntegrationRequest(request, runtimeEnv, url);
