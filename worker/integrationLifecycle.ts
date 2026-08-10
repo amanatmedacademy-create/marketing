@@ -1,5 +1,6 @@
 import { resolveCompanyId } from './companyContext';
 import { isFrontendAdmin } from './credentials';
+import { handleZadarmaWebhookSetup } from './zadarmaWebhookSetup';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -8,6 +9,11 @@ type LifecycleEnv = {
   SUPABASE_SERVICE_ROLE_KEY: string;
   DEFAULT_COMPANY_ID?: string;
   FRONTEND_ADMIN_KEY?: string;
+  CURRENT_COMPANY_ID?: string;
+  ZADARMA_API_KEY?: string;
+  ZADARMA_API_SECRET?: string;
+  ZADARMA_PBX_EXTENSION?: string;
+  ZADARMA_TENANT_CONFIGURED?: string;
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -152,7 +158,7 @@ async function disconnectProvider(request: Request, env: LifecycleEnv, url: URL)
 
   const companyId = await resolveCompanyId(env);
   const provider = url.pathname.split('/').pop()?.toLowerCase() || '';
-  if (!['bitrix', 'meta', 'tiktok', 'n8n'].includes(provider)) return json({ error: 'Неизвестная интеграция' }, 404);
+  if (!['bitrix', 'meta', 'tiktok', 'n8n', 'zadarma'].includes(provider)) return json({ error: 'Неизвестная интеграция' }, 404);
   const purge = url.searchParams.get('purge') === 'true';
   let dataResult: unknown = null;
   let warning: string | null = null;
@@ -181,6 +187,9 @@ async function disconnectProvider(request: Request, env: LifecycleEnv, url: URL)
 }
 
 export async function handleIntegrationLifecycle(request: Request, env: LifecycleEnv, url: URL): Promise<Response | null> {
+  const zadarmaWebhook = await handleZadarmaWebhookSetup(request, env, url);
+  if (zadarmaWebhook) return zadarmaWebhook;
+
   if (request.method === 'DELETE' && url.pathname.startsWith('/api/integrations/config/')) return disconnectProvider(request, env, url);
   if (request.method !== 'GET') return null;
 
