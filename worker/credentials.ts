@@ -2,7 +2,7 @@ import { resolveCompanyId } from './companyContext';
 
 type JsonRecord = Record<string, unknown>;
 
-export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n';
+export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n' | 'zadarma';
 
 export interface CredentialSecrets {
   FRONTEND_ADMIN_KEY?: string;
@@ -24,6 +24,10 @@ export interface CredentialSecrets {
   TIKTOK_ADVERTISER_IDS?: string;
   TIKTOK_API_BASE?: string;
   TIKTOK_WEBHOOK_SECRET?: string;
+  ZADARMA_API_KEY?: string;
+  ZADARMA_API_SECRET?: string;
+  ZADARMA_PBX_EXTENSION?: string;
+  ZADARMA_TENANT_CONFIGURED?: string;
 }
 
 interface BaseEnv extends CredentialSecrets {
@@ -84,6 +88,15 @@ const providerFields: Record<IntegrationProvider, { required: string[]; secrets:
     required: ['webhookSecret'],
     secrets: ['webhookSecret'],
     mapping: { webhookSecret: 'N8N_WEBHOOK_SECRET' },
+  },
+  zadarma: {
+    required: ['apiKey', 'apiSecret', 'pbxExtension'],
+    secrets: ['apiKey', 'apiSecret'],
+    mapping: {
+      apiKey: 'ZADARMA_API_KEY',
+      apiSecret: 'ZADARMA_API_SECRET',
+      pbxExtension: 'ZADARMA_PBX_EXTENSION',
+    },
   },
 };
 
@@ -248,6 +261,7 @@ export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<
         const value = asString(payload[field]);
         if (value) result[envName] = value;
       }
+      if (row.provider === 'zadarma') result.ZADARMA_TENANT_CONFIGURED = 'true';
     } catch (error) {
       console.error(`Unable to decrypt ${row.provider} credentials`, error);
     }
