@@ -54,6 +54,52 @@ function yesNo(value?: boolean | null) {
   return <span className="call-check">—</span>;
 }
 
+function RecordingPlayer({ call }: { call: MarketingCall }) {
+  const [src, setSrc] = useState('');
+  const [message, setMessage] = useState('');
+  const hasRecording = Boolean(call.recording_url || call.pbx_call_id || call.recording_external_id);
+
+  useEffect(() => {
+    if (!hasRecording || call.call_status !== 'COMPLETED') {
+      setSrc('');
+      setMessage('');
+      return;
+    }
+    const controller = new AbortController();
+    let objectUrl = '';
+    setSrc('');
+    setMessage('Загружаем защищённую запись…');
+    fetch(`/api/telephony/calls/${encodeURIComponent(call.id)}/recording`, { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) {
+          const raw = await response.text();
+          let detail = raw;
+          try { detail = (JSON.parse(raw) as { error?: string }).error || raw; } catch { /* plain text */ }
+          throw new Error(detail || `HTTP ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+        setMessage('');
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setMessage(errorText(error));
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [call.id, call.call_status, call.recording_url, call.pbx_call_id, call.recording_external_id, hasRecording]);
+
+  if (!hasRecording || call.call_status !== 'COMPLETED') return null;
+  if (src) return <audio controls preload="metadata" src={src}/>;
+  return message ? <div className="calls-state">{message}</div> : null;
+}
+
 const keypad = [
   ['1', ''], ['2', 'ABC'], ['3', 'DEF'],
   ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
@@ -287,7 +333,7 @@ export default function Calls() {
             {analysisMessage && <div className={selected.ai_analysis_status === 'completed' || selected.transcription_status === 'completed' ? 'calls-state' : 'calls-state calls-state--error'}>{analysisMessage}</div>}
             {selected.transcription_status === 'failed' && selected.transcription_error && <div className="calls-state calls-state--error">Транскрипция: {selected.transcription_error}</div>}
             {selected.ai_analysis_status === 'failed' && selected.ai_analysis_error && <div className="calls-state calls-state--error">AI: {selected.ai_analysis_error}</div>}
-            {(selected.recording_url || selected.pbx_call_id || selected.recording_external_id) && selected.call_status === 'COMPLETED' && <audio controls preload="none" src={`/api/telephony/calls/${encodeURIComponent(selected.id)}/recording`}/>} 
+            <RecordingPlayer call={selected}/>
             <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания не указана'}</span><i>→</i><span>{selected.ad_id || 'Объявление не указано'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
             <div className="call-detail-grid">
               <section><h3>Результат</h3><dl><div><dt>Итог</dt><dd>{selected.call_result || '—'}</dd></div><div><dt>Следующее действие</dt><dd>{selected.next_action || '—'}</dd></div><div><dt>Причина потери</dt><dd>{selected.loss_reason || '—'}</dd></div><div><dt>Дата записи</dt><dd>{dateTime(selected.appointment_at)}</dd></div></dl></section>
