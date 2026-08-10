@@ -27,6 +27,8 @@ type RecoverySettings = {
   create_tasks: boolean;
   stale_lead_enabled: boolean;
   lost_opportunity_enabled: boolean;
+  appointment_recovery_enabled: boolean;
+  no_show_grace_minutes: number;
   whatsapp_enabled: boolean;
   lost_task_delay_minutes: number;
   whatsapp_template_name?: string | null;
@@ -37,7 +39,8 @@ type RecoveryAction = {
   id: string;
   lead_id?: string | null;
   lost_opportunity_id?: string | null;
-  trigger_type: 'stale_lead' | 'lost_opportunity';
+  appointment_id?: string | null;
+  trigger_type: 'stale_lead' | 'lost_opportunity' | 'appointment_no_show' | 'appointment_cancelled' | 'appointment_unconfirmed';
   action_type: 'task' | 'whatsapp_template';
   status: 'pending' | 'sent' | 'completed' | 'skipped' | 'failed';
   scheduled_at: string;
@@ -45,6 +48,16 @@ type RecoveryAction = {
   template_name?: string | null;
   last_error?: string | null;
   created_at: string;
+};
+type RecoveryRun = {
+  enabled: boolean;
+  scanned: number;
+  eligible?: number;
+  tasksCreated: number;
+  whatsappQueued: number;
+  appointmentNoShowCandidates?: number;
+  appointmentUnconfirmedCandidates?: number;
+  message?: string;
 };
 
 const money = (value: number, currency = 'KZT') => new Intl.NumberFormat('ru-RU', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -58,7 +71,13 @@ const responseTime = (seconds?: number | null) => {
 };
 const percent = (value: number, total: number) => total ? `${((value / total) * 100).toFixed(0)}%` : '—';
 const labels: Record<string, string> = { lead_created: 'Лид', first_contact: 'Первый контакт', first_response: 'Первый ответ клиники', qualified: 'Целевой', call: 'Звонок', conversation: 'Диалог', message: 'Сообщение', appointment_booked: 'Запись', arrived: 'Приход', deal_created: 'Сделка', rejected: 'Отказ', sale: 'Продажа', lead: 'Lead', qualified_lead: 'Qualified Lead', purchase: 'Purchase' };
-const recoveryTriggerLabel: Record<string, string> = { stale_lead: 'Лид без ответа', lost_opportunity: 'Потерянная возможность' };
+const recoveryTriggerLabel: Record<string, string> = {
+  stale_lead: 'Лид без ответа',
+  lost_opportunity: 'Потерянная возможность',
+  appointment_no_show: 'Подтверждённая неявка',
+  appointment_cancelled: 'Отменённый визит',
+  appointment_unconfirmed: 'Факт визита не подтверждён',
+};
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -79,6 +98,7 @@ export default function GrowthEnginePage() {
   const [conversions, setConversions] = useState<ConversionEvent[]>([]);
   const [recoverySettings, setRecoverySettings] = useState<RecoverySettings | null>(null);
   const [recoveryActions, setRecoveryActions] = useState<RecoveryAction[]>([]);
+  const [lastRecoveryRun, setLastRecoveryRun] = useState<RecoveryRun | null>(null);
   const [metaDatasetId, setMetaDatasetId] = useState('');
   const [slaSeconds, setSlaSeconds] = useState(300);
   const [staleAfterHours, setStaleAfterHours] = useState(24);
@@ -125,6 +145,8 @@ export default function GrowthEnginePage() {
   const failedRecovery = recoveryActions.filter((item) => item.status === 'failed');
   const recoveryTasks = recoveryActions.filter((item) => item.action_type === 'task' && item.status === 'completed');
   const recoverySent = recoveryActions.filter((item) => item.action_type === 'whatsapp_template' && item.status === 'sent');
+  const noShowRecovery = recoveryActions.filter((item) => item.trigger_type === 'appointment_no_show');
+  const unconfirmedRecovery = recoveryActions.filter((item) => item.trigger_type === 'appointment_unconfirmed');
   const speed = overview?.speedToLead;
   const calls = overview?.callIntelligence;
 
@@ -154,6 +176,8 @@ export default function GrowthEnginePage() {
           createTasks: recoverySettings.create_tasks,
           staleLeadEnabled: recoverySettings.stale_lead_enabled,
           lostOpportunityEnabled: recoverySettings.lost_opportunity_enabled,
+          appointmentRecoveryEnabled: recoverySettings.appointment_recovery_enabled,
+          noShowGraceMinutes: recoverySettings.no_show_grace_minutes,
           whatsappEnabled: recoverySettings.whatsapp_enabled,
           lostTaskDelayMinutes: recoverySettings.lost_task_delay_minutes,
           whatsappTemplateName: recoverySettings.whatsapp_template_name || '',
@@ -170,8 +194,11 @@ export default function GrowthEnginePage() {
   const runRecovery = async () => {
     setRunningRecovery(true); setMessage(null); setSuccess(null);
     try {
-      const result = await api<{ enabled: boolean; scanned: number; eligible?: number; tasksCreated: number; whatsappQueued: number; message?: string }>('/api/growth/recovery/run', { method: 'POST', body: '{}' });
-      setSuccess(result.enabled ? `Recovery: проверено ${result.scanned}, кандидатов ${result.eligible || 0}, задач создано ${result.tasksCreated}, WhatsApp в очереди ${result.whatsappQueued}.` : (result.message || 'Recovery Engine выключен.'));
+      const result = await api<RecoveryRun>('/api/growth/recovery/run', { method: 'POST', body: '{}' });
+      setLastRecoveryRun(result);
+      setSuccess(result.enabled
+        ? `Recovery: проверено ${result.scanned}, кандидатов ${result.eligible || 0}, задач ${result.tasksCreated}, WhatsApp в очереди ${result.whatsappQueued}, NO_SHOW ${result.appointmentNoShowCandidates || 0}, неподтверждённых визитов ${result.appointmentUnconfirmedCandidates || 0}.`
+        : (result.message || 'Recovery Engine выключен.'));
       await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Ошибка Recovery Engine'); }
     finally { setRunningRecovery(false); }
@@ -250,18 +277,19 @@ export default function GrowthEnginePage() {
           <div><span>Средняя AI-оценка</span><b>{calls?.averageQualityScore == null ? '—' : `${calls.averageQualityScore.toFixed(1)}/100`}</b></div>
           <div><span>AI выявил потери</span><b>{calls?.detectedLostCalls ?? 0}</b></div>
         </div>
-        <div className="strategic-note">Анализ запускается на странице «Звонки». PENDING-звонки и звонки без транскрипта не оцениваются — система не генерирует вымышленные показатели.</div>
+        <div className="strategic-note">На странице «Звонки» завершённый разговор можно получить из Zadarma, расшифровать и сразу передать в AI Call Intelligence. PENDING-звонки и звонки без реальной записи не оцениваются.</div>
       </section>
     </div>
 
     <section className="panel">
-      <div className="google-card-head"><div><h2>Recovery Engine</h2><p>Возвращает просроченные лиды и потерянные возможности в работу: создаёт CRM-задачи и готовит безопасные WhatsApp follow-up через одобренные шаблоны.</p></div><RotateCcw size={20}/></div>
+      <div className="google-card-head"><div><h2>Recovery Engine</h2><p>Возвращает просроченные лиды, потерянные возможности и пропущенные визиты в работу. Неявка фиксируется только по явному статусу NO_SHOW.</p></div><RotateCcw size={20}/></div>
       <div className="customer-facts">
         <div><span>CRM-задач создано</span><b>{recoveryTasks.length}</b></div>
-        <div><span>WhatsApp в очереди</span><b>{pendingRecovery.filter((item) => item.action_type === 'whatsapp_template').length}</b></div>
-        <div><span>WhatsApp отправлено</span><b>{recoverySent.length}</b></div>
+        <div><span>Подтверждённые NO_SHOW</span><b>{noShowRecovery.length}</b></div>
+        <div><span>Визит не подтверждён</span><b>{unconfirmedRecovery.length}</b></div>
         <div><span>Ошибки</span><b>{failedRecovery.length}</b></div>
       </div>
+      {lastRecoveryRun && lastRecoveryRun.enabled && <div className="strategic-note" style={{ marginTop: 12 }}>Последний поиск: NO_SHOW {lastRecoveryRun.appointmentNoShowCandidates || 0} · требуют проверки визита {lastRecoveryRun.appointmentUnconfirmedCandidates || 0} · создано задач {lastRecoveryRun.tasksCreated}.</div>}
       <div className="strategic-actions" style={{ marginTop: 12 }}>
         <button className="button" type="button" onClick={() => void runRecovery()} disabled={runningRecovery || !recoverySettings?.enabled}><PlayCircle size={14}/>{runningRecovery ? 'Проверка…' : 'Запустить Recovery'}</button>
       </div>
@@ -274,6 +302,11 @@ export default function GrowthEnginePage() {
           <label><input type="checkbox" checked={recoverySettings.lost_opportunity_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, lost_opportunity_enabled: event.target.checked })} /> Потерянные возможности</label>
           <label>Дожим через <input type="number" min={0} max={10080} value={recoverySettings.lost_task_delay_minutes} onChange={(event) => setRecoverySettings({ ...recoverySettings, lost_task_delay_minutes: Number(event.target.value) })} style={{ width: 90 }} /> мин</label>
         </div>
+        <div className="strategic-actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <label><input type="checkbox" checked={recoverySettings.appointment_recovery_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, appointment_recovery_enabled: event.target.checked })} /> Recovery записей</label>
+          <label>Проверять через <input type="number" min={0} max={10080} value={recoverySettings.no_show_grace_minutes} onChange={(event) => setRecoverySettings({ ...recoverySettings, no_show_grace_minutes: Number(event.target.value) })} style={{ width: 90 }} /> мин после окончания</label>
+        </div>
+        <small>Если статус визита явно NO_SHOW — создаётся задача вернуть пациента. Если время BOOKED/CONFIRMED прошло, создаётся только задача проверить факт визита. IMDS не меняет такой визит на NO_SHOW автоматически.</small>
         <div className="strategic-actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <label><input type="checkbox" checked={recoverySettings.whatsapp_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_enabled: event.target.checked })} /> WhatsApp follow-up</label>
           <input value={recoverySettings.whatsapp_template_name || ''} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_template_name: event.target.value })} placeholder="Одобренный template name" style={{ minWidth: 220 }} />
