@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, BellRing, CheckCircle2, CircleDollarSign, Goal, Layers3, RefreshCw, UsersRound } from 'lucide-react';
+import { AlertTriangle, BellRing, CheckCircle2, CircleDollarSign, Goal, RefreshCw, UsersRound } from 'lucide-react';
 import { marketingApi, type DashboardDailyRow, type IntegrationStatus, type MarketingLead, type SourceSummaryRow } from '../services/api';
 import '../product-modules.css';
 
@@ -27,40 +27,6 @@ function useLeads() {
   };
   useEffect(() => { void load(); }, []);
   return { data, loading, error, load };
-}
-
-export function CustomersPage() {
-  const { data, loading, error, load } = useLeads();
-  const customers = useMemo(() => {
-    const map = new Map<string, MarketingLead[]>();
-    for (const lead of data) {
-      const key = (lead.phone || lead.email || lead.id).trim().toLowerCase();
-      map.set(key, [...(map.get(key) || []), lead]);
-    }
-    return Array.from(map.entries()).map(([key, leads]) => {
-      const ordered = [...leads].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-      const latest = ordered[0];
-      return {
-        key,
-        name: latest.name || latest.phone || 'Без имени',
-        phone: latest.phone,
-        email: latest.email,
-        source: latest.source || latest.platform || 'Не указан',
-        manager: latest.manager || 'Не назначен',
-        stage: latest.stage,
-        leads: leads.length,
-        revenue: leads.reduce((sum, item) => sum + Number(item.sale_amount || 0), 0),
-        lastContact: latest.updated_at,
-      };
-    }).sort((a,b) => b.revenue - a.revenue || b.leads - a.leads);
-  }, [data]);
-
-  return <div className="stack product-module-page">
-    <ModuleHeader eyebrow="CRM / Customer 360" title="Клиенты" text="Единая клиентская база, собранная из реальных лидов. Один телефон или email объединяется в один профиль." action={<button className="button" onClick={() => void load()}><RefreshCw size={16}/>Обновить</button>} />
-    {error && <div className="alert alert--error">{error}</div>}
-    <div className="product-kpis"><article><UsersRound/><span>Клиенты</span><strong>{loading ? '—' : number(customers.length)}</strong></article><article><Layers3/><span>Лиды</span><strong>{loading ? '—' : number(data.length)}</strong></article><article><CircleDollarSign/><span>Выручка клиентов</span><strong>{loading ? '—' : money(customers.reduce((s,c)=>s+c.revenue,0))}</strong></article></div>
-    {loading ? <EmptyState text="Загружаем клиентскую базу…"/> : customers.length === 0 ? <EmptyState text="Клиентов пока нет. Профили появятся автоматически после поступления лидов."/> : <section className="panel"><div className="table-wrap"><table><thead><tr><th>Клиент</th><th>Источник</th><th>Менеджер</th><th>Текущая стадия</th><th>Лидов</th><th>Выручка</th><th>Обновлён</th></tr></thead><tbody>{customers.map(customer => <tr key={customer.key}><td><b>{customer.name}</b><small>{customer.phone || customer.email || 'Контакт не указан'}</small></td><td>{customer.source}</td><td>{customer.manager}</td><td><span className="badge">{customer.stage}</span></td><td>{number(customer.leads)}</td><td>{money(customer.revenue)}</td><td>{new Date(customer.lastContact).toLocaleString('ru-RU')}</td></tr>)}</tbody></table></div></section>}
-  </div>;
 }
 
 export function SegmentsPage() {
