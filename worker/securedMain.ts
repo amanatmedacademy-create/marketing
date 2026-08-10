@@ -2,6 +2,8 @@ import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
 import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
+import type { RecoveryEnv } from './recoveryEngine';
+import { runScheduledRecovery } from './recoveryScheduler';
 import { handleZadarmaTelephony, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 
 type SecuredEnv = AuthEnv & ZadarmaTelephonyEnv & { FRONTEND_ADMIN_KEY?: string };
@@ -50,6 +52,11 @@ export default {
       runAutomationEngine(env)
         .then((result) => console.log('Scheduled journey automation completed', result))
         .catch((error) => console.error('Scheduled journey automation failed', error)),
+    );
+    ctx.waitUntil(
+      runScheduledRecovery(env as unknown as RecoveryEnv)
+        .then((result) => console.log('Scheduled Recovery scan completed', result))
+        .catch((error) => console.error('Scheduled Recovery scan failed', error)),
     );
   },
 };
