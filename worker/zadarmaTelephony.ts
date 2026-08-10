@@ -110,13 +110,11 @@ function md5Hex(value: string): string {
   }).join('');
 }
 
-function base64(bytes: ArrayBuffer): string {
-  let binary = '';
-  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
-  return btoa(binary);
+function base64Text(value: string): string {
+  return btoa(value);
 }
 
-async function hmacSha1Base64(secret: string, value: string): Promise<string> {
+async function hmacSha1Hex(secret: string, value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -124,7 +122,8 @@ async function hmacSha1Base64(secret: string, value: string): Promise<string> {
     false,
     ['sign'],
   );
-  return base64(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value)));
+  const signed = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value)));
+  return Array.from(signed, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function sortedQuery(params: Record<string, string>): string {
@@ -135,13 +134,15 @@ function sortedQuery(params: Record<string, string>): string {
 
 async function signature(secret: string, path: string, params: Record<string, string>): Promise<string> {
   const query = sortedQuery(params);
-  return hmacSha1Base64(secret, `${path}${query}${md5Hex(query)}`);
+  const hmacHex = await hmacSha1Hex(secret, `${path}${query}${md5Hex(query)}`);
+  return base64Text(hmacHex);
 }
 
 export async function zadarmaRequest(
   env: ZadarmaTelephonyEnv,
   path: string,
   params: Record<string, string> = {},
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
 ): Promise<JsonRecord> {
   const key = asString(env.ZADARMA_API_KEY);
   const secret = asString(env.ZADARMA_API_SECRET);
@@ -149,13 +150,17 @@ export async function zadarmaRequest(
 
   const query = sortedQuery(params);
   const authSignature = await signature(secret, path, params);
-  const response = await fetch(`${ZADARMA_API_BASE}${path}${query ? `?${query}` : ''}`, {
-    method: 'GET',
-    headers: {
-      accept: 'application/json',
-      authorization: `${key}: ${authSignature}`,
-    },
-  });
+  const headers = new Headers({ accept: 'application/json', authorization: `${key}:${authSignature}` });
+  let requestUrl = `${ZADARMA_API_BASE}${path}`;
+  const init: RequestInit = { method, headers };
+  if (method === 'GET') {
+    if (query) requestUrl += `?${query}`;
+  } else {
+    headers.set('content-type', 'application/x-www-form-urlencoded');
+    init.body = query;
+  }
+
+  const response = await fetch(requestUrl, init);
   const body = await response.text();
   let payload: JsonRecord = {};
   try {
