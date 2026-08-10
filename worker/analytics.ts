@@ -1,8 +1,10 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type RecordValue = Record<string, unknown>;
 type Level = 'platform' | 'account' | 'campaign' | 'adset' | 'ad';
 type Identity = ReturnType<typeof identity>;
+type ScopedEnv = Env & TenantScopedEnv;
 
 const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -141,8 +143,21 @@ function resolveIdentity(map: Map<string, Identity[]>, idValue: string, platform
   return platformMatches.length === 1 ? platformMatches[0] : undefined;
 }
 
+function aggregateDaily(rows: RecordValue[]): RecordValue[] {
+  const map = new Map<string, RecordValue>();
+  for (const row of rows) {
+    const date = text(row.date);
+    if (!date) continue;
+    const item = map.get(date) || { date, leads: 0, target_leads: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 };
+    for (const field of ['leads','target_leads','arrived','sales','spend','revenue']) item[field] = num(item[field]) + num(row[field]);
+    map.set(date, item);
+  }
+  return [...map.values()].sort((a, b) => text(a.date).localeCompare(text(b.date)));
+}
+
 export async function handleAnalytics(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/overview') return null;
+  const companyId = requireCompanyId(env as ScopedEnv);
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 7), 1), 365);
   let range: { from: string; to: string };
   try { range = dateRange(days, url); }
@@ -150,14 +165,15 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 400, headers: { 'content-type':'application/json; charset=utf-8' } });
   }
   const { from, to } = range;
+  const companyFilter = `company_id=eq.${encodeURIComponent(companyId)}`;
   const leadFilter = `and=(lead_created_at.gte.${from}T00:00:00Z,lead_created_at.lte.${to}T23:59:59Z)`;
   const adFilter = `and=(report_date.gte.${from},report_date.lte.${to})`;
 
   const settled = await Promise.allSettled([
-    queryAll<RecordValue>(env, 'marketing_leads', `marketing_leads?select=external_id,source,platform,campaign,stage,is_target,appointment_at,arrived_at,sold_at,sale_amount,lead_created_at,qualified_at,rejected_at,deal_created_at,deal_rejected_at,utm_source,utm_medium,utm_campaign,utm_content,campaign_id,adset_id,ad_id,internal_client_id,fbclid,gclid,ttclid,yclid,vk_click_id&${leadFilter}&order=lead_created_at.asc`),
-    queryAll<RecordValue>(env, 'marketing_ads', `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${adFilter}&order=report_date.asc`),
-    queryAll<RecordValue>(env, 'marketing_dashboard_daily', `marketing_dashboard_daily?select=*&date=gte.${from}&date=lte.${to}&order=date.asc`),
-    queryOne<RecordValue>(env, 'marketing_scoring_settings', 'marketing_scoring_settings?select=*&id=eq.default'),
+    queryAll<RecordValue>(env, 'marketing_leads', `marketing_leads?select=external_id,source,platform,campaign,stage,is_target,appointment_at,arrived_at,sold_at,sale_amount,lead_created_at,qualified_at,rejected_at,deal_created_at,deal_rejected_at,utm_source,utm_medium,utm_campaign,utm_content,campaign_id,adset_id,ad_id,internal_client_id,fbclid,gclid,ttclid,yclid,vk_click_id&${companyFilter}&${leadFilter}&order=lead_created_at.asc`),
+    queryAll<RecordValue>(env, 'marketing_ads', `marketing_ads?select=report_date,source,platform,account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,creative_name,status,impressions,reach,clicks,link_clicks,spend,leads,target_leads,arrived,sales,revenue,utm_source,utm_medium,utm_campaign,utm_content&${companyFilter}&${adFilter}&order=report_date.asc`),
+    queryAll<RecordValue>(env, 'marketing_daily_metrics', `marketing_daily_metrics?select=date,leads,target_leads,arrived,sales,spend,revenue&${companyFilter}&date=gte.${from}&date=lte.${to}&order=date.asc`),
+    queryOne<RecordValue>(env, 'marketing_scoring_settings', `marketing_scoring_settings?select=*&id=eq.default&${companyFilter}`),
   ]);
 
   const unavailable: string[] = [];
@@ -169,7 +185,7 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   };
   const leads = unwrap(settled[0], 'marketing_leads');
   const ads = unwrap(settled[1], 'marketing_ads');
-  const daily = unwrap(settled[2], 'marketing_dashboard_daily');
+  const daily = aggregateDaily(unwrap(settled[2], 'marketing_daily_metrics'));
   const settingsRows = unwrap(settled[3], 'marketing_scoring_settings');
   if (unavailable.includes('marketing_leads') && unavailable.includes('marketing_ads')) {
     return new Response(JSON.stringify({ error:'Аналитика недоступна: не удалось прочитать данные из базы', unavailable }), { status:503, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'} });
