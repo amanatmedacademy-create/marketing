@@ -3,6 +3,7 @@ export interface TelephonyStatus {
   configured: boolean;
   extension: string | null;
   mode: 'callback';
+  credentialScope?: 'clinic' | 'default-clinic-fallback' | 'unconfigured';
   capabilities: string[];
 }
 
@@ -19,6 +20,15 @@ export interface TelephonyWebRtcKeyResponse {
   provider: 'zadarma';
   sip: string;
   key: string | null;
+}
+
+export interface TelephonyTranscriptionResponse {
+  ok: boolean;
+  transcript: string;
+  reusedTranscript?: boolean;
+  analysis?: unknown;
+  analysisError?: string;
+  analysisSkipped?: string;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,6 +54,10 @@ export const telephonyApi = {
   startCall: (phone: string) => request<TelephonyCallResponse>('/calls', {
     method: 'POST',
     body: JSON.stringify({ phone }),
+  }),
+  transcribe: (callId: string) => request<TelephonyTranscriptionResponse>(`/calls/${encodeURIComponent(callId)}/transcribe`, {
+    method: 'POST',
+    body: '{}',
   }),
   webRtcKey: () => request<TelephonyWebRtcKeyResponse>('/webrtc-key'),
   test: () => request<{ ok: boolean; provider: 'zadarma'; balance?: unknown }>('/test', {
