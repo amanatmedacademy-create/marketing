@@ -1,5 +1,6 @@
 import { useMemo, type DragEvent, type MouseEvent } from 'react';
 import { ArrowRight, CircleDollarSign, Clock3, MoreHorizontal, Settings2, UserRound } from 'lucide-react';
+import { useDealWorkspaceController } from './DealWorkspaceController';
 import type { FunnelDeal, FunnelPipeline, FunnelUser } from '../services/salesFunnel';
 
 const money = new Intl.NumberFormat('ru-KZ', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 });
@@ -14,7 +15,7 @@ type Props = {
   onSelectPipeline: (id: string) => void;
   onDraggingChange: (id: string | null) => void;
   onMove: (deal: FunnelDeal, stageId: string) => Promise<void> | void;
-  onOpen: (deal: FunnelDeal, pipeline: FunnelPipeline, users: FunnelUser[]) => void;
+  onOpen?: (deal: FunnelDeal) => void;
   onCreatePipeline: () => void;
   onManagePipeline: () => void;
 };
@@ -31,7 +32,8 @@ function age(value: string): string {
   return `${Math.floor(hours / 24)} д`;
 }
 
-export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users, draggingId, onSelectPipeline, onDraggingChange, onMove, onOpen, onCreatePipeline, onManagePipeline }: Props) {
+export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users, draggingId, onSelectPipeline, onDraggingChange, onMove, onCreatePipeline, onManagePipeline }: Props) {
+  const { open } = useDealWorkspaceController();
   const pipeline = pipelines.find((item) => item.id === selectedPipelineId) || pipelines.find((item) => item.isDefault) || pipelines[0];
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
@@ -46,7 +48,7 @@ export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users,
   const openWorkspace = (deal: FunnelDeal, event?: MouseEvent) => {
     event?.stopPropagation();
     if (draggingId) return;
-    onOpen(deal, pipeline, users);
+    open({ deal, pipeline, users });
   };
 
   const drop = async (stageId: string) => {
