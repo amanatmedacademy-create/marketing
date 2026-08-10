@@ -75,19 +75,18 @@ function filenameFor(contentType: string, url: string): string {
 }
 
 async function resolveRecordingUrl(env: CallTranscriptionEnv, call: Row): Promise<string> {
-  const stored = validateRecordingUrl(call.recording_url);
-  if (stored) return stored;
-
   const pbxCallId = text(call.pbx_call_id);
   const externalCallId = text(call.recording_external_id);
-  if (!pbxCallId && !externalCallId) {
-    throw new Error('У звонка нет pbx_call_id или call_id записи Zadarma');
+  if (pbxCallId || externalCallId) {
+    const params = pbxCallId ? { pbx_call_id: pbxCallId, lifetime: '600' } : { call_id: externalCallId, lifetime: '600' };
+    const result = await zadarmaRequest(env, '/v1/pbx/record/request/', params);
+    const link = recordingLink(result);
+    if (link) return link;
   }
-  const params = pbxCallId ? { pbx_call_id: pbxCallId, lifetime: '600' } : { call_id: externalCallId, lifetime: '600' };
-  const result = await zadarmaRequest(env, '/v1/pbx/record/request/', params);
-  const link = recordingLink(result);
-  if (!link) throw new Error('Zadarma не вернула ссылку на запись звонка');
-  return link;
+
+  const stored = validateRecordingUrl(call.recording_url);
+  if (stored) return stored;
+  throw new Error('У звонка нет доступной записи Zadarma');
 }
 
 async function downloadAudio(url: string): Promise<{ blob: Blob; filename: string }> {
@@ -128,11 +127,43 @@ async function transcribeAudio(env: CallTranscriptionEnv, audio: { blob: Blob; f
   return { transcript, model };
 }
 
+async function getCall(env: CallTranscriptionEnv, companyId: string, callId: string): Promise<Row | null> {
+  const rows = await db<Row[]>(env, `marketing_calls?id=eq.${encodeURIComponent(callId)}&company_id=eq.${encodeURIComponent(companyId)}&select=*&limit=1`);
+  return rows[0] || null;
+}
+
+async function proxyRecording(request: Request, env: CallTranscriptionEnv, callId: string): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const call = await getCall(env, companyId, callId);
+  if (!call) return json({ error: 'Звонок не найден в выбранной клинике' }, 404);
+  if (text(call.call_status).toUpperCase() !== 'COMPLETED') return json({ error: 'Запись доступна только для завершённого звонка' }, 409);
+
+  try {
+    const url = await resolveRecordingUrl(env, call);
+    const upstreamHeaders = new Headers({ accept: 'audio/*,application/octet-stream' });
+    const range = request.headers.get('range');
+    if (range) upstreamHeaders.set('range', range);
+    const upstream = await fetch(url, { method: 'GET', headers: upstreamHeaders, redirect: 'follow' });
+    if (!upstream.ok && upstream.status !== 206) return json({ error: `Zadarma recording HTTP ${upstream.status}` }, 502);
+
+    const responseHeaders = new Headers();
+    responseHeaders.set('content-type', text(upstream.headers.get('content-type')) || 'audio/mpeg');
+    responseHeaders.set('content-disposition', 'inline');
+    responseHeaders.set('cache-control', 'private, no-store');
+    for (const name of ['content-length', 'content-range', 'accept-ranges']) {
+      const value = upstream.headers.get(name);
+      if (value) responseHeaders.set(name, value);
+    }
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+}
+
 async function transcribeCall(request: Request, env: CallTranscriptionEnv, callId: string): Promise<Response> {
   if (!canRun(request)) return json({ error: 'Транскрипция звонков доступна администратору и маркетологу' }, 403);
   const companyId = requireCompanyId(env);
-  const rows = await db<Row[]>(env, `marketing_calls?id=eq.${encodeURIComponent(callId)}&company_id=eq.${encodeURIComponent(companyId)}&select=*&limit=1`);
-  const call = rows[0];
+  const call = await getCall(env, companyId, callId);
   if (!call) return json({ error: 'Звонок не найден в выбранной клинике' }, 404);
   if (text(call.call_status).toUpperCase() !== 'COMPLETED') return json({ error: 'Транскрибировать можно только завершённый звонок' }, 409);
   if (text(call.transcription_status) === 'processing') return json({ error: 'Транскрипция уже выполняется' }, 409);
@@ -157,7 +188,6 @@ async function transcribeCall(request: Request, env: CallTranscriptionEnv, callI
     const result = await transcribeAudio(env, audio);
     const now = new Date().toISOString();
     await patchCall(env, companyId, callId, {
-      recording_url: url,
       transcript: result.transcript,
       transcription_status: 'completed',
       transcription_model: result.model,
@@ -186,8 +216,14 @@ async function transcribeCall(request: Request, env: CallTranscriptionEnv, callI
 }
 
 export async function handleCallTranscription(request: Request, env: CallTranscriptionEnv, url: URL): Promise<Response | null> {
-  const match = url.pathname.match(/^\/api\/telephony\/calls\/([^/]+)\/transcribe$/);
-  if (!match) return null;
+  const recordingMatch = url.pathname.match(/^\/api\/telephony\/calls\/([^/]+)\/recording$/);
+  if (recordingMatch) {
+    if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
+    return proxyRecording(request, env, decodeURIComponent(recordingMatch[1]));
+  }
+
+  const transcribeMatch = url.pathname.match(/^\/api\/telephony\/calls\/([^/]+)\/transcribe$/);
+  if (!transcribeMatch) return null;
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  return transcribeCall(request, env, decodeURIComponent(match[1]));
+  return transcribeCall(request, env, decodeURIComponent(transcribeMatch[1]));
 }
