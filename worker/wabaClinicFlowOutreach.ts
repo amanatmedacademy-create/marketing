@@ -29,7 +29,7 @@ export interface WabaClinicFlowOutreachEnv {
   META_GRAPH_VERSION?: string;
 }
 
-const TEMPLATE_NAME = `imds_clinic_booking_v${CLINIC_FLOW_SCHEMA_VERSION}`;
+const TEMPLATE_PREFIX = `imds_clinic_booking_v${CLINIC_FLOW_SCHEMA_VERSION}`;
 const TEMPLATE_LANGUAGE = 'ru';
 const TEMPLATE_CATEGORY = 'MARKETING';
 const TEMPLATE_BODY = 'Здравствуйте! Чтобы подобрать удобное время для записи, заполните короткую форму.';
@@ -133,14 +133,21 @@ function clinicFlow(current: Credential): { flowId: string; status: string; sche
   return { flowId: text(clinic.flowId), status: text(clinic.status).toUpperCase(), schemaVersion: Number(clinic.schemaVersion || 0) };
 }
 
-async function getTemplate(current: Credential): Promise<MetaTemplate | null> {
+function templateNameForFlow(flowId: string): string {
+  const safeFlowId = flowId.replace(/[^0-9a-z]/gi, '').toLowerCase();
+  if (!safeFlowId) return TEMPLATE_PREFIX;
+  return `${TEMPLATE_PREFIX}_${safeFlowId}`;
+}
+
+async function getTemplate(current: Credential, flowId: string): Promise<MetaTemplate | null> {
+  const expectedName = templateNameForFlow(flowId);
   const fields = encodeURIComponent('id,name,status,category,language,components');
   const payload = await graphJson(
     `https://graph.facebook.com/${current.graphVersion}/${encodeURIComponent(current.wabaId)}/message_templates?fields=${fields}&limit=250`,
     current.accessToken,
   );
   const rows = Array.isArray(payload.data) ? payload.data.map(record) : [];
-  const row = rows.find((item) => text(item.name) === TEMPLATE_NAME && text(item.language) === TEMPLATE_LANGUAGE);
+  const row = rows.find((item) => text(item.name) === expectedName && text(item.language) === TEMPLATE_LANGUAGE);
   if (!row) return null;
   return {
     id: text(row.id) || undefined,
@@ -151,7 +158,7 @@ async function getTemplate(current: Credential): Promise<MetaTemplate | null> {
   };
 }
 
-async function saveTemplateSummary(env: WabaClinicFlowOutreachEnv, current: Credential, template: MetaTemplate): Promise<void> {
+async function saveTemplateSummary(env: WabaClinicFlowOutreachEnv, current: Credential, template: MetaTemplate, flowId: string): Promise<void> {
   const summary = current.configSummary;
   const flows = record(summary.flows);
   const clinic = record(flows.clinic);
@@ -168,6 +175,7 @@ async function saveTemplateSummary(env: WabaClinicFlowOutreachEnv, current: Cred
           category: template.category,
           status: template.status,
           schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
+          flowId,
           updatedAt: new Date().toISOString(),
         },
       },
@@ -185,9 +193,10 @@ async function createTemplate(env: WabaClinicFlowOutreachEnv, current: Credentia
     throw new Error(`Сначала опубликуйте актуальный Flow v${CLINIC_FLOW_SCHEMA_VERSION} «Запись в клинику»`);
   }
 
-  const existing = await getTemplate(current);
+  const expectedName = templateNameForFlow(flow.flowId);
+  const existing = await getTemplate(current, flow.flowId);
   if (existing) {
-    await saveTemplateSummary(env, current, existing);
+    await saveTemplateSummary(env, current, existing, flow.flowId);
     return existing;
   }
 
@@ -197,7 +206,7 @@ async function createTemplate(env: WabaClinicFlowOutreachEnv, current: Credentia
     {
       method: 'POST',
       body: JSON.stringify({
-        name: TEMPLATE_NAME,
+        name: expectedName,
         language: TEMPLATE_LANGUAGE,
         category: TEMPLATE_CATEGORY,
         components: [
@@ -218,12 +227,12 @@ async function createTemplate(env: WabaClinicFlowOutreachEnv, current: Credentia
   );
   const created: MetaTemplate = {
     id: text(payload.id) || undefined,
-    name: TEMPLATE_NAME,
+    name: expectedName,
     language: TEMPLATE_LANGUAGE,
     category: text(payload.category) || TEMPLATE_CATEGORY,
     status: text(payload.status).toUpperCase() || 'PENDING',
   };
-  await saveTemplateSummary(env, current, created);
+  await saveTemplateSummary(env, current, created, flow.flowId);
   return created;
 }
 
@@ -249,9 +258,18 @@ async function sendClinicFlowTemplate(env: WabaClinicFlowOutreachEnv, request: R
   if (!flow.flowId || flow.status !== 'PUBLISHED' || flow.schemaVersion !== CLINIC_FLOW_SCHEMA_VERSION) {
     return json({ error: `Flow «Запись в клинику» необходимо обновить до v${CLINIC_FLOW_SCHEMA_VERSION}` }, 409);
   }
-  const template = await getTemplate(current);
-  if (!template) return json({ error: `Шаблон ${TEMPLATE_NAME} ещё не создан. Создайте его в настройках WABA.`, code: 'FLOW_TEMPLATE_MISSING' }, 409);
-  await saveTemplateSummary(env, current, template).catch(() => undefined);
+  const expectedName = templateNameForFlow(flow.flowId);
+  const requestedName = text(record(input.template).name);
+  if (requestedName !== expectedName) {
+    return json({
+      error: 'Выбран устаревший шаблон записи. Обновите список шаблонов и выберите актуальный Clinic Flow.',
+      code: 'FLOW_TEMPLATE_STALE',
+      expectedTemplate: expectedName,
+    }, 409);
+  }
+  const template = await getTemplate(current, flow.flowId);
+  if (!template) return json({ error: `Шаблон ${expectedName} ещё не создан. Создайте его в настройках WABA.`, code: 'FLOW_TEMPLATE_MISSING' }, 409);
+  await saveTemplateSummary(env, current, template, flow.flowId).catch(() => undefined);
   if (template.status !== 'APPROVED') {
     return json({
       error: `Шаблон «Запись в клинику» имеет статус ${template.status || 'PENDING'}. Дождитесь одобрения Meta.`,
@@ -338,16 +356,19 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
       const companyId = text(env.CURRENT_COMPANY_ID) || text(env.DEFAULT_COMPANY_ID);
       if (!companyId) throw new Error('Не определена клиника');
       const current = await findCredential(env, companyId);
-      const template = await getTemplate(current);
-      if (template) await saveTemplateSummary(env, current, template).catch(() => undefined);
+      const flow = clinicFlow(current);
+      const expectedName = templateNameForFlow(flow.flowId);
+      const template = flow.flowId ? await getTemplate(current, flow.flowId) : null;
+      if (template) await saveTemplateSummary(env, current, template, flow.flowId).catch(() => undefined);
       return json({
         configured: Boolean(template),
-        name: TEMPLATE_NAME,
+        name: expectedName,
         language: TEMPLATE_LANGUAGE,
         category: template?.category || TEMPLATE_CATEGORY,
         status: template?.status || null,
         templateId: template?.id || null,
         schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
+        flowId: flow.flowId || null,
       });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : String(error) }, 400);
@@ -362,6 +383,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
       if (!companyId) throw new Error('Не определена клиника');
       const current = await findCredential(env, companyId);
       const template = await createTemplate(env, current);
+      const flow = clinicFlow(current);
       return json({
         ok: true,
         configured: true,
@@ -371,6 +393,7 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
         status: template.status,
         templateId: template.id || null,
         schemaVersion: CLINIC_FLOW_SCHEMA_VERSION,
+        flowId: flow.flowId || null,
       });
     } catch (error) {
       console.error('Clinic Flow template setup failed', error);
@@ -381,8 +404,8 @@ export async function handleWabaClinicFlowOutreachRequest(request: Request, env:
   const messageMatch = url.pathname.match(/^\/api\/callcenter\/threads\/([^/]+)\/messages$/);
   if (messageMatch && request.method === 'POST') {
     const input = record(await request.clone().json().catch(() => ({})));
-    const template = record(input.template);
-    if (text(template.name) !== TEMPLATE_NAME) return null;
+    const requestedName = text(record(input.template).name);
+    if (!requestedName.startsWith(`${TEMPLATE_PREFIX}_`)) return null;
     return sendClinicFlowTemplate(env, request, decodeURIComponent(messageMatch[1]), input);
   }
 
