@@ -1,9 +1,10 @@
 import type { Env } from './integrations';
+import { analyzeMarketingCall } from './callIntelligence';
 import { processMetaGrowthConversions } from './metaGrowthConversions';
 import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
-type ScopedEnv = Env & TenantScopedEnv;
+type ScopedEnv = Env & TenantScopedEnv & { OPENAI_API_KEY?: string; OPENAI_CALL_ANALYSIS_MODEL?: string };
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
@@ -32,16 +33,28 @@ async function db<T>(env: Env, path: string, init: RequestInit = {}): Promise<T>
 
 const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
-const isAdmin = (request: Request) => request.headers.get('x-amanat-auth-role') === 'administrator';
+const role = (request: Request) => text(request.headers.get('x-amanat-auth-role')).toLowerCase();
+const isAdmin = (request: Request) => role(request) === 'administrator';
+const canAnalyzeCalls = (request: Request) => ['administrator', 'marketer'].includes(role(request));
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
 
 async function overview(env: ScopedEnv): Promise<Response> {
   const companyId = requireCompanyId(env);
   const scope = `company_id=eq.${encodeURIComponent(companyId)}`;
-  const [events, lost, conversions, destinations] = await Promise.all([
+  const [events, lost, conversions, destinations, leads, responseSettings, calls] = await Promise.all([
     db<Row[]>(env, `patient_journey_events?select=event_type,value,occurred_at&${scope}&order=occurred_at.desc&limit=50000`),
     db<Row[]>(env, `lost_opportunities?select=id,status,estimated_value,reason,detected_at&${scope}&order=detected_at.desc&limit=50000`),
     db<Row[]>(env, `conversion_events?select=id,event_name,destination,sync_status,value,occurred_at&${scope}&order=occurred_at.desc&limit=50000`),
     db<Row[]>(env, `growth_conversion_destinations?select=provider,external_destination_id,enabled&${scope}`),
+    db<Row[]>(env, `marketing_leads?select=id,lead_created_at,first_response_at,first_response_seconds,first_response_channel&${scope}&order=lead_created_at.desc&limit=50000`),
+    db<Row[]>(env, `growth_response_settings?select=sla_seconds,stale_after_hours&${scope}&limit=1`),
+    db<Row[]>(env, `marketing_calls?select=id,call_status,transcript,ai_analysis_status,quality_score,loss_reason,appointment_created&${scope}&order=started_at.desc&limit=50000`),
   ]);
 
   const funnel: Record<string, number> = {};
@@ -49,6 +62,22 @@ async function overview(env: ScopedEnv): Promise<Response> {
   const openLost = lost.filter((row) => ['open', 'recovering'].includes(text(row.status)));
   const recoverableValue = openLost.reduce((sum, row) => sum + num(row.estimated_value), 0);
   const pendingConversions = conversions.filter((row) => ['pending', 'processing', 'failed'].includes(text(row.sync_status)));
+
+  const slaSeconds = Math.max(30, num(responseSettings[0]?.sla_seconds) || 300);
+  const staleAfterHours = Math.max(1, num(responseSettings[0]?.stale_after_hours) || 24);
+  const responseSeconds = leads.map((lead) => num(lead.first_response_seconds)).filter((value) => Number.isFinite(value) && value >= 0 && value > 0);
+  const respondedLeads = leads.filter((lead) => Boolean(lead.first_response_at));
+  const breachedLeads = respondedLeads.filter((lead) => num(lead.first_response_seconds) > slaSeconds);
+  const now = Date.now();
+  const unansweredLeads = leads.filter((lead) => !lead.first_response_at);
+  const staleUnansweredLeads = unansweredLeads.filter((lead) => {
+    const created = new Date(text(lead.lead_created_at)).getTime();
+    return Number.isFinite(created) && now - created > staleAfterHours * 3600000;
+  });
+  const completedCalls = calls.filter((call) => text(call.call_status).toUpperCase() === 'COMPLETED');
+  const analyzableCalls = completedCalls.filter((call) => Boolean(text(call.transcript)));
+  const analyzedCalls = calls.filter((call) => text(call.ai_analysis_status) === 'completed');
+  const scoredCalls = analyzedCalls.map((call) => num(call.quality_score)).filter((value) => value >= 0);
 
   return json({
     funnel,
@@ -59,6 +88,28 @@ async function overview(env: ScopedEnv): Promise<Response> {
     sentConversions: conversions.filter((row) => text(row.sync_status) === 'sent').length,
     skippedConversions: conversions.filter((row) => text(row.sync_status) === 'skipped').length,
     destinations,
+    speedToLead: {
+      slaSeconds,
+      staleAfterHours,
+      leads: leads.length,
+      respondedLeads: respondedLeads.length,
+      unansweredLeads: unansweredLeads.length,
+      staleUnansweredLeads: staleUnansweredLeads.length,
+      withinSla: respondedLeads.filter((lead) => num(lead.first_response_seconds) <= slaSeconds).length,
+      breached: breachedLeads.length,
+      averageSeconds: responseSeconds.length ? responseSeconds.reduce((sum, value) => sum + value, 0) / responseSeconds.length : null,
+      medianSeconds: median(responseSeconds),
+    },
+    callIntelligence: {
+      calls: calls.length,
+      completedCalls: completedCalls.length,
+      analyzableCalls: analyzableCalls.length,
+      analyzedCalls: analyzedCalls.length,
+      failedAnalyses: calls.filter((call) => text(call.ai_analysis_status) === 'failed').length,
+      averageQualityScore: scoredCalls.length ? scoredCalls.reduce((sum, value) => sum + value, 0) / scoredCalls.length : null,
+      detectedLostCalls: analyzedCalls.filter((call) => Boolean(text(call.loss_reason))).length,
+      appointments: analyzedCalls.filter((call) => call.appointment_created === true).length,
+    },
   });
 }
 
@@ -88,6 +139,26 @@ async function conversions(env: ScopedEnv, url: URL): Promise<Response> {
   const status = (url.searchParams.get('status') || '').trim();
   if (status) params.set('sync_status', `eq.${status}`);
   return json(await db<Row[]>(env, `conversion_events?${params}`));
+}
+
+async function responseSettings(request: Request, env: ScopedEnv): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  if (request.method === 'GET') {
+    const rows = await db<Row[]>(env, `growth_response_settings?company_id=eq.${encodeURIComponent(companyId)}&select=sla_seconds,stale_after_hours,updated_at&limit=1`);
+    return json(rows[0] || { sla_seconds: 300, stale_after_hours: 24 });
+  }
+  if (request.method !== 'PUT') return json({ error: 'Method not allowed' }, 405);
+  if (!isAdmin(request)) return json({ error: 'Настройки Speed-to-Lead доступны только администратору' }, 403);
+  const payload = await request.json().catch(() => ({})) as Row;
+  const slaSeconds = Math.min(Math.max(Math.round(num(payload.slaSeconds) || 300), 30), 86400);
+  const staleAfterHours = Math.min(Math.max(Math.round(num(payload.staleAfterHours) || 24), 1), 720);
+  const stored = { company_id: companyId, sla_seconds: slaSeconds, stale_after_hours: staleAfterHours, updated_at: new Date().toISOString() };
+  const rows = await db<Row[]>(env, 'growth_response_settings?on_conflict=company_id&select=sla_seconds,stale_after_hours,updated_at', {
+    method: 'POST',
+    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(stored),
+  });
+  return json(rows[0] || stored);
 }
 
 async function destinationSettings(request: Request, env: ScopedEnv): Promise<Response> {
@@ -124,6 +195,16 @@ async function syncMeta(request: Request, env: ScopedEnv): Promise<Response> {
   const payload = await request.json().catch(() => ({})) as Row;
   const limit = Math.min(Math.max(Number(payload.limit || 25), 1), 100);
   return json({ ok: true, ...(await processMetaGrowthConversions(env, limit)) });
+}
+
+async function analyzeCall(request: Request, env: ScopedEnv, callId: string): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (!canAnalyzeCalls(request)) return json({ error: 'AI-анализ звонка доступен администратору и маркетологу' }, 403);
+  try {
+    return json({ ok: true, call: await analyzeMarketingCall(env, callId) });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 }
 
 async function lostOpportunities(request: Request, env: ScopedEnv, url: URL): Promise<Response> {
@@ -169,8 +250,11 @@ export async function handleGrowthEngine(request: Request, env: Env, url: URL): 
   if (url.pathname === '/api/growth/overview' && request.method === 'GET') return overview(scoped);
   if (url.pathname === '/api/growth/journey' && request.method === 'GET') return journey(scoped, url);
   if (url.pathname === '/api/growth/conversions' && request.method === 'GET') return conversions(scoped, url);
+  if (url.pathname === '/api/growth/response-settings') return responseSettings(request, scoped);
   if (url.pathname === '/api/growth/destinations') return destinationSettings(request, scoped);
   if (url.pathname === '/api/growth/conversions/meta/sync') return syncMeta(request, scoped);
+  const analyzeMatch = url.pathname.match(/^\/api\/growth\/calls\/([^/]+)\/analyze$/);
+  if (analyzeMatch) return analyzeCall(request, scoped, decodeURIComponent(analyzeMatch[1]));
   if (url.pathname === '/api/growth/lost-opportunities') return lostOpportunities(request, scoped, url);
   if (url.pathname.startsWith('/api/growth/lost-opportunities/')) return lostOpportunityById(request, scoped, decodeURIComponent(url.pathname.split('/').pop() || ''));
   return null;
