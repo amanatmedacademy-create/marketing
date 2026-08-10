@@ -1,6 +1,8 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
+type ScopedEnv = Env & TenantScopedEnv;
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 
 async function query<T>(env: Env, path: string): Promise<T> {
@@ -27,9 +29,10 @@ const createRow = (id: string, label: string, platform: string, level: MatrixRow
 
 export async function handleConversionMatrix(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/conversion-matrix') return null;
+  const companyId = requireCompanyId(env as ScopedEnv);
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 7), 1), 365);
   const { from, to } = range(days, url);
-  const leads = await query<Row[]>(env, `marketing_leads?select=source,platform,lead_created_at,appointment_at,utm_source,utm_medium,utm_campaign&and=(lead_created_at.gte.${from}T00:00:00Z,lead_created_at.lte.${to}T23:59:59Z)&limit=50000`);
+  const leads = await query<Row[]>(env, `marketing_leads?select=source,platform,lead_created_at,appointment_at,utm_source,utm_medium,utm_campaign&company_id=eq.${encodeURIComponent(companyId)}&and=(lead_created_at.gte.${from}T00:00:00Z,lead_created_at.lte.${to}T23:59:59Z)&limit=50000`);
 
   const rows = new Map<string, MatrixRow>();
   rows.set('total', createRow('total', 'Все источники', 'all', 'total'));
