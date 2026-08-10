@@ -3,12 +3,14 @@ type Row = Record<string, unknown>;
 export interface MarketingAssistantEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  CURRENT_COMPANY_ID?: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
 }
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+const number = (value: unknown): number => Number(value || 0) || 0;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 
 async function db<T>(env: MarketingAssistantEnv, path: string): Promise<T> {
@@ -33,28 +35,71 @@ function outputText(payload: Row): string {
   return parts.join('\n').trim();
 }
 
+function aggregateDashboard(rows: Row[]): Row[] {
+  const grouped = new Map<string, Row>();
+  for (const row of rows) {
+    const date = text(row.date);
+    if (!date) continue;
+    const current = grouped.get(date) || { date, leads: 0, target_leads: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 };
+    current.leads = number(current.leads) + number(row.leads);
+    current.target_leads = number(current.target_leads) + number(row.target_leads);
+    current.arrived = number(current.arrived) + number(row.arrived);
+    current.sales = number(current.sales) + number(row.sales);
+    current.spend = number(current.spend) + number(row.spend);
+    current.revenue = number(current.revenue) + number(row.revenue);
+    grouped.set(date, current);
+  }
+  return [...grouped.values()].sort((a, b) => text(b.date).localeCompare(text(a.date))).slice(0, 90);
+}
+
+function aggregateSources(rows: Row[]): Row[] {
+  const grouped = new Map<string, Row>();
+  for (const row of rows) {
+    const source = text(row.source) || 'Не определено';
+    const platform = text(row.platform) || 'unknown';
+    const key = `${source}\u0000${platform}`;
+    const current = grouped.get(key) || { source, platform, leads: 0, target_leads: 0, arrived: 0, sales: 0, spend: 0, revenue: 0 };
+    current.leads = number(current.leads) + number(row.leads);
+    current.target_leads = number(current.target_leads) + number(row.target_leads);
+    current.arrived = number(current.arrived) + number(row.arrived);
+    current.sales = number(current.sales) + number(row.sales);
+    current.spend = number(current.spend) + number(row.spend);
+    current.revenue = number(current.revenue) + number(row.revenue);
+    grouped.set(key, current);
+  }
+  return [...grouped.values()].sort((a, b) => number(b.revenue) - number(a.revenue)).slice(0, 30);
+}
+
 async function businessContext(env: MarketingAssistantEnv): Promise<Row> {
-  const [dashboard, sources, leads, ads, runs, web] = await Promise.all([
-    db<Row[]>(env, 'marketing_dashboard_daily?select=*&order=date.desc&limit=90').catch(() => []),
-    db<Row[]>(env, 'marketing_source_summary?select=*&order=revenue.desc&limit=30').catch(() => []),
-    db<Row[]>(env, 'marketing_leads?select=stage,source,platform,manager,sale_amount,created_at,utm_source,utm_campaign&order=created_at.desc&limit=1000').catch(() => []),
-    db<Row[]>(env, 'marketing_ads_summary?select=platform,campaign_name,spend,leads,sales,revenue,impressions,clicks&order=spend.desc&limit=100').catch(() => []),
-    db<Row[]>(env, 'integration_runs?select=source,status,fetched,written,error,started_at,finished_at&order=started_at.desc&limit=30').catch(() => []),
-    db<Row[]>(env, 'marketing_web_analytics?select=report_date,source,medium,campaign,users,sessions,key_events,revenue&order=report_date.desc&limit=500').catch(() => []),
+  const companyId = text(env.CURRENT_COMPANY_ID);
+  if (!companyId) throw new Error('Текущая клиника не определена для IMDS AI');
+  const companyFilter = `company_id=eq.${encodeURIComponent(companyId)}`;
+
+  const [dailyMetrics, leads, ads, runs] = await Promise.all([
+    db<Row[]>(env, `marketing_daily_metrics?select=date,source,platform,leads,target_leads,arrived,sales,spend,revenue&${companyFilter}&order=date.desc&limit=3000`).catch(() => []),
+    db<Row[]>(env, `marketing_leads?select=stage,source,platform,manager,sale_amount,created_at,utm_source,utm_campaign&${companyFilter}&order=created_at.desc&limit=1000`).catch(() => []),
+    db<Row[]>(env, `marketing_ads?select=platform,campaign_name,spend,leads,sales,revenue,impressions,clicks&${companyFilter}&order=spend.desc&limit=100`).catch(() => []),
+    db<Row[]>(env, `integration_runs?select=source,status,fetched,written,error,started_at,finished_at&${companyFilter}&order=started_at.desc&limit=30`).catch(() => []),
   ]);
+
   const stageCounts: Record<string, number> = {};
   let leadRevenue = 0; let missingUtm = 0; let unassigned = 0;
   for (const lead of leads) {
-    const stage = text(lead.stage) || 'Не определено'; stageCounts[stage] = (stageCounts[stage] || 0) + 1;
-    leadRevenue += Number(lead.sale_amount || 0); if (!text(lead.utm_source) && !text(lead.utm_campaign)) missingUtm += 1; if (!text(lead.manager)) unassigned += 1;
+    const stage = text(lead.stage) || 'Не определено';
+    stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+    leadRevenue += number(lead.sale_amount);
+    if (!text(lead.utm_source) && !text(lead.utm_campaign)) missingUtm += 1;
+    if (!text(lead.manager)) unassigned += 1;
   }
+
   return {
     generatedAt: new Date().toISOString(),
-    dashboard,
-    sources,
+    companyId,
+    dashboard: aggregateDashboard(dailyMetrics),
+    sources: aggregateSources(dailyMetrics),
     topAds: ads.slice(0, 30),
     integrations: runs,
-    webAnalytics: web.slice(0, 100),
+    webAnalytics: { available: false, reason: 'Источник web analytics пока не имеет подтверждённого tenant scope и не передаётся в AI.' },
     crm: { leadCount: leads.length, leadRevenue, stageCounts, dataQuality: { missingUtm, unassigned } },
   };
 }
@@ -76,7 +121,7 @@ export async function handleMarketingAssistantRequest(request: Request, env: Mar
       body: JSON.stringify({
         model: text(env.OPENAI_MODEL) || 'gpt-5',
         input: [
-          { role: 'system', content: 'Ты IMDS Marketing AI. Анализируй только переданные агрегированные данные компании. Отвечай по-русски, кратко и предметно. Не выдумывай отсутствующие показатели. Отделяй факт от рекомендации. Для рекомендаций указывай конкретный следующий шаг.' },
+          { role: 'system', content: 'Ты IMDS Marketing AI. Анализируй только переданные агрегированные данные текущей клиники. Отвечай по-русски, кратко и предметно. Не выдумывай отсутствующие показатели. Отделяй факт от рекомендации. Для рекомендаций указывай конкретный следующий шаг.' },
           { role: 'user', content: `Вопрос: ${question}\n\nТекущие данные IMDS Marketing:\n${JSON.stringify(context)}` },
         ],
       }),
