@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
-import DealWorkspaceHost from './components/DealWorkspace';
 import MarketingPlatform from './MarketingPlatform';
 import './styles.css';
 import './analytics.css';
@@ -20,10 +19,7 @@ function Root() {
     window.history.replaceState({}, document.title, '/marketing');
   }
 
-  return <>
-    <MarketingPlatform />
-    <DealWorkspaceHost />
-  </>;
+  return <MarketingPlatform />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
