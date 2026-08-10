@@ -1,5 +1,4 @@
 import type { Env } from './integrations';
-import { handleWorkspaceBuilderRequest } from './workspaceBuilder';
 
 type JsonRecord = Record<string, unknown>;
 type Resource = { table: string; order: string };
@@ -136,8 +135,6 @@ function addActivityFilters(params: URLSearchParams, url: URL) {
 }
 
 export async function handleOperationsRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
-  const workspaceResponse = await handleWorkspaceBuilderRequest(request, env, url);
-  if (workspaceResponse) return workspaceResponse;
   if (!url.pathname.startsWith('/api/operations/')) return null;
 
   const parts = url.pathname.split('/').filter(Boolean);
