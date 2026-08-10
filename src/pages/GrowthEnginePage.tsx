@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Clock3, Headphones, RefreshCw, RotateCcw, Send, Target, TrendingUp } from 'lucide-react';
+import { ArrowRight, Clock3, Headphones, MessageCircle, PlayCircle, RefreshCw, RotateCcw, Send, Target, TrendingUp } from 'lucide-react';
 import { useAuth } from '../components/AuthGate';
 import '../strategic-platform.css';
 
@@ -22,6 +22,30 @@ type GrowthOverview = {
 type JourneyEvent = { id: string; lead_id?: string | null; event_type: string; occurred_at: string; channel?: string | null; source?: string | null; campaign_id?: string | null; value?: number; currency?: string; metadata?: Record<string, unknown> };
 type LostOpportunity = { id: string; lead_id?: string | null; call_id?: string | null; status: 'open' | 'recovering' | 'recovered' | 'lost'; reason: string; estimated_value: number; currency: string; owner_name?: string | null; next_action?: string | null; next_action_at?: string | null; detected_at: string; recovered_at?: string | null };
 type ConversionEvent = { id: string; lead_id?: string | null; event_name: string; occurred_at: string; destination: string; value: number; currency: string; sync_status: string; attempts: number; last_error?: string | null };
+type RecoverySettings = {
+  enabled: boolean;
+  create_tasks: boolean;
+  stale_lead_enabled: boolean;
+  lost_opportunity_enabled: boolean;
+  whatsapp_enabled: boolean;
+  lost_task_delay_minutes: number;
+  whatsapp_template_name?: string | null;
+  whatsapp_template_language: string;
+  whatsapp_template_parameters?: string[];
+};
+type RecoveryAction = {
+  id: string;
+  lead_id?: string | null;
+  lost_opportunity_id?: string | null;
+  trigger_type: 'stale_lead' | 'lost_opportunity';
+  action_type: 'task' | 'whatsapp_template';
+  status: 'pending' | 'sent' | 'completed' | 'skipped' | 'failed';
+  scheduled_at: string;
+  executed_at?: string | null;
+  template_name?: string | null;
+  last_error?: string | null;
+  created_at: string;
+};
 
 const money = (value: number, currency = 'KZT') => new Intl.NumberFormat('ru-RU', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString('ru-RU') : '—';
@@ -34,6 +58,7 @@ const responseTime = (seconds?: number | null) => {
 };
 const percent = (value: number, total: number) => total ? `${((value / total) * 100).toFixed(0)}%` : '—';
 const labels: Record<string, string> = { lead_created: 'Лид', first_contact: 'Первый контакт', first_response: 'Первый ответ клиники', qualified: 'Целевой', call: 'Звонок', conversation: 'Диалог', message: 'Сообщение', appointment_booked: 'Запись', arrived: 'Приход', deal_created: 'Сделка', rejected: 'Отказ', sale: 'Продажа', lead: 'Lead', qualified_lead: 'Qualified Lead', purchase: 'Purchase' };
+const recoveryTriggerLabel: Record<string, string> = { stale_lead: 'Лид без ответа', lost_opportunity: 'Потерянная возможность' };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -52,25 +77,33 @@ export default function GrowthEnginePage() {
   const [journey, setJourney] = useState<JourneyEvent[]>([]);
   const [lost, setLost] = useState<LostOpportunity[]>([]);
   const [conversions, setConversions] = useState<ConversionEvent[]>([]);
+  const [recoverySettings, setRecoverySettings] = useState<RecoverySettings | null>(null);
+  const [recoveryActions, setRecoveryActions] = useState<RecoveryAction[]>([]);
   const [metaDatasetId, setMetaDatasetId] = useState('');
   const [slaSeconds, setSlaSeconds] = useState(300);
   const [staleAfterHours, setStaleAfterHours] = useState(24);
   const [loading, setLoading] = useState(true);
   const [syncingMeta, setSyncingMeta] = useState(false);
   const [savingResponseSettings, setSavingResponseSettings] = useState(false);
+  const [savingRecovery, setSavingRecovery] = useState(false);
+  const [runningRecovery, setRunningRecovery] = useState(false);
+  const [sendingRecoveryId, setSendingRecoveryId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true); setMessage(null);
     try {
-      const [summary, journeyRows, lostRows, conversionRows] = await Promise.all([
+      const [summary, journeyRows, lostRows, conversionRows, recoveryCfg, recoveryRows] = await Promise.all([
         api<GrowthOverview>('/api/growth/overview'),
         api<JourneyEvent[]>('/api/growth/journey?limit=100'),
         api<LostOpportunity[]>('/api/growth/lost-opportunities?limit=100'),
         api<ConversionEvent[]>('/api/growth/conversions?limit=100'),
+        api<RecoverySettings>('/api/growth/recovery/settings'),
+        api<RecoveryAction[]>('/api/growth/recovery/actions?limit=100'),
       ]);
       setOverview(summary); setJourney(journeyRows); setLost(lostRows); setConversions(conversionRows);
+      setRecoverySettings(recoveryCfg); setRecoveryActions(recoveryRows);
       const meta = summary.destinations?.find((item) => item.provider === 'meta');
       setMetaDatasetId(meta?.external_destination_id || '');
       if (summary.speedToLead) {
@@ -88,6 +121,10 @@ export default function GrowthEnginePage() {
   ].map(([key, label]) => ({ key, label, value: overview?.funnel[key] || 0 })), [overview]);
   const openLost = lost.filter((item) => item.status === 'open' || item.status === 'recovering');
   const pending = conversions.filter((item) => ['pending', 'processing', 'failed'].includes(item.sync_status));
+  const pendingRecovery = recoveryActions.filter((item) => item.status === 'pending');
+  const failedRecovery = recoveryActions.filter((item) => item.status === 'failed');
+  const recoveryTasks = recoveryActions.filter((item) => item.action_type === 'task' && item.status === 'completed');
+  const recoverySent = recoveryActions.filter((item) => item.action_type === 'whatsapp_template' && item.status === 'sent');
   const speed = overview?.speedToLead;
   const calls = overview?.callIntelligence;
 
@@ -104,6 +141,50 @@ export default function GrowthEnginePage() {
       await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось сохранить SLA'); }
     finally { setSavingResponseSettings(false); }
+  };
+
+  const saveRecoverySettings = async () => {
+    if (!recoverySettings) return;
+    setSavingRecovery(true); setMessage(null); setSuccess(null);
+    try {
+      await api('/api/growth/recovery/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: recoverySettings.enabled,
+          createTasks: recoverySettings.create_tasks,
+          staleLeadEnabled: recoverySettings.stale_lead_enabled,
+          lostOpportunityEnabled: recoverySettings.lost_opportunity_enabled,
+          whatsappEnabled: recoverySettings.whatsapp_enabled,
+          lostTaskDelayMinutes: recoverySettings.lost_task_delay_minutes,
+          whatsappTemplateName: recoverySettings.whatsapp_template_name || '',
+          whatsappTemplateLanguage: recoverySettings.whatsapp_template_language || 'ru',
+          whatsappTemplateParameters: recoverySettings.whatsapp_template_parameters || [],
+        }),
+      });
+      setSuccess('Настройки Recovery Engine сохранены для текущей клиники.');
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось сохранить Recovery Engine'); }
+    finally { setSavingRecovery(false); }
+  };
+
+  const runRecovery = async () => {
+    setRunningRecovery(true); setMessage(null); setSuccess(null);
+    try {
+      const result = await api<{ enabled: boolean; scanned: number; eligible?: number; tasksCreated: number; whatsappQueued: number; message?: string }>('/api/growth/recovery/run', { method: 'POST', body: '{}' });
+      setSuccess(result.enabled ? `Recovery: проверено ${result.scanned}, кандидатов ${result.eligible || 0}, задач создано ${result.tasksCreated}, WhatsApp в очереди ${result.whatsappQueued}.` : (result.message || 'Recovery Engine выключен.'));
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Ошибка Recovery Engine'); }
+    finally { setRunningRecovery(false); }
+  };
+
+  const sendRecovery = async (id: string) => {
+    setSendingRecoveryId(id); setMessage(null); setSuccess(null);
+    try {
+      await api(`/api/growth/recovery/actions/${encodeURIComponent(id)}/send`, { method: 'POST', body: '{}' });
+      setSuccess('WhatsApp follow-up отправлен через одобренный WABA-шаблон.');
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'WhatsApp follow-up не отправлен'); }
+    finally { setSendingRecoveryId(null); }
   };
 
   const saveMetaDestination = async () => {
@@ -137,7 +218,7 @@ export default function GrowthEnginePage() {
       <article><span>Медиана первого ответа</span><strong>{responseTime(speed?.medianSeconds)}</strong></article>
       <article><span>Ответили в SLA</span><strong>{speed ? percent(speed.withinSla, speed.respondedLeads) : '—'}</strong><small>{speed ? `${speed.withinSla} из ${speed.respondedLeads}` : 'Нет данных'}</small></article>
       <article><span>Без ответа</span><strong>{speed?.unansweredLeads ?? 0}</strong><small>{speed?.staleUnansweredLeads ? `просрочено: ${speed.staleUnansweredLeads}` : 'просроченных нет'}</small></article>
-      <article><span>AI разобрано звонков</span><strong>{calls?.analyzedCalls ?? 0}</strong><small>{calls?.analyzableCalls ? `доступно: ${calls.analyzableCalls}` : 'нет транскриптов'}</small></article>
+      <article><span>Recovery очередь</span><strong>{pendingRecovery.length}</strong><small>{failedRecovery.length ? `ошибок: ${failedRecovery.length}` : recoverySettings?.enabled ? 'движок включён' : 'движок выключен'}</small></article>
       <article><span>Открытых потерь</span><strong>{overview?.openLostOpportunities || 0}</strong></article>
       <article><span>Потенциально вернуть</span><strong>{money(overview?.recoverableValue || 0)}</strong></article>
     </div>
@@ -172,6 +253,44 @@ export default function GrowthEnginePage() {
         <div className="strategic-note">Анализ запускается на странице «Звонки». PENDING-звонки и звонки без транскрипта не оцениваются — система не генерирует вымышленные показатели.</div>
       </section>
     </div>
+
+    <section className="panel">
+      <div className="google-card-head"><div><h2>Recovery Engine</h2><p>Возвращает просроченные лиды и потерянные возможности в работу: создаёт CRM-задачи и готовит безопасные WhatsApp follow-up через одобренные шаблоны.</p></div><RotateCcw size={20}/></div>
+      <div className="customer-facts">
+        <div><span>CRM-задач создано</span><b>{recoveryTasks.length}</b></div>
+        <div><span>WhatsApp в очереди</span><b>{pendingRecovery.filter((item) => item.action_type === 'whatsapp_template').length}</b></div>
+        <div><span>WhatsApp отправлено</span><b>{recoverySent.length}</b></div>
+        <div><span>Ошибки</span><b>{failedRecovery.length}</b></div>
+      </div>
+      <div className="strategic-actions" style={{ marginTop: 12 }}>
+        <button className="button" type="button" onClick={() => void runRecovery()} disabled={runningRecovery || !recoverySettings?.enabled}><PlayCircle size={14}/>{runningRecovery ? 'Проверка…' : 'Запустить Recovery'}</button>
+      </div>
+      {isAdmin && recoverySettings && <div className="strategic-note" style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+        <strong>Настройки текущей клиники</strong>
+        <div className="strategic-actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <label><input type="checkbox" checked={recoverySettings.enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, enabled: event.target.checked })} /> Recovery включён</label>
+          <label><input type="checkbox" checked={recoverySettings.create_tasks} onChange={(event) => setRecoverySettings({ ...recoverySettings, create_tasks: event.target.checked })} /> Создавать CRM-задачи</label>
+          <label><input type="checkbox" checked={recoverySettings.stale_lead_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, stale_lead_enabled: event.target.checked })} /> Лиды без ответа</label>
+          <label><input type="checkbox" checked={recoverySettings.lost_opportunity_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, lost_opportunity_enabled: event.target.checked })} /> Потерянные возможности</label>
+          <label>Дожим через <input type="number" min={0} max={10080} value={recoverySettings.lost_task_delay_minutes} onChange={(event) => setRecoverySettings({ ...recoverySettings, lost_task_delay_minutes: Number(event.target.value) })} style={{ width: 90 }} /> мин</label>
+        </div>
+        <div className="strategic-actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <label><input type="checkbox" checked={recoverySettings.whatsapp_enabled} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_enabled: event.target.checked })} /> WhatsApp follow-up</label>
+          <input value={recoverySettings.whatsapp_template_name || ''} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_template_name: event.target.value })} placeholder="Одобренный template name" style={{ minWidth: 220 }} />
+          <input value={recoverySettings.whatsapp_template_language || 'ru'} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_template_language: event.target.value })} placeholder="ru" style={{ width: 90 }} />
+          <input value={(recoverySettings.whatsapp_template_parameters || []).join(', ')} onChange={(event) => setRecoverySettings({ ...recoverySettings, whatsapp_template_parameters: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="$lead_name, $reason" style={{ minWidth: 220 }} />
+          <button className="button" type="button" onClick={() => void saveRecoverySettings()} disabled={savingRecovery}>{savingRecovery ? 'Сохранение…' : 'Сохранить Recovery'}</button>
+        </div>
+        <small>WhatsApp не отправляется автоматически. Recovery только ставит шаблон в очередь; сотрудник запускает отправку вручную. Поддерживаемые параметры: $lead_name, $reason, $next_action, $source. WABA повторно проверяет, что шаблон одобрен и параметры совпадают.</small>
+      </div>}
+      <div className="run-list" style={{ marginTop: 12 }}>
+        {recoveryActions.length ? recoveryActions.slice(0, 50).map((item) => <div className="run-item" key={item.id}>
+          <i className={`run-dot ${['sent', 'completed'].includes(item.status) ? 'success' : item.status === 'failed' ? 'failed' : ''}`}/>
+          <div><b>{recoveryTriggerLabel[item.trigger_type] || item.trigger_type} · {item.action_type === 'task' ? 'CRM-задача' : 'WhatsApp шаблон'}</b><small>{dateTime(item.created_at)}{item.template_name ? ` · ${item.template_name}` : ''}{item.last_error ? ` · ${item.last_error}` : ''}</small></div>
+          {item.action_type === 'whatsapp_template' && item.status !== 'sent' ? <button className="button" type="button" onClick={() => void sendRecovery(item.id)} disabled={sendingRecoveryId === item.id}><MessageCircle size={14}/>{sendingRecoveryId === item.id ? 'Отправка…' : item.status === 'failed' ? 'Повторить' : 'Отправить'}</button> : <span className="badge">{item.status}</span>}
+        </div>) : <div className="suite-state">Recovery-действий пока нет.</div>}
+      </div>
+    </section>
 
     <section className="panel">
       <div className="google-card-head"><div><h2>Patient Journey Funnel</h2><p>Главная медицинская воронка: лид → квалификация → запись → приход → продажа.</p></div><TrendingUp size={20}/></div>
