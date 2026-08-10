@@ -11,7 +11,7 @@ import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
-import { AttributionPage, MarketingArchitecturePage } from './components/MarketingModules';
+import { MarketingArchitecturePage } from './components/MarketingModules';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
@@ -49,7 +49,6 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
-    { to: '/attribution', label: 'Атрибуция', icon: Tags, moduleId: 'analytics.attribution' },
     { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
@@ -114,7 +113,7 @@ function Shell() {
         <Route path="/whatsapp/templates" element={guard('communications.chat', <WhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
         <Route path="/segments" element={guard('analytics.reports', <SegmentsPage/>)} />
-        <Route path="/attribution" element={guard('analytics.attribution', <AttributionPage/>)} />
+        <Route path="/attribution" element={<Navigate to="/analytics" replace/>} />
         <Route path="/utm-builder" element={guard('analytics.attribution', <UtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
