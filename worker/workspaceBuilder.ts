@@ -1,7 +1,7 @@
 import { resolveCompanyId } from './companyContext';
 
 type Row = Record<string, unknown>;
-type BlockKind = 'system' | 'metric' | 'table';
+type BlockKind = 'system' | 'metric' | 'table' | 'chart' | 'funnel';
 
 export interface WorkspaceBuilderEnv {
   SUPABASE_URL: string;
@@ -14,7 +14,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const allowedKinds: BlockKind[] = ['system', 'metric', 'table'];
+const allowedKinds: BlockKind[] = ['system', 'metric', 'table', 'chart', 'funnel'];
 const allowedSources = new Set(['dashboard', 'leads', 'calls', 'ads', 'sources']);
 
 function userId(request: Request) { return text(request.headers.get('x-amanat-auth-user')); }
@@ -61,17 +61,9 @@ function cleanSource(value: unknown): string | null {
 }
 function publicBlock(row: Row) {
   return {
-    id: text(row.id),
-    route: text(row.route),
-    blockKey: text(row.block_key),
-    kind: text(row.kind),
-    title: text(row.title),
-    dataSource: row.data_source ? text(row.data_source) : null,
-    config: record(row.config),
-    layout: record(row.layout),
-    isVisible: row.is_visible !== false,
-    isSystem: row.is_system === true,
-    updatedAt: row.updated_at || null,
+    id: text(row.id), route: text(row.route), blockKey: text(row.block_key), kind: text(row.kind), title: text(row.title),
+    dataSource: row.data_source ? text(row.data_source) : null, config: record(row.config), layout: record(row.layout),
+    isVisible: row.is_visible !== false, isSystem: row.is_system === true, updatedAt: row.updated_at || null,
   };
 }
 
@@ -94,24 +86,8 @@ async function saveBlock(request: Request, env: WorkspaceBuilderEnv) {
   const layout = record(input.layout);
   const now = new Date().toISOString();
   const uid = userId(request);
-  const payload = {
-    company_id: companyId,
-    route,
-    block_key: blockKey,
-    kind,
-    title,
-    data_source: dataSource,
-    config,
-    layout,
-    is_visible: input.isVisible !== false,
-    is_system: input.isSystem === true || kind === 'system',
-    created_by: uid,
-    updated_by: uid,
-    updated_at: now,
-  };
-  const rows = await db<Row[]>(env, 'marketing_workspace_blocks?on_conflict=company_id,route,block_key', {
-    method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(payload),
-  });
+  const payload = { company_id: companyId, route, block_key: blockKey, kind, title, data_source: dataSource, config, layout, is_visible: input.isVisible !== false, is_system: input.isSystem === true || kind === 'system', created_by: uid, updated_by: uid, updated_at: now };
+  const rows = await db<Row[]>(env, 'marketing_workspace_blocks?on_conflict=company_id,route,block_key', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(payload) });
   return publicBlock(rows[0] || payload);
 }
 
