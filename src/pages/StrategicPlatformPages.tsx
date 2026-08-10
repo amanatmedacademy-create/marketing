@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, CircleDollarSign, Database, Play, RefreshCw, Save, UsersRound, Workflow } from 'lucide-react';
-import { useAuth } from '../components/AuthGate';
+import { Bot, Play, RefreshCw, Save } from 'lucide-react';
 import { marketingApi, type MarketingCall, type MarketingLead } from '../services/api';
 import { operationsApi, type AutomationAction, type AutomationRule } from '../services/operations';
 import '../strategic-platform.css';
 
-type GoogleProvider = 'google_ads' | 'ga4';
-type GoogleConfig = { provider: GoogleProvider; configured: boolean; status: string; values: Record<string, string>; secretFields: Record<string, boolean>; updatedAt?: string | null; lastVerifiedAt?: string | null; lastError?: string | null };
 type AutomationRun = { id: string; rule_id: string; event_key: string; subject_id?: string | null; status: string; action_results?: unknown[]; error?: string | null; started_at: string; finished_at?: string | null };
-type WebAnalyticsRow = { report_date: string; source: string; medium: string; campaign: string; users: number; sessions: number; key_events: number; revenue: number };
 
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
-const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '').replace(/^8(?=\d{10}$)/, '7');
 
 function Head({ eyebrow, title, text, action }: { eyebrow: string; title: string; text: string; action?: ReactNode }) {
@@ -25,80 +20,6 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   try { payload = body ? JSON.parse(body) : {}; } catch { payload = { error: body }; }
   if (!response.ok) throw new Error((payload as { error?: string }).error || `HTTP ${response.status}`);
   return payload as T;
-}
-
-export function GoogleIntegrationsPage() {
-  const { user } = useAuth();
-  const [configs, setConfigs] = useState<GoogleConfig[]>([]);
-  const [web, setWeb] = useState<WebAnalyticsRow[]>([]);
-  const [forms, setForms] = useState<Record<GoogleProvider, Record<string, string>>>({ google_ads: { apiVersion: 'v25' }, ga4: {} });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [days, setDays] = useState(30);
-
-  const load = async () => {
-    setMessage(null);
-    try {
-      const result = await fetchJson<{ providers: GoogleConfig[] }>('/api/integrations/google/config');
-      setConfigs(result.providers || []);
-      setForms((previous) => {
-        const next = { ...previous, google_ads: { ...previous.google_ads }, ga4: { ...previous.ga4 } };
-        for (const config of result.providers || []) next[config.provider] = { ...next[config.provider], ...config.values };
-        return next;
-      });
-      const rows = await fetchJson<WebAnalyticsRow[]>('/api/web-analytics').catch(() => []);
-      setWeb(rows);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось загрузить Google интеграции'); }
-  };
-  useEffect(() => { if (user.role === 'administrator') void load(); }, [user.role]);
-
-  const save = async (provider: GoogleProvider) => {
-    setBusy(`save:${provider}`); setMessage(null);
-    try {
-      await fetchJson(`/api/integrations/google/config/${provider}`, { method: 'PUT', body: JSON.stringify(forms[provider]) });
-      setMessage(`${provider === 'google_ads' ? 'Google Ads' : 'GA4'}: настройки сохранены.`); await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Ошибка сохранения'); }
-    finally { setBusy(null); }
-  };
-  const sync = async (provider: GoogleProvider) => {
-    setBusy(`sync:${provider}`); setMessage(null);
-    try {
-      const result = await fetchJson<{ fetched: number; written: number }>(`/api/integrations/google/sync/${provider}`, { method: 'POST', body: JSON.stringify({ days }) });
-      setMessage(`${provider === 'google_ads' ? 'Google Ads' : 'GA4'}: получено ${result.fetched}, записано ${result.written}.`); await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Ошибка синхронизации'); }
-    finally { setBusy(null); }
-  };
-  const field = (provider: GoogleProvider, name: string, value: string) => setForms((previous) => ({ ...previous, [provider]: { ...previous[provider], [name]: value } }));
-  const status = (provider: GoogleProvider) => configs.find((item) => item.provider === provider);
-  const totals = useMemo(() => web.reduce((acc, row) => ({ users: acc.users + Number(row.users || 0), sessions: acc.sessions + Number(row.sessions || 0), events: acc.events + Number(row.key_events || 0), revenue: acc.revenue + Number(row.revenue || 0) }), { users: 0, sessions: 0, events: 0, revenue: 0 }), [web]);
-
-  if (user.role !== 'administrator') return <div className="strategic-page"><Head eyebrow="Google Platform" title="Google Ads + GA4" text="Настройки подключения доступны только администратору."/></div>;
-  return <div className="strategic-page">
-    <Head eyebrow="Google Marketing Platform" title="Google Ads + GA4" text="Серверное подключение через OAuth refresh token. Google Ads пишет рекламу в общий ads-контур, GA4 — в отдельную web analytics модель." action={<select value={days} onChange={(event) => setDays(Number(event.target.value))}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option><option value={365}>365 дней</option></select>}/>
-    {message && <div className="alert">{message}</div>}
-    <div className="strategic-status"><article><span>GA4 пользователи</span><strong>{number(totals.users)}</strong></article><article><span>GA4 сессии</span><strong>{number(totals.sessions)}</strong></article><article><span>GA4 выручка</span><strong>{money(totals.revenue)}</strong></article></div>
-    <div className="strategic-grid strategic-grid--equal">
-      <section className="panel strategic-form google-card"><div className="google-card-head"><div><h2>Google Ads</h2><p>Расходы, клики, показы, conversions и conversion value.</p></div><b>{status('google_ads')?.status || 'not_configured'}</b></div>
-        <label>OAuth Client ID<input value={forms.google_ads.clientId || ''} onChange={(e)=>field('google_ads','clientId',e.target.value)}/></label>
-        <label>OAuth Client Secret<input type="password" value={forms.google_ads.clientSecret || ''} placeholder={status('google_ads')?.secretFields.clientSecret?'Сохранён · оставьте пустым':'Обязательное поле'} onChange={(e)=>field('google_ads','clientSecret',e.target.value)}/></label>
-        <label>Refresh token<input type="password" value={forms.google_ads.refreshToken || ''} placeholder={status('google_ads')?.secretFields.refreshToken?'Сохранён · оставьте пустым':'Обязательное поле'} onChange={(e)=>field('google_ads','refreshToken',e.target.value)}/></label>
-        <label>Developer token<input type="password" value={forms.google_ads.developerToken || ''} placeholder={status('google_ads')?.secretFields.developerToken?'Сохранён · оставьте пустым':'Обязательное поле'} onChange={(e)=>field('google_ads','developerToken',e.target.value)}/></label>
-        <label>Customer IDs<input value={forms.google_ads.customerIds || ''} placeholder="1234567890, 9876543210" onChange={(e)=>field('google_ads','customerIds',e.target.value)}/></label>
-        <label>Manager / Login Customer ID<input value={forms.google_ads.loginCustomerId || ''} placeholder="Необязательно" onChange={(e)=>field('google_ads','loginCustomerId',e.target.value)}/></label>
-        <label>API version<input value={forms.google_ads.apiVersion || 'v25'} onChange={(e)=>field('google_ads','apiVersion',e.target.value)}/></label>
-        {status('google_ads')?.lastError && <div className="alert alert--error">{status('google_ads')?.lastError}</div>}
-        <div className="strategic-actions"><button className="button" onClick={()=>void save('google_ads')} disabled={Boolean(busy)}><Save size={15}/>Сохранить</button><button className="button button--primary" onClick={()=>void sync('google_ads')} disabled={Boolean(busy)}><RefreshCw size={15}/>Синхронизировать</button></div>
-      </section>
-      <section className="panel strategic-form google-card"><div className="google-card-head"><div><h2>Google Analytics 4</h2><p>Traffic acquisition: источник, medium, кампания, users, sessions, key events и revenue.</p></div><b>{status('ga4')?.status || 'not_configured'}</b></div>
-        <label>OAuth Client ID<input value={forms.ga4.clientId || ''} onChange={(e)=>field('ga4','clientId',e.target.value)}/></label>
-        <label>OAuth Client Secret<input type="password" value={forms.ga4.clientSecret || ''} placeholder={status('ga4')?.secretFields.clientSecret?'Сохранён · оставьте пустым':'Обязательное поле'} onChange={(e)=>field('ga4','clientSecret',e.target.value)}/></label>
-        <label>Refresh token<input type="password" value={forms.ga4.refreshToken || ''} placeholder={status('ga4')?.secretFields.refreshToken?'Сохранён · оставьте пустым':'Обязательное поле'} onChange={(e)=>field('ga4','refreshToken',e.target.value)}/></label>
-        <label>Property IDs<input value={forms.ga4.propertyIds || ''} placeholder="123456789, 987654321" onChange={(e)=>field('ga4','propertyIds',e.target.value)}/></label>
-        {status('ga4')?.lastError && <div className="alert alert--error">{status('ga4')?.lastError}</div>}
-        <div className="strategic-actions"><button className="button" onClick={()=>void save('ga4')} disabled={Boolean(busy)}><Save size={15}/>Сохранить</button><button className="button button--primary" onClick={()=>void sync('ga4')} disabled={Boolean(busy)}><RefreshCw size={15}/>Синхронизировать</button></div>
-      </section>
-    </div>
-  </div>;
 }
 
 export function Customer360Page() {
