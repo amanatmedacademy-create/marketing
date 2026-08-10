@@ -287,7 +287,7 @@ export default function Calls() {
             {analysisMessage && <div className={selected.ai_analysis_status === 'completed' || selected.transcription_status === 'completed' ? 'calls-state' : 'calls-state calls-state--error'}>{analysisMessage}</div>}
             {selected.transcription_status === 'failed' && selected.transcription_error && <div className="calls-state calls-state--error">Транскрипция: {selected.transcription_error}</div>}
             {selected.ai_analysis_status === 'failed' && selected.ai_analysis_error && <div className="calls-state calls-state--error">AI: {selected.ai_analysis_error}</div>}
-            {selected.recording_url && <audio controls preload="none" src={selected.recording_url}/>} 
+            {(selected.recording_url || selected.pbx_call_id || selected.recording_external_id) && selected.call_status === 'COMPLETED' && <audio controls preload="none" src={`/api/telephony/calls/${encodeURIComponent(selected.id)}/recording`}/>} 
             <section className="call-chain"><span>{selected.source || 'Источник не указан'}</span><i>→</i><span>{selected.campaign_id || 'Кампания не указана'}</span><i>→</i><span>{selected.ad_id || 'Объявление не указано'}</span><i>→</i><span>{selected.appointment_created ? 'Запись' : 'Без записи'}</span></section>
             <div className="call-detail-grid">
               <section><h3>Результат</h3><dl><div><dt>Итог</dt><dd>{selected.call_result || '—'}</dd></div><div><dt>Следующее действие</dt><dd>{selected.next_action || '—'}</dd></div><div><dt>Причина потери</dt><dd>{selected.loss_reason || '—'}</dd></div><div><dt>Дата записи</dt><dd>{dateTime(selected.appointment_at)}</dd></div></dl></section>
