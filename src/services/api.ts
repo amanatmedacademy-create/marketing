@@ -61,6 +61,12 @@ export interface MarketingCall {
   scheduled_at?: string | null;
   duration_seconds: number;
   recording_url?: string | null;
+  pbx_call_id?: string | null;
+  recording_external_id?: string | null;
+  transcription_status?: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+  transcription_model?: string | null;
+  transcribed_at?: string | null;
+  transcription_error?: string | null;
   transcript?: string | null;
   summary?: string | null;
   request_reason?: string | null;
