@@ -15,6 +15,7 @@ import './call-center-chat-layout-fix.css';
 import './sales-funnel-fullheight.css';
 import './clinic-schedule-mis-parity.css';
 import './imds-redesign.css';
+import './dashboard-redesign.css';
 
 function Root() {
   if (window.location.pathname === '/operations') {
