@@ -39,7 +39,7 @@ function due(call: Row, settings: TelephonySettings, nowMs: number): boolean {
 }
 
 export async function runScheduledTelephonyProcessing(env: TelephonyProcessingSchedulerEnv): Promise<Array<Record<string, unknown>>> {
-  const settingsRows = await db<TelephonySettings[]>(env, 'telephony_settings?auto_transcribe=eq.true&select=*&order=company_id.asc&limit=1000');
+  const settingsRows = await db<TelephonySettings[]>(env, 'telephony_settings?select=*&order=company_id.asc&limit=1000');
   const results: Array<Record<string, unknown>> = [];
   const nowMs = Date.now();
 
@@ -48,11 +48,17 @@ export async function runScheduledTelephonyProcessing(env: TelephonyProcessingSc
     if (!companyId) continue;
     try {
       const tenantBase = { ...env, CURRENT_COMPANY_ID: companyId } as TelephonyProcessingSchedulerEnv;
+      const followUps = await materializeCallFollowUpTasks(tenantBase, companyId);
+      if (!settings.auto_transcribe) {
+        results.push({ companyId, ok: true, skipped: 'auto_transcribe_disabled', followUps });
+        continue;
+      }
+
       const runtime = await hydrateIntegrationEnv(tenantBase) as TelephonyProcessingSchedulerEnv;
       const tenantConfigured = text(runtime.ZADARMA_TENANT_CONFIGURED) === 'true';
       const legacyDefault = !tenantConfigured && text(runtime.DEFAULT_COMPANY_ID) === companyId;
       if (!tenantConfigured && !legacyDefault) {
-        results.push({ companyId, ok: true, skipped: 'zadarma_not_configured' });
+        results.push({ companyId, ok: true, skipped: 'zadarma_not_configured', followUps });
         continue;
       }
 
@@ -77,8 +83,8 @@ export async function runScheduledTelephonyProcessing(env: TelephonyProcessingSc
           console.error('Scheduled call transcription failed', { companyId, callId, error: error instanceof Error ? error.message : String(error) });
         }
       }
-      const followUps = await materializeCallFollowUpTasks(runtime, companyId);
-      results.push({ companyId, ok: true, scanned: calls.length, eligible: candidates.length, completed, failed, followUps });
+      const postProcessingFollowUps = await materializeCallFollowUpTasks(runtime, companyId);
+      results.push({ companyId, ok: true, scanned: calls.length, eligible: candidates.length, completed, failed, followUps: postProcessingFollowUps });
     } catch (error) {
       results.push({ companyId, ok: false, error: error instanceof Error ? error.message : String(error) });
     }
