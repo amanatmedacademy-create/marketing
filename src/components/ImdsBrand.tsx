@@ -4,22 +4,17 @@ type ImdsBrandProps = {
 };
 
 export default function ImdsBrand({ compact = false, className = '' }: ImdsBrandProps) {
-  const logoWidth = compact ? 142 : 184;
+  const logoWidth = compact ? 158 : 198;
   return <div
     className={className}
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      minWidth: 0,
-      lineHeight: 0,
-    }}
+    style={{ display: 'flex', alignItems: 'center', minWidth: 0, lineHeight: 0 }}
   >
     <svg
       width={logoWidth}
-      height={compact ? 48 : 62}
-      viewBox="0 0 420 120"
+      height={compact ? 50 : 64}
+      viewBox="0 0 455 120"
       role="img"
-      aria-label="IMDS Marketing"
+      aria-label="IMDS TECH"
       style={{ display: 'block', maxWidth: '100%', height: 'auto', flex: '0 0 auto' }}
     >
       <defs>
@@ -52,8 +47,9 @@ export default function ImdsBrand({ compact = false, className = '' }: ImdsBrand
         </g>
       </g>
 
-      <text x="118" y="57" fill="#f8fafc" fontFamily="Inter, Arial, sans-serif" fontSize="42" fontWeight="800" letterSpacing="1.6">IMDS</text>
-      <text x="120" y="88" fill="#22c7b8" fontFamily="Inter, Arial, sans-serif" fontSize="18" fontWeight="700" letterSpacing="5.6">MARKETING</text>
+      <text x="118" y="54" fill="var(--imds-logo-main, #102b3a)" fontFamily="Inter, Arial, sans-serif" fontSize="39" fontWeight="800" letterSpacing="1.3">IMDS</text>
+      <text x="250" y="54" fill="#12b8a5" fontFamily="Inter, Arial, sans-serif" fontSize="39" fontWeight="800" letterSpacing="1.1">TECH</text>
+      <text x="120" y="82" fill="var(--imds-muted, #78909a)" fontFamily="Inter, Arial, sans-serif" fontSize="10.5" fontWeight="600" letterSpacing="3.5">INTEGRATED META DIGITAL SYSTEMS</text>
     </svg>
   </div>;
 }
