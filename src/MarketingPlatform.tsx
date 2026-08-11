@@ -98,9 +98,10 @@ function Shell() {
         <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
       </section>)}</div>
     </aside>
+    {open && <button className="marketing-mobile-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setOpen(false)} />}
     <main>
       <header className="marketing-topbar">
-        <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>
+        <button className="marketing-menu" type="button" aria-label="Открыть меню" aria-expanded={open} onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <GlobalSearch />
         <div className="marketing-top-actions">
           <CompanySwitcher />
