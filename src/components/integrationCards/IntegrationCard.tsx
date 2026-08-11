@@ -14,18 +14,19 @@ interface IntegrationCardProps {
 
 export function IntegrationCard({ integration, active = false, disabled = false, onSelect, onConfigure }: IntegrationCardProps) {
   const connected = integration.status === 'connected' || integration.status === 'syncing';
+  const visibleSettings = integration.fields.slice(0, 2);
+  const hiddenSettingsCount = Math.max(0, integration.fields.length - visibleSettings.length);
+  const settingsState = disabled
+    ? 'Скоро'
+    : integration.status === 'error'
+      ? 'Проверить'
+      : connected
+        ? 'Настроено'
+        : 'Не настроено';
 
   return <article
     className={`${styles.card} ${active ? styles.cardActive : ''}`}
     onClick={onSelect}
-    role="button"
-    tabIndex={0}
-    onKeyDown={(event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        onSelect();
-      }
-    }}
   >
     <div className={styles.cardTop}>
       <ProviderLogo provider={integration.id}/>
@@ -38,28 +39,52 @@ export function IntegrationCard({ integration, active = false, disabled = false,
 
     <div className={styles.divider}/>
 
-    {connected && integration.stats.length > 0 ? <div className={styles.stats}>
-      {integration.stats.map((stat) => <div key={stat.label}>
-        <span>{stat.label}</span>
-        <strong className={stat.tone ? styles[`tone_${stat.tone}`] : ''}>{stat.value}</strong>
-      </div>)}
-    </div> : <p className={styles.emptyHint}>
-      {integration.status === 'error'
-        ? integration.errorMessage || 'Последняя проверка завершилась ошибкой.'
-        : disabled
-          ? 'Подключение будет добавлено на следующем этапе.'
-          : 'Подключите сервис, чтобы видеть данные и статус синхронизации.'}
-    </p>}
+    <div className={styles.dataArea}>
+      {connected && integration.stats.length > 0 ? <div className={styles.stats}>
+        {integration.stats.slice(0, 3).map((stat) => <div key={stat.label}>
+          <span>{stat.label}</span>
+          <strong className={stat.tone ? styles[`tone_${stat.tone}`] : ''}>{stat.value}</strong>
+        </div>)}
+      </div> : <p className={styles.emptyHint}>
+        {integration.status === 'error'
+          ? integration.errorMessage || 'Последняя проверка завершилась ошибкой.'
+          : disabled
+            ? 'Подключение будет добавлено на следующем этапе.'
+            : 'Подключите сервис, чтобы видеть данные и статус синхронизации.'}
+      </p>}
+    </div>
+
+    <div className={styles.settingsPanel}>
+      <div className={styles.settingsHead}>
+        <div><Settings size={15}/><strong>Настройки</strong></div>
+        <span>{settingsState}</span>
+      </div>
+
+      {visibleSettings.length > 0 ? <div className={styles.settingsList}>
+        {visibleSettings.map((field, index) => <div className={styles.settingsRow} key={`${field.label}-${index}`}>
+          <span>{field.label}</span>
+          <strong title={field.value}>{field.value || '—'}</strong>
+        </div>)}
+        {hiddenSettingsCount > 0 && <div className={styles.settingsMore}>Ещё параметров: {hiddenSettingsCount}</div>}
+      </div> : <p className={styles.settingsEmpty}>
+        {disabled
+          ? 'Параметры появятся после запуска интеграции.'
+          : connected
+            ? 'Подключение активно. Откройте настройки для изменения параметров.'
+            : 'Откройте настройки и задайте параметры подключения.'}
+      </p>}
+    </div>
 
     <div className={styles.actions}>
-      <button type="button" className={styles.iconButton} onClick={(event) => { event.stopPropagation(); onConfigure(); }} disabled={disabled} aria-label="Настройки">
-        <Settings size={17}/>
-      </button>
-      <button type="button" className={styles.mainButton} onClick={(event) => { event.stopPropagation(); onConfigure(); }} disabled={disabled}>
-        {disabled ? 'Скоро' : connected ? 'Настроить' : 'Подключить'}
-      </button>
-      <button type="button" className={styles.arrowButton} onClick={(event) => { event.stopPropagation(); onConfigure(); }} disabled={disabled} aria-label="Открыть">
-        <ChevronRight size={18}/>
+      <button
+        type="button"
+        className={styles.mainButton}
+        onClick={(event) => { event.stopPropagation(); onConfigure(); }}
+        disabled={disabled}
+      >
+        <Settings size={16}/>
+        <span>{disabled ? 'Скоро' : connected ? 'Открыть настройки' : 'Настроить подключение'}</span>
+        <ChevronRight size={17}/>
       </button>
     </div>
   </article>;
