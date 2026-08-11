@@ -1,5 +1,5 @@
 .card {
-  min-height: 286px;
+  min-height: 390px;
   padding: 20px;
   border: 1px solid var(--imds-border);
   border-radius: 16px;
@@ -8,14 +8,13 @@
   backdrop-filter: blur(18px) saturate(110%);
   display: flex;
   flex-direction: column;
-  cursor: pointer;
+  cursor: default;
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
   outline: none;
   color: var(--imds-text);
 }
 
-.card:hover,
-.card:focus-visible {
+.card:hover {
   transform: translateY(-2px);
   border-color: rgba(17, 184, 165, 0.36);
   box-shadow: var(--imds-shadow);
@@ -31,6 +30,7 @@
   grid-template-columns: 48px minmax(0, 1fr) auto;
   gap: 14px;
   align-items: start;
+  min-height: 82px;
 }
 
 .cardTitle {
@@ -63,7 +63,6 @@
   background: linear-gradient(145deg, var(--imds-primary), var(--imds-primary-strong));
 }
 
-/* Keep service identity subtle: no legacy purple/blue card palette. */
 .logo_meta,.logo_tiktok,.logo_google_ads,.logo_ga4,.logo_bitrix,.logo_n8n,.logo_waba,.logo_wazzup,.logo_binotel,.logo_sipuni {
   background: linear-gradient(145deg, var(--imds-primary), var(--imds-primary-strong));
 }
@@ -101,15 +100,19 @@
   margin: 18px 0;
 }
 
+.dataArea {
+  min-height: 78px;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-.stats div { display: grid; gap: 5px; }
+.stats div { display: grid; gap: 5px; min-width: 0; }
 .stats span { color: var(--imds-muted); font-size: 11px; }
-.stats strong { color: var(--imds-text); font-size: 15px; }
+.stats strong { color: var(--imds-text); font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
 
 .tone_positive { color: var(--imds-success) !important; }
 .tone_negative { color: var(--imds-danger) !important; }
@@ -122,51 +125,103 @@
   line-height: 1.55;
 }
 
-.actions {
+.settingsPanel {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 42px;
-  gap: 9px;
-  margin-top: auto;
-  padding-top: 22px;
-}
-
-.iconButton,
-.arrowButton,
-.mainButton {
-  min-height: 42px;
-  border-radius: 11px;
+  gap: 12px;
+  min-height: 126px;
+  margin-top: 18px;
+  padding: 14px;
   border: 1px solid var(--imds-border);
-  color: var(--imds-text-soft);
+  border-radius: 13px;
   background: var(--imds-glass-soft);
-  font: inherit;
-  cursor: pointer;
 }
 
-.iconButton,
-.arrowButton { display: grid; place-items: center; }
-
-.mainButton {
-  padding: 0 16px;
-  font-weight: 700;
-  background: var(--imds-primary);
-  color: #fff;
-  border-color: var(--imds-primary);
+.settingsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.iconButton:hover:not(:disabled),
-.arrowButton:hover:not(:disabled) {
-  background: var(--imds-surface-3);
-  border-color: var(--imds-border-strong);
+.settingsHead > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: var(--imds-text);
 }
 
-.mainButton:hover:not(:disabled) { background: var(--imds-primary-strong); }
+.settingsHead > span {
+  color: var(--imds-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
 
-.iconButton:disabled,
-.arrowButton:disabled,
+.settingsList {
+  display: grid;
+  gap: 7px;
+}
+
+.settingsRow {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.settingsRow span,
+.settingsEmpty,
+.settingsMore {
+  color: var(--imds-muted);
+  font-size: 12px;
+}
+
+.settingsRow strong {
+  color: var(--imds-text-soft);
+  font-size: 12px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsEmpty {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settingsMore {
+  padding-top: 2px;
+  text-align: right;
+}
+
+.actions {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.mainButton {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid var(--imds-primary);
+  background: var(--imds-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mainButton span { text-align: left; }
+.mainButton:hover:not(:disabled) { background: var(--imds-primary-strong); }
 .mainButton:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 720px) {
+  .card { min-height: auto; }
   .cardTop { grid-template-columns: 44px minmax(0, 1fr); }
   .status { grid-column: 1 / -1; justify-self: start; }
   .stats { grid-template-columns: 1fr 1fr; }
