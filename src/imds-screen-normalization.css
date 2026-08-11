@@ -1,0 +1,135 @@
+/*
+ * IMDS TECH screen normalization.
+ * Loaded last: fixes legacy module-local palettes so every workspace follows the
+ * same light/dark token system and the global branded background remains visible.
+ */
+
+/* ===== CALL CENTER / INBOX ===== */
+.callcenter-root{
+  --border:var(--imds-border)!important;
+  --border2:var(--imds-border-strong)!important;
+  --surface:var(--imds-glass)!important;
+  --surface2:var(--imds-glass-soft)!important;
+  --surface3:var(--imds-surface-3)!important;
+  --control:var(--imds-glass-soft)!important;
+  --text:var(--imds-text)!important;
+  --text2:var(--imds-text-soft)!important;
+  --text3:var(--imds-muted)!important;
+  --muted:var(--imds-muted)!important;
+  background:transparent!important;
+}
+.callcenter-heading>div:first-child span{color:var(--imds-primary)!important}
+.callcenter-heading p{color:var(--imds-muted)!important}
+.callcenter-root .button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important;box-shadow:none!important}
+.callcenter-root .button-primary{border-color:var(--imds-primary)!important;background:var(--imds-primary)!important;color:#fff!important}
+.callcenter-root .button-primary:hover{background:var(--imds-primary-strong)!important}
+.inbox-unread-pill{border-color:rgba(17,184,165,.24)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.inbox-workspace{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;box-shadow:var(--imds-shadow)!important;backdrop-filter:blur(18px) saturate(110%)!important}
+.inbox-workspace-header,.inbox-left-top,.inbox-contact-bar,.inbox-compose,.inbox-crm-profile,.inbox-crm-section,.inbox-crm-mobile-head{border-color:var(--imds-border)!important}
+.inbox-workspace-header,.inbox-contact-bar,.inbox-compose{background:var(--imds-glass)!important}
+.inbox-left,.inbox-right{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important}
+.inbox-center{background:transparent!important}
+.inbox-messages{background:transparent!important}
+.inbox-search,.inbox-status-filter select,.inbox-contact-actions select,.inbox-contact-actions button,.inbox-quick-replies button,.inbox-icon-button,.inbox-attachment,.inbox-attachment-draft,.inbox-input-row textarea{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}
+.inbox-search:focus-within,.inbox-input-row textarea:focus{border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px rgba(17,184,165,.12)!important;outline:0!important}
+.inbox-channel-tabs button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-muted)!important}
+.inbox-channel-tabs button:hover,.inbox-channel-tabs button.active{border-color:rgba(17,184,165,.28)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.inbox-thread{border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+.inbox-thread:hover{background:var(--imds-row-hover)!important}
+.inbox-thread.active{background:var(--imds-primary-soft)!important;box-shadow:inset 3px 0 0 var(--imds-primary)!important}
+.inbox-thread-meta b{background:var(--imds-primary)!important}
+.inbox-channel-badge{background:var(--imds-surface-3)!important;color:var(--imds-text-soft)!important}
+.inbox-channel-badge.channel-whatsapp{background:rgba(29,157,115,.12)!important;color:var(--imds-success)!important}
+.inbox-channel-badge.channel-instagram{background:rgba(17,184,165,.12)!important;color:var(--imds-primary)!important}
+.inbox-channel-badge.channel-web{background:rgba(45,123,158,.11)!important;color:var(--imds-blue)!important}
+.inbox-channel-badge.channel-phone{background:rgba(207,148,45,.12)!important;color:var(--imds-warning)!important}
+.inbox-contact-avatar,.inbox-crm-avatar{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+.inbox-date-divider span{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-muted)!important}
+.inbox-message{border-color:var(--imds-border)!important;background:var(--imds-glass-strong)!important;color:var(--imds-text-soft)!important;box-shadow:var(--imds-shadow-soft)!important}
+.inbox-message.outbound{border-color:rgba(17,184,165,.22)!important;background:linear-gradient(135deg,color-mix(in srgb,var(--imds-primary-soft) 72%,var(--imds-glass-strong)),var(--imds-glass-strong))!important}
+.inbox-message header strong{color:var(--imds-primary)!important}.inbox-message.inbound header strong{color:var(--imds-muted)!important}
+.inbox-template-wrap .inbox-icon-button{border-color:rgba(29,157,115,.30)!important;background:rgba(29,157,115,.10)!important;color:var(--imds-success)!important}
+.inbox-ai-button{border-color:rgba(17,184,165,.30)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.inbox-send-button{border-color:var(--imds-primary)!important;background:var(--imds-primary)!important;color:#fff!important}
+.inbox-template-menu{border-color:var(--imds-border)!important;background:var(--imds-glass-strong)!important;box-shadow:var(--imds-shadow)!important;backdrop-filter:blur(22px)!important}
+.inbox-template-menu button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.inbox-template-menu button:hover{border-color:rgba(17,184,165,.30)!important;background:var(--imds-primary-soft)!important}
+.inbox-template-menu button strong{color:var(--imds-text)!important}.inbox-template-menu button small{color:var(--imds-success)!important}.inbox-template-menu button span{color:var(--imds-muted)!important}
+.inbox-compose>small{border-color:rgba(29,157,115,.22)!important;background:rgba(29,157,115,.08)!important;color:var(--imds-success)!important}
+.inbox-compose>small::before{background:var(--imds-success)!important;color:#fff!important}
+
+/* ===== PHONE WORKSPACE ===== */
+.phone-workspace{background:transparent!important;color:var(--imds-text)!important}
+.phone-workspace__header>div:first-child>span{color:var(--imds-primary)!important}.phone-workspace__header p{color:var(--imds-muted)!important}
+.phone-workspace__live,.phone-workspace__message,.phone-workspace__loading,.phone-workspace__queue,.phone-workspace__patient,.phone-workspace__assistant>section,.phone-workspace__section{
+  border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow-soft)!important;backdrop-filter:blur(18px) saturate(110%)!important
+}
+.phone-workspace__live.is-live,.phone-workspace__hero.is-live{border-color:rgba(214,96,104,.30)!important;background:rgba(214,96,104,.08)!important;box-shadow:none!important}
+.phone-workspace__panel-head>div,.phone-workspace__section-title,.phone-workspace__identity h2{color:var(--imds-text)!important}
+.phone-workspace__section-title>span,.phone-workspace__call-list small,.phone-workspace__identity span,.phone-workspace__identity p,.phone-workspace__facts span,.phone-workspace__timeline small,.phone-workspace__history-calls small,.phone-workspace__ai dt,.phone-workspace__booking label>span,.phone-workspace__setup-needed p,.phone-workspace__tasks small,.phone-workspace__empty,.phone-workspace__live small{color:var(--imds-muted)!important}
+.phone-workspace__search,.phone-workspace__booking input,.phone-workspace__booking select{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}
+.phone-workspace__search:focus-within,.phone-workspace__booking input:focus,.phone-workspace__booking select:focus{border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px rgba(17,184,165,.12)!important}
+.phone-workspace__call-list>button{color:var(--imds-text-soft)!important}.phone-workspace__call-list>button:hover{background:var(--imds-row-hover)!important}.phone-workspace__call-list>button.active{border-color:rgba(17,184,165,.22)!important;background:var(--imds-primary-soft)!important}.phone-workspace__call-list>button.live{box-shadow:inset 3px 0 0 var(--imds-danger)!important}
+.phone-workspace__call-icon,.phone-workspace__avatar{background:var(--imds-surface-3)!important;color:var(--imds-primary)!important}
+.phone-workspace__hero{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important}
+.phone-workspace__hero-actions button,.phone-workspace__ai-actions button,.phone-workspace__book{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.phone-workspace__hero-actions button:hover,.phone-workspace__ai-actions button:hover{border-color:rgba(17,184,165,.28)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.phone-workspace__facts article,.phone-workspace__history-calls button,.phone-workspace__ai-summary,.phone-workspace__setup-needed,.phone-workspace__chips span{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+.phone-workspace__timeline>div:not(:last-child):before{background:var(--imds-border)!important}.phone-workspace__dot{border-color:var(--imds-glass-strong)!important;background:var(--imds-primary)!important;box-shadow:0 0 0 1px var(--imds-border)!important}
+.phone-workspace__ai{background:var(--imds-glass)!important}.phone-workspace__ai dl>div,.phone-workspace__tasks>div:not(.phone-workspace__section-title):not(.phone-workspace__empty){border-color:var(--imds-border)!important}
+.phone-workspace__book{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+
+/* ===== CLINIC SCHEDULE ===== */
+.mis-schedule-page{
+  --ls-bg:transparent!important;
+  --ls-white:var(--imds-glass)!important;
+  --ls-accent:var(--imds-primary)!important;
+  --ls-accent2:var(--imds-primary-strong)!important;
+  --ls-border:var(--imds-border)!important;
+  --ls-border2:var(--imds-border)!important;
+  --ls-text:var(--imds-text)!important;
+  --ls-text2:var(--imds-text-soft)!important;
+  --ls-text3:var(--imds-muted)!important;
+  background:transparent!important;color:var(--imds-text)!important
+}
+.mis-schedule-topbar,.mis-schedule-sidebar,.mis-schedule-stage,.mis-schedule-scroll,.staff-header,.time-header,.time-column,.staff-column{background:transparent!important}
+.mis-schedule-topbar{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;backdrop-filter:blur(18px)!important}
+.mini-calendar,.doctor-list{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;box-shadow:var(--imds-shadow-soft)!important;backdrop-filter:blur(18px)!important}
+.mini-calendar>header{border-color:var(--imds-border)!important}.mini-calendar>header button,.mis-topbar-nav>button,.mis-topbar-controls .scale button,.mis-topbar-controls>select,.mis-topbar-controls .search input,.mis-topbar-stats>div{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.mis-topbar-nav>button.today,.mis-topbar-controls .scale button.active{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+.mis-schedule-topbar>.sync{border-color:rgba(17,184,165,.24)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.mini-calendar .days button{color:var(--imds-text-soft)!important}.mini-calendar .days button:hover,.doctor-list>button.active,.doctor-list>button:hover,.doctor-list>div>button.active,.doctor-list>div>button:hover{border-color:rgba(17,184,165,.24)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}.mini-calendar .days button.today{background:rgba(45,123,158,.10)!important;color:var(--imds-blue)!important;box-shadow:inset 0 0 0 1px rgba(45,123,158,.20)!important}.mini-calendar .days button.selected{background:var(--imds-primary)!important;color:#fff!important;box-shadow:0 8px 16px rgba(17,184,165,.20)!important}
+.doctor-list>header span{color:var(--imds-primary)!important}.doctor-list>header strong{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}.doctor-list>header small,.doctor-list>div small{color:var(--imds-muted)!important}.doctor-list>div strong{color:var(--imds-text)!important}.doctor-list>button,.doctor-list>div>button{color:var(--imds-text-soft)!important}.doctor-list>button b,.doctor-list>div>button>b{background:var(--imds-surface-3)!important;color:var(--imds-muted)!important}
+.staff-header,.time-header,.time-column,.staff-column,.column-slot,.time-slot{border-color:var(--imds-border)!important}.staff-card strong{color:var(--imds-text)!important}.staff-card small,.time-slot span{color:var(--imds-muted)!important}.staff-column,.column-slot{background:color-mix(in srgb,var(--imds-glass) 90%,transparent)!important}.column-slot:hover{background:var(--imds-row-hover)!important}.mis-schedule-scroll.step-15 .column-slot:before,.mis-schedule-scroll.step-30 .column-slot:before,.mis-schedule-scroll.step-15 .time-slot:before,.mis-schedule-scroll.step-30 .time-slot:before{border-color:var(--imds-border)!important}
+.appointment{border-left-color:var(--imds-primary)!important;background:color-mix(in srgb,var(--imds-primary-soft) 70%,var(--imds-glass-strong))!important;box-shadow:var(--imds-shadow-soft)!important}.appointment.status-confirmed{border-left-color:var(--imds-blue)!important;background:color-mix(in srgb,rgba(45,123,158,.10) 70%,var(--imds-glass-strong))!important}.appointment.status-completed,.appointment.status-arrived{border-left-color:var(--imds-success)!important;background:color-mix(in srgb,rgba(29,157,115,.10) 70%,var(--imds-glass-strong))!important}.appointment.status-cancelled,.appointment.status-no_show{border-left-color:var(--imds-danger)!important;background:color-mix(in srgb,rgba(214,96,104,.10) 70%,var(--imds-glass-strong))!important}.appt-head{background:color-mix(in srgb,var(--imds-text) 76%,transparent)!important}.appt-body small{color:var(--imds-muted)!important}
+.schedule-loading,.schedule-hover-tooltip,.visit-drawer,.schedule-modal{border-color:var(--imds-border)!important;background:var(--imds-glass-strong)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow)!important;backdrop-filter:blur(22px)!important}.schedule-hover-tooltip header,.schedule-hover-tooltip footer,.visit-drawer>header,.visit-drawer>footer{border-color:var(--imds-border)!important}.schedule-hover-tooltip footer,.visit-drawer>section,.schedule-modal-tabs{background:var(--imds-glass-soft)!important}.schedule-hover-tooltip p,.visit-drawer p,.visit-summary dt,.visit-drawer>section h3,.visit-drawer>section p{color:var(--imds-muted)!important}.visit-contact-row a,.visit-contact-row span,.visit-history-list button,.visit-status-actions button,.visit-drawer>footer button,.visit-drawer>footer a,.visit-drawer>header>button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}.visit-history-list time{color:var(--imds-primary)!important}.schedule-modal-tabs button{color:var(--imds-muted)!important}.schedule-modal-tabs button.active{background:var(--imds-glass-strong)!important;color:var(--imds-primary-strong)!important;box-shadow:var(--imds-shadow-soft)!important}
+.schedule-block{border-color:rgba(207,148,45,.28)!important;border-left-color:var(--imds-warning)!important;background:color-mix(in srgb,rgba(207,148,45,.10) 60%,var(--imds-glass-strong))!important}.schedule-block>div,.schedule-block>span,.schedule-block>small{color:var(--imds-warning)!important}.schedule-block.block-training,.schedule-block.block-meeting,.schedule-block.block-maintenance,.schedule-block.block-personal,.schedule-block.block-other{background:var(--imds-glass-soft)!important}.schedule-block.block-training,.schedule-block.block-meeting{border-left-color:var(--imds-blue)!important}.schedule-block.block-maintenance{border-left-color:var(--imds-muted)!important}.schedule-block.block-personal{border-left-color:var(--imds-danger)!important}.schedule-block.block-other{border-left-color:var(--imds-warning)!important}
+@media(max-width:768px){.mis-schedule-page,.mis-schedule-mobile{background:transparent!important}.mis-schedule-mobile>header button,.mobile-date-nav button,.mis-schedule-mobile>select,.mobile-appointment-list>button,.mobile-empty{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text-soft)!important}.mobile-appointment-list time{color:var(--imds-primary)!important}.mobile-appointment-list strong{color:var(--imds-text)!important}.mobile-appointment-list small,.mobile-appointment-list em,.mobile-empty{color:var(--imds-muted)!important}.mobile-add{background:var(--imds-primary)!important;color:#fff!important}}
+
+/* ===== MIS INTEGRATION ===== */
+.mis-panel{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow)!important;backdrop-filter:blur(18px) saturate(110%)!important}
+.mis-panel__icon{background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}.mis-panel__brand small,.mis-card__title small,.mis-panel__brand p,.mis-metrics small,.mis-metrics span,.mis-connection-meta,.mis-switch small,.mis-run-list small,.mis-run-counts,.mis-empty{color:var(--imds-muted)!important}
+.mis-state{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}.mis-state span{background:var(--imds-muted)!important}.mis-state.is-configured span{background:var(--imds-warning)!important}.mis-state.is-connected span{background:var(--imds-success)!important}
+.mis-metrics article,.mis-card,.mis-message,.mis-readonly,.mis-run-list article,.mis-run-counts span{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}.mis-card{background:var(--imds-glass)!important}.mis-card label{color:var(--imds-text-soft)!important}.mis-card input:not([type=checkbox]){border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}.mis-card input:focus{border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px rgba(17,184,165,.12)!important}
+.mis-actions button{background:var(--imds-primary)!important;color:#fff!important}.mis-actions button.secondary{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}.mis-actions button.danger{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important}
+.mis-switch{border-color:var(--imds-border)!important}.mis-switch__control{background:var(--imds-border-strong)!important}.mis-switch input:checked+.mis-switch__control{background:var(--imds-primary)!important}
+.mis-run-status{background:var(--imds-surface-3)!important;color:var(--imds-muted)!important}.mis-run-status.is-success{background:rgba(29,157,115,.10)!important;color:var(--imds-success)!important}.mis-run-status.is-failed{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important}.mis-run-status.is-running{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+
+/* ===== SALES FUNNEL ===== */
+.funnel-page-root{
+  --border:var(--imds-border)!important;--border2:var(--imds-border-strong)!important;--surface:var(--imds-glass)!important;--surface2:var(--imds-glass-soft)!important;--surface3:var(--imds-surface-3)!important;--control:var(--imds-glass-soft)!important;--text:var(--imds-text)!important;--text2:var(--imds-text-soft)!important;--text3:var(--imds-muted)!important;--muted:var(--imds-muted)!important;--accent:var(--imds-primary)!important;--accent2:var(--imds-primary-strong)!important;background:transparent!important;color:var(--imds-text)!important
+}
+.funnel-heading>div:first-child span{color:var(--imds-primary)!important}.funnel-heading p{color:var(--imds-muted)!important}
+.funnel-page-root .button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}.funnel-page-root .button-primary{border-color:var(--imds-primary)!important;background:var(--imds-primary)!important;color:#fff!important}
+.funnel-state,.refdash-kpis article,.refdash-card,.rop-filterbar,.rop-column,.rop-lead-card,.rop-modal{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text-soft)!important;box-shadow:var(--imds-shadow-soft)!important;backdrop-filter:blur(16px) saturate(108%)!important}
+.refdash-kpis article{border-top-width:2px!important;border-top-color:var(--imds-primary)!important}.refdash-kpis article.tone-blue,.refdash-kpis article.tone-purple,.refdash-kpis article.tone-teal{border-top-color:var(--imds-primary)!important}.refdash-kpis article.tone-green{border-top-color:var(--imds-success)!important}.refdash-kpis article.tone-red{border-top-color:var(--imds-danger)!important}.refdash-kpis article.tone-amber{border-top-color:var(--imds-warning)!important}
+.refdash-kpi-icon,.tone-blue .refdash-kpi-icon,.tone-purple .refdash-kpi-icon,.tone-teal .refdash-kpi-icon{background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}.tone-green .refdash-kpi-icon{background:rgba(29,157,115,.10)!important;color:var(--imds-success)!important}.tone-red .refdash-kpi-icon{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important}.tone-amber .refdash-kpi-icon{background:rgba(207,148,45,.10)!important;color:var(--imds-warning)!important}
+.refdash-card>header,.rop-lead-card>footer,.rop-performance-table>article,.rop-activity-card>div>article{border-color:var(--imds-border)!important}.refdash-card>header a,.refdash-card>header button{color:var(--imds-primary)!important}
+.refdash-toolbar select,.rop-filterbar input,.rop-filterbar select,.rop-filterbar>button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}.rop-filterbar input:focus,.rop-filterbar select:focus{border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px rgba(17,184,165,.12)!important}
+.rop-column{background:color-mix(in srgb,var(--imds-glass-soft) 88%,transparent)!important}.rop-column.drag-active{background:var(--imds-primary-soft)!important;border-color:rgba(17,184,165,.24)!important}.rop-lead-card{background:var(--imds-glass-strong)!important}.rop-lead-avatar{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important}.rop-lead-card>header>b,.rop-owner-grid span,.rop-table-head{background:var(--imds-glass-soft)!important;color:var(--imds-muted)!important}.rop-lead-amount{background:rgba(29,157,115,.09)!important}.rop-lead-amount span,.rop-lead-amount strong{color:var(--imds-success)!important}.rop-lost-reason{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important}.rop-lead-card>footer button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}.rop-lead-card>footer button:hover{border-color:rgba(17,184,165,.28)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.rop-modal-layer{background:rgba(2,15,20,.68)!important;backdrop-filter:blur(9px)!important}.rop-modal{background:var(--imds-glass-strong)!important;box-shadow:0 28px 80px rgba(0,0,0,.28)!important}.rop-modal>header{border-color:var(--imds-border)!important}.rop-modal>header button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+
+/* ===== FINAL SAFETY NET FOR THESE MODULES ===== */
+.callcenter-root [style*="background"],.phone-workspace [style*="background"],.mis-schedule-page [style*="background"],.mis-panel [style*="background"],.funnel-page-root [style*="background"]{background-color:inherit}
+:root[data-theme='light'] .callcenter-root,:root[data-theme='light'] .phone-workspace,:root[data-theme='light'] .mis-schedule-page,:root[data-theme='light'] .mis-panel,:root[data-theme='light'] .funnel-page-root{color-scheme:light}
+:root[data-theme='dark'] .callcenter-root,:root[data-theme='dark'] .phone-workspace,:root[data-theme='dark'] .mis-schedule-page,:root[data-theme='dark'] .mis-panel,:root[data-theme='dark'] .funnel-page-root{color-scheme:dark}
