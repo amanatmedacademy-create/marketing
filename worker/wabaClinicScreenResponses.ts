@@ -67,6 +67,24 @@ function isoAt(date: string, hour: number, minute: number): string {
   return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+05:00`;
 }
 
+function overlaps(start: Date, end: Date, row: Row): boolean {
+  const rowStart = new Date(text(row.starts_at));
+  const rowEnd = new Date(text(row.ends_at));
+  if (!Number.isFinite(rowStart.getTime()) || !Number.isFinite(rowEnd.getTime())) return false;
+  return start < rowEnd && end > rowStart;
+}
+
+function overlapsScheduleBreak(startMinute: number, endMinute: number, schedule: Row): boolean {
+  const rawStart = text(schedule.break_start);
+  const rawEnd = text(schedule.break_end);
+  if (!rawStart || !rawEnd) return false;
+  const breakStart = timeParts(rawStart);
+  const breakEnd = timeParts(rawEnd);
+  const breakStartMinute = breakStart.hour * 60 + breakStart.minute;
+  const breakEndMinute = breakEnd.hour * 60 + breakEnd.minute;
+  return startMinute < breakEndMinute && endMinute > breakStartMinute;
+}
+
 async function branches(env: ClinicScreenResponseEnv, companyId: string): Promise<Row[]> {
   return db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&active=eq.true&select=id,name,address&order=sort_order.asc,name.asc`);
 }
@@ -78,7 +96,7 @@ async function doctors(env: ClinicScreenResponseEnv, companyId: string, branchId
 
 async function slots(env: ClinicScreenResponseEnv, companyId: string, doctorId: string): Promise<Array<{ id: string; date: string; title: string; enabled: boolean }>> {
   if (!doctorId) return [];
-  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,slot_minutes&order=weekday.asc,start_time.asc`);
+  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,break_start,break_end,slot_minutes&order=weekday.asc,start_time.asc`);
   if (!schedules.length) return [];
 
   const now = new Date();
@@ -89,8 +107,12 @@ async function slots(env: ClinicScreenResponseEnv, companyId: string, doctorId: 
     value.setUTCDate(value.getUTCDate() + index);
     return value.toISOString().slice(0, 10);
   });
-  const booked = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED)&starts_at=gte.${encodeURIComponent(`${dates[0]}T00:00:00+05:00`)}&starts_at=lte.${encodeURIComponent(`${dates[dates.length - 1]}T23:59:59+05:00`)}&select=starts_at`);
-  const occupied = new Set(booked.map((row) => new Date(text(row.starts_at)).toISOString()));
+  const rangeStart = `${dates[0]}T00:00:00+05:00`;
+  const rangeEnd = `${dates[dates.length - 1]}T23:59:59+05:00`;
+  const [booked, blocks] = await Promise.all([
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED,ARRIVED)&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`),
+    db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`).catch(() => []),
+  ]);
   const output: Array<{ id: string; date: string; title: string; enabled: boolean }> = [];
 
   for (const date of dates) {
@@ -103,7 +125,11 @@ async function slots(env: ClinicScreenResponseEnv, companyId: string, doctorId: 
       while (cursor + duration <= endMinutes) {
         const id = isoAt(date, Math.floor(cursor / 60), cursor % 60);
         const instant = new Date(id);
-        if (instant.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied.has(instant.toISOString())) {
+        const slotEnd = new Date(instant.getTime() + duration * 60_000);
+        const occupied = booked.some((row) => overlaps(instant, slotEnd, row));
+        const blocked = blocks.some((row) => overlaps(instant, slotEnd, row));
+        const onBreak = overlapsScheduleBreak(cursor, cursor + duration, schedule);
+        if (instant.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked && !onBreak) {
           output.push({ id, date, title: timeTitle(id), enabled: true });
           if (output.length >= 80) return output;
         }
@@ -184,7 +210,6 @@ export async function handleClinicScreenResponse(env: ClinicScreenResponseEnv, c
   const screen = text(body.screen).toUpperCase();
   const data = record(body.data);
 
-  // Meta's official endpoint examples acknowledge client-side Flow errors this way.
   if (data.error) {
     console.warn('WhatsApp Flow client error', { companyId, screen, error: data.error });
     return { data: { acknowledged: true } };
