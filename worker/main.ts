@@ -6,6 +6,7 @@ import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { handleCallCenterChat } from './callCenterChat';
 import { handleCallTranscription, type CallTranscriptionEnv } from './callTranscription';
+import { handleClinicSchedule } from './clinicSchedule';
 import { resolveCompanyId } from './companyContext';
 import { handleConversionMatrix } from './conversionMatrix';
 import { hydrateIntegrationEnv } from './credentials';
@@ -169,6 +170,8 @@ export default {
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
 
+      const clinicSchedule = await handleClinicSchedule(forwardedRequest, runtimeEnv, url);
+      if (clinicSchedule) return clinicSchedule;
       const callTranscription = await handleCallTranscription(forwardedRequest, runtimeEnv, url);
       if (callTranscription) return callTranscription;
       const telephonyResponse = await handleZadarmaTelephony(forwardedRequest, runtimeEnv, url);
