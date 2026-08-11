@@ -66,7 +66,7 @@ export async function resolveUserAccess(env: AccessControlEnv, userId: string, r
 const routeRules: Array<{ test: (path: string) => boolean; moduleId: string }> = [
   { test: (p) => p.startsWith('/api/admin/users') || p.startsWith('/api/admin/access'), moduleId: 'team' },
   { test: (p) => p.startsWith('/api/callcenter') || p.startsWith('/api/chat'), moduleId: 'communications.chat' },
-  { test: (p) => p.startsWith('/api/calls') || p.startsWith('/api/phone-workspace'), moduleId: 'communications.calls' },
+  { test: (p) => p.startsWith('/api/calls') || p.startsWith('/api/phone-workspace') || p.startsWith('/api/clinic-schedule'), moduleId: 'communications.calls' },
   { test: (p) => p.startsWith('/api/funnel') || p.startsWith('/api/deal-workspace'), moduleId: 'crm.pipeline' },
   { test: (p) => p.startsWith('/api/leads') || p.startsWith('/api/operations/forms'), moduleId: 'crm.leads' },
   { test: (p) => p.startsWith('/api/operations/links'), moduleId: 'analytics.attribution' },
