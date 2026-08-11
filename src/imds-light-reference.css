@@ -7,319 +7,67 @@
   --imds-sidebar:rgba(255,255,255,.76);
   --imds-topbar:rgba(255,255,255,.70);
 }
-
-:root[data-theme='light'] .marketing-shell,
-:root[data-theme='light'] .auth-screen{
-  background-color:var(--imds-app-fallback)!important;
-  background-image:var(--imds-app-bg)!important;
-  background-position:center!important;
-  background-size:cover!important;
-  background-repeat:no-repeat!important;
-  background-attachment:fixed!important;
-}
-
-:root[data-theme='light'] .auth-screen::before,
-:root[data-theme='light'] .auth-screen::after,
-:root[data-theme='light'] .marketing-shell::before,
-:root[data-theme='light'] .marketing-shell::after{
-  content:none!important;
-  display:none!important;
-}
-
+:root[data-theme='light'] .marketing-shell,:root[data-theme='light'] .auth-screen{background-color:var(--imds-app-fallback)!important;background-image:var(--imds-app-bg)!important;background-position:center!important;background-size:cover!important;background-repeat:no-repeat!important;background-attachment:fixed!important}
+:root[data-theme='light'] .auth-screen::before,:root[data-theme='light'] .auth-screen::after,:root[data-theme='light'] .marketing-shell::before,:root[data-theme='light'] .marketing-shell::after{content:none!important;display:none!important}
 :root[data-theme='light'] .auth-orb{display:none!important}
+:root[data-theme='light'] .auth-showcase,:root[data-theme='light'] .auth-login-panel,:root[data-theme='light'] .marketing-content,:root[data-theme='light'] .marketing-shell>main{background:transparent!important}
+:root[data-theme='light'] .marketing-shell>aside,:root[data-theme='light'] .marketing-topbar{background:var(--imds-glass-strong)!important;backdrop-filter:blur(18px) saturate(108%)!important;-webkit-backdrop-filter:blur(18px) saturate(108%)!important;box-shadow:0 8px 28px rgba(38,93,91,.06)!important}
+:root[data-theme='light'] .panel,:root[data-theme='light'] .metric,:root[data-theme='light'] .imds-kpi-card,:root[data-theme='light'] .dashboard-chart-card,:root[data-theme='light'] .marketing-kpis article,:root[data-theme='light'] .auth-login-card,:root[data-theme='light'] .auth-preview{background:var(--imds-glass)!important;backdrop-filter:blur(16px) saturate(106%)!important;-webkit-backdrop-filter:blur(16px) saturate(106%)!important;box-shadow:0 12px 34px rgba(38,93,91,.07)!important}
 
-:root[data-theme='light'] .auth-showcase,
-:root[data-theme='light'] .auth-login-panel,
-:root[data-theme='light'] .marketing-content,
-:root[data-theme='light'] .marketing-shell>main{
-  background:transparent!important;
-}
+:root[data-theme='light'] .funnel-page-root{--border:var(--imds-border);--border2:var(--imds-border-strong);--surface:rgba(255,255,255,.72);--surface2:rgba(248,252,252,.68);--surface3:rgba(235,247,246,.74);--control:rgba(255,255,255,.76);--text:var(--imds-text);--text2:var(--imds-text-soft);--text3:var(--imds-muted);--muted:var(--imds-muted);--accent:var(--imds-primary);--accent2:var(--imds-blue);color:var(--imds-text)!important}
+:root[data-theme='light'] .funnel-state,:root[data-theme='light'] .refdash-kpis article,:root[data-theme='light'] .refdash-card,:root[data-theme='light'] .rop-filterbar,:root[data-theme='light'] .rop-column,:root[data-theme='light'] .rop-lead-card,:root[data-theme='light'] .rop-modal{background:var(--imds-glass)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important;box-shadow:var(--imds-shadow-soft)!important}
+:root[data-theme='light'] .rop-column-body,:root[data-theme='light'] .rop-owner-grid span,:root[data-theme='light'] .rop-table-head{background:transparent!important}
+:root[data-theme='light'] .funnel-page-root input,:root[data-theme='light'] .funnel-page-root select,:root[data-theme='light'] .funnel-page-root .button,:root[data-theme='light'] .rop-filterbar>button,:root[data-theme='light'] .rop-lead-card>footer button,:root[data-theme='light'] .rop-modal>header button{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .funnel-page-root .button-primary{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+:root[data-theme='light'] .rop-column.drag-active,:root[data-theme='light'] .rop-lead-card:hover{background:var(--imds-primary-soft)!important;border-color:var(--imds-primary-a18)!important}
+:root[data-theme='light'] .rop-lead-avatar{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important}
 
-:root[data-theme='light'] .marketing-shell>aside,
-:root[data-theme='light'] .marketing-topbar{
-  background:var(--imds-glass-strong)!important;
-  backdrop-filter:blur(18px) saturate(108%)!important;
-  -webkit-backdrop-filter:blur(18px) saturate(108%)!important;
-  box-shadow:0 8px 28px rgba(38,93,91,.06)!important;
-}
-
-:root[data-theme='light'] .panel,
-:root[data-theme='light'] .metric,
-:root[data-theme='light'] .imds-kpi-card,
-:root[data-theme='light'] .dashboard-chart-card,
-:root[data-theme='light'] .marketing-kpis article,
-:root[data-theme='light'] .auth-login-card,
-:root[data-theme='light'] .auth-preview{
-  background:var(--imds-glass)!important;
-  backdrop-filter:blur(16px) saturate(106%)!important;
-  -webkit-backdrop-filter:blur(16px) saturate(106%)!important;
-  box-shadow:0 12px 34px rgba(38,93,91,.07)!important;
-}
-
-/* Legacy Sales Funnel workspace. */
-:root[data-theme='light'] .funnel-page-root{
-  --border:var(--imds-border);
-  --border2:var(--imds-border-strong);
-  --surface:rgba(255,255,255,.72);
-  --surface2:rgba(248,252,252,.68);
-  --surface3:rgba(235,247,246,.74);
-  --control:rgba(255,255,255,.76);
-  --text:var(--imds-text);
-  --text2:var(--imds-text-soft);
-  --text3:var(--imds-muted);
-  --muted:var(--imds-muted);
-  --accent:var(--imds-primary);
-  --accent2:var(--imds-blue);
-  color:var(--imds-text)!important;
-}
-
-:root[data-theme='light'] .funnel-state,
-:root[data-theme='light'] .refdash-kpis article,
-:root[data-theme='light'] .refdash-card,
-:root[data-theme='light'] .rop-filterbar,
-:root[data-theme='light'] .rop-column,
-:root[data-theme='light'] .rop-lead-card,
-:root[data-theme='light'] .rop-modal{
-  background:var(--imds-glass)!important;
-  border-color:var(--imds-border)!important;
-  color:var(--imds-text-soft)!important;
-  box-shadow:var(--imds-shadow-soft)!important;
-}
-
-:root[data-theme='light'] .rop-column-body,
-:root[data-theme='light'] .rop-owner-grid span,
-:root[data-theme='light'] .rop-table-head{background:transparent!important}
-
-:root[data-theme='light'] .funnel-page-root input,
-:root[data-theme='light'] .funnel-page-root select,
-:root[data-theme='light'] .funnel-page-root .button,
-:root[data-theme='light'] .rop-filterbar>button,
-:root[data-theme='light'] .rop-lead-card>footer button,
-:root[data-theme='light'] .rop-modal>header button{
-  background:var(--imds-glass-strong)!important;
-  border-color:var(--imds-border)!important;
-  color:var(--imds-text-soft)!important;
-}
-
-:root[data-theme='light'] .funnel-page-root .button-primary{
-  background:var(--imds-primary)!important;
-  border-color:var(--imds-primary)!important;
-  color:#fff!important;
-}
-
-:root[data-theme='light'] .rop-column.drag-active,
-:root[data-theme='light'] .rop-lead-card:hover{
-  background:var(--imds-primary-soft)!important;
-  border-color:var(--imds-primary-a18)!important;
-}
-
-:root[data-theme='light'] .rop-lead-avatar{
-  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
-}
-
-/* Sales Funnel V2 is the active CRM screen. It previously forced a dark navy board in light mode. */
-:root[data-theme='light'] .funnel-v2-page{
-  --f-bg:rgba(244,251,251,.24);
-  --f-panel:rgba(255,255,255,.62);
-  --f-panel2:rgba(255,255,255,.76);
-  --f-border:var(--imds-border);
-  --f-text:var(--imds-text);
-  --f-muted:var(--imds-muted);
-  color:var(--imds-text)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-heading span,
-:root[data-theme='light'] .funnel-v2-modal>header small,
-:root[data-theme='light'] .funnel-v2-event b{
-  color:var(--imds-primary-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-heading p,
-:root[data-theme='light'] .funnel-v2-kpis small,
-:root[data-theme='light'] .funnel-v2-kpis em,
-:root[data-theme='light'] .funnel-v2-column>header small,
-:root[data-theme='light'] .funnel-v2-column>header em,
-:root[data-theme='light'] .funnel-v2-column-empty,
-:root[data-theme='light'] .funnel-v2-deal>header small,
-:root[data-theme='light'] .funnel-v2-deal-meta,
-:root[data-theme='light'] .funnel-v2-event time,
-:root[data-theme='light'] .funnel-v2-stage-settings>header small,
-:root[data-theme='light'] .funnel-v2-modal-body label>span{
-  color:var(--imds-muted)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-page .button,
-:root[data-theme='light'] .funnel-v2-filters input,
-:root[data-theme='light'] .funnel-v2-filters select,
-:root[data-theme='light'] .funnel-v2-filters button,
-:root[data-theme='light'] .funnel-v2-pipeline-tabs button,
-:root[data-theme='light'] .funnel-v2-deal>footer button,
-:root[data-theme='light'] .funnel-v2-modal>header button,
-:root[data-theme='light'] .funnel-v2-modal-body input,
-:root[data-theme='light'] .funnel-v2-modal-body select,
-:root[data-theme='light'] .funnel-v2-modal-body textarea{
-  background:var(--imds-glass-strong)!important;
-  border-color:var(--imds-border)!important;
-  color:var(--imds-text)!important;
-  box-shadow:none!important;
-}
-
-:root[data-theme='light'] .funnel-v2-page .button:hover,
-:root[data-theme='light'] .funnel-v2-filters button:hover,
-:root[data-theme='light'] .funnel-v2-pipeline-tabs button:hover,
-:root[data-theme='light'] .funnel-v2-deal>footer button:hover{
-  background:var(--imds-surface-3)!important;
-  border-color:var(--imds-border-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-page .button-primary{
-  background:var(--imds-primary)!important;
-  border-color:var(--imds-primary)!important;
-  color:#fff!important;
-}
-
-:root[data-theme='light'] .funnel-v2-page .button-primary:hover{
-  background:var(--imds-primary-strong)!important;
-  border-color:var(--imds-primary-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-state,
-:root[data-theme='light'] .funnel-v2-kpis article,
-:root[data-theme='light'] .funnel-v2-filters,
-:root[data-theme='light'] .funnel-v2-kanban-shell,
-:root[data-theme='light'] .funnel-v2-empty-panel,
-:root[data-theme='light'] .funnel-v2-bottom>article,
-:root[data-theme='light'] .funnel-v2-modal{
-  background:var(--imds-glass)!important;
-  border-color:var(--imds-border)!important;
-  color:var(--imds-text)!important;
-  box-shadow:var(--imds-shadow-soft)!important;
-  backdrop-filter:blur(16px) saturate(106%)!important;
-  -webkit-backdrop-filter:blur(16px) saturate(106%)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-kpis article>svg{
-  background:var(--imds-primary-soft)!important;
-  color:var(--imds-primary-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-kpis article.warning>svg{
-  background:var(--imds-warning-a10)!important;
-  color:var(--imds-warning)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-pipeline-bar,
-:root[data-theme='light'] .funnel-v2-stage-strip,
-:root[data-theme='light'] .funnel-v2-column>header{
-  background:var(--imds-glass-soft)!important;
-  border-color:var(--imds-border)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-pipeline-tabs button.active{
-  background:var(--imds-primary-soft)!important;
-  border-color:var(--imds-primary)!important;
-  color:var(--imds-primary-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-pipeline-tabs i{
-  background:var(--imds-primary)!important;
-  color:#fff!important;
-}
-
-:root[data-theme='light'] .funnel-v2-stage-strip b{
-  background:var(--imds-glass-strong)!important;
-}
-
+:root[data-theme='light'] .funnel-v2-page{--f-bg:rgba(244,251,251,.24);--f-panel:rgba(255,255,255,.62);--f-panel2:rgba(255,255,255,.76);--f-border:var(--imds-border);--f-text:var(--imds-text);--f-muted:var(--imds-muted);color:var(--imds-text)!important}
+:root[data-theme='light'] .funnel-v2-heading span,:root[data-theme='light'] .funnel-v2-modal>header small,:root[data-theme='light'] .funnel-v2-event b{color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .funnel-v2-heading p,:root[data-theme='light'] .funnel-v2-kpis small,:root[data-theme='light'] .funnel-v2-kpis em,:root[data-theme='light'] .funnel-v2-column>header small,:root[data-theme='light'] .funnel-v2-column>header em,:root[data-theme='light'] .funnel-v2-column-empty,:root[data-theme='light'] .funnel-v2-deal>header small,:root[data-theme='light'] .funnel-v2-deal-meta,:root[data-theme='light'] .funnel-v2-event time,:root[data-theme='light'] .funnel-v2-stage-settings>header small,:root[data-theme='light'] .funnel-v2-modal-body label>span{color:var(--imds-muted)!important}
+:root[data-theme='light'] .funnel-v2-page .button,:root[data-theme='light'] .funnel-v2-filters input,:root[data-theme='light'] .funnel-v2-filters select,:root[data-theme='light'] .funnel-v2-filters button,:root[data-theme='light'] .funnel-v2-pipeline-tabs button,:root[data-theme='light'] .funnel-v2-deal>footer button,:root[data-theme='light'] .funnel-v2-modal>header button,:root[data-theme='light'] .funnel-v2-modal-body input,:root[data-theme='light'] .funnel-v2-modal-body select,:root[data-theme='light'] .funnel-v2-modal-body textarea{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important;box-shadow:none!important}
+:root[data-theme='light'] .funnel-v2-page .button:hover,:root[data-theme='light'] .funnel-v2-filters button:hover,:root[data-theme='light'] .funnel-v2-pipeline-tabs button:hover,:root[data-theme='light'] .funnel-v2-deal>footer button:hover{background:var(--imds-surface-3)!important;border-color:var(--imds-border-strong)!important}
+:root[data-theme='light'] .funnel-v2-page .button-primary{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+:root[data-theme='light'] .funnel-v2-page .button-primary:hover{background:var(--imds-primary-strong)!important;border-color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .funnel-v2-state,:root[data-theme='light'] .funnel-v2-kpis article,:root[data-theme='light'] .funnel-v2-filters,:root[data-theme='light'] .funnel-v2-kanban-shell,:root[data-theme='light'] .funnel-v2-empty-panel,:root[data-theme='light'] .funnel-v2-bottom>article,:root[data-theme='light'] .funnel-v2-modal{background:var(--imds-glass)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow-soft)!important;backdrop-filter:blur(16px) saturate(106%)!important;-webkit-backdrop-filter:blur(16px) saturate(106%)!important}
+:root[data-theme='light'] .funnel-v2-kpis article>svg{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .funnel-v2-kpis article.warning>svg{background:var(--imds-warning-a10)!important;color:var(--imds-warning)!important}
+:root[data-theme='light'] .funnel-v2-pipeline-bar,:root[data-theme='light'] .funnel-v2-stage-strip,:root[data-theme='light'] .funnel-v2-column>header{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important}
+:root[data-theme='light'] .funnel-v2-pipeline-tabs button.active{background:var(--imds-primary-soft)!important;border-color:var(--imds-primary)!important;color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .funnel-v2-pipeline-tabs i{background:var(--imds-primary)!important;color:#fff!important}
+:root[data-theme='light'] .funnel-v2-stage-strip b{background:var(--imds-glass-strong)!important}
 :root[data-theme='light'] .funnel-v2-stage-strip svg{color:var(--imds-muted)!important}
+:root[data-theme='light'] .funnel-v2-kanban-scroll{background:rgba(244,251,251,.22)!important}
+:root[data-theme='light'] .funnel-v2-column{background:rgba(255,255,255,.46)!important;border-color:var(--imds-border)!important}
+:root[data-theme='light'] .funnel-v2-column.drag-active{background:var(--imds-primary-a10)!important;border-color:var(--imds-primary)!important}
+:root[data-theme='light'] .funnel-v2-deal{background:rgba(255,255,255,.78)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important;box-shadow:0 7px 22px rgba(28,70,77,.07)!important}
+:root[data-theme='light'] .funnel-v2-deal:hover{background:#fff!important;border-color:var(--imds-border-strong)!important}
+:root[data-theme='light'] .funnel-v2-deal>header>span{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+:root[data-theme='light'] .funnel-v2-deal>header i,:root[data-theme='light'] .funnel-v2-deal-owners>span,:root[data-theme='light'] .funnel-v2-next-action{background:var(--imds-surface-2)!important;color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .funnel-v2-deal>p,:root[data-theme='light'] .funnel-v2-deal-owners b{color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .funnel-v2-deal-owners small,:root[data-theme='light'] .funnel-v2-deal-owners svg,:root[data-theme='light'] .funnel-v2-next-action time{color:var(--imds-muted)!important}
+:root[data-theme='light'] .funnel-v2-deal-amount{background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+:root[data-theme='light'] .funnel-v2-next-action.overdue,:root[data-theme='light'] .funnel-v2-lost,:root[data-theme='light'] .funnel-v2-modal-error,:root[data-theme='light'] .funnel-v2-alert{background:var(--imds-danger-a10)!important;border-color:color-mix(in srgb,var(--imds-danger) 34%,transparent)!important;color:var(--imds-danger)!important}
+:root[data-theme='light'] .funnel-v2-deal>footer,:root[data-theme='light'] .funnel-v2-bottom>article>header,:root[data-theme='light'] .funnel-v2-stage-row,:root[data-theme='light'] .funnel-v2-event,:root[data-theme='light'] .funnel-v2-modal>header,:root[data-theme='light'] .funnel-v2-modal>footer{border-color:var(--imds-border)!important}
+:root[data-theme='light'] .funnel-v2-modal-layer{background:rgba(15,47,57,.28)!important;backdrop-filter:blur(8px)!important;-webkit-backdrop-filter:blur(8px)!important}
+:root[data-theme='light'] .danger-button{background:var(--imds-danger-a10)!important;border-color:var(--imds-danger)!important;color:var(--imds-danger)!important}
 
-:root[data-theme='light'] .funnel-v2-kanban-scroll{
-  background:rgba(244,251,251,.22)!important;
-}
+/* Call center / Unified Inbox light normalization. */
+:root[data-theme='light'] .callcenter-root{--border:var(--imds-border);--border2:var(--imds-border-strong);--surface:rgba(255,255,255,.72);--surface2:rgba(248,252,252,.68);--surface3:rgba(235,247,246,.74);--control:rgba(255,255,255,.76);--text:var(--imds-text);--text2:var(--imds-text-soft);--text3:var(--imds-muted);--muted:var(--imds-muted);color:var(--imds-text)!important}
+:root[data-theme='light'] .callcenter-heading>div:first-child span,:root[data-theme='light'] .inbox-header-stats b,:root[data-theme='light'] .inbox-message header strong,:root[data-theme='light'] .inbox-crm-mobile-head button{color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .callcenter-root .button,:root[data-theme='light'] .inbox-channel-tabs button,:root[data-theme='light'] .inbox-contact-actions button,:root[data-theme='light'] .inbox-quick-replies button,:root[data-theme='light'] .inbox-icon-button,:root[data-theme='light'] .inbox-ai-button{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .callcenter-root .button-primary,:root[data-theme='light'] .inbox-send-button{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+:root[data-theme='light'] .inbox-unread-pill,:root[data-theme='light'] .inbox-channel-tabs button.active{background:var(--imds-primary-soft)!important;border-color:var(--imds-primary-a18)!important;color:var(--imds-primary-strong)!important}
+:root[data-theme='light'] .inbox-workspace,:root[data-theme='light'] .inbox-left,:root[data-theme='light'] .inbox-center,:root[data-theme='light'] .inbox-right,:root[data-theme='light'] .inbox-contact-bar,:root[data-theme='light'] .inbox-compose,:root[data-theme='light'] .inbox-template-menu,:root[data-theme='light'] .inbox-state{background:var(--imds-glass)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+:root[data-theme='light'] .inbox-search,:root[data-theme='light'] .inbox-status-filter select,:root[data-theme='light'] .inbox-contact-actions select,:root[data-theme='light'] .inbox-input-row textarea,:root[data-theme='light'] .inbox-attachment,:root[data-theme='light'] .inbox-attachment-draft{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+:root[data-theme='light'] .inbox-thread{border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .inbox-thread:hover{background:var(--imds-row-hover)!important}
+:root[data-theme='light'] .inbox-thread.active{background:var(--imds-primary-soft)!important;box-shadow:inset 3px 0 0 var(--imds-primary)!important}
+:root[data-theme='light'] .inbox-thread-meta b{background:var(--imds-primary)!important}
+:root[data-theme='light'] .inbox-contact-avatar,:root[data-theme='light'] .inbox-crm-avatar{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important}
+:root[data-theme='light'] .inbox-message{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+:root[data-theme='light'] .inbox-message.outbound{background:var(--imds-primary-soft)!important;border-color:var(--imds-primary-a18)!important}
+:root[data-theme='light'] .inbox-channel-badge.channel-instagram,:root[data-theme='light'] .inbox-ai-button{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important;border-color:var(--imds-primary-a18)!important}
+:root[data-theme='light'] .inbox-input-row textarea:focus{outline:2px solid var(--imds-primary-a18)!important;border-color:var(--imds-primary)!important}
 
-:root[data-theme='light'] .funnel-v2-column{
-  background:rgba(255,255,255,.46)!important;
-  border-color:var(--imds-border)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-column.drag-active{
-  background:var(--imds-primary-a10)!important;
-  border-color:var(--imds-primary)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal{
-  background:rgba(255,255,255,.78)!important;
-  border-color:var(--imds-border)!important;
-  color:var(--imds-text)!important;
-  box-shadow:0 7px 22px rgba(28,70,77,.07)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal:hover{
-  background:#fff!important;
-  border-color:var(--imds-border-strong)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal>header>span{
-  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
-  color:#fff!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal>header i,
-:root[data-theme='light'] .funnel-v2-deal-owners>span,
-:root[data-theme='light'] .funnel-v2-next-action{
-  background:var(--imds-surface-2)!important;
-  color:var(--imds-text-soft)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal>p,
-:root[data-theme='light'] .funnel-v2-deal-owners b{
-  color:var(--imds-text-soft)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal-owners small,
-:root[data-theme='light'] .funnel-v2-deal-owners svg,
-:root[data-theme='light'] .funnel-v2-next-action time{
-  color:var(--imds-muted)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal-amount{
-  background:var(--imds-success-a10)!important;
-  color:var(--imds-success)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-next-action.overdue,
-:root[data-theme='light'] .funnel-v2-lost,
-:root[data-theme='light'] .funnel-v2-modal-error,
-:root[data-theme='light'] .funnel-v2-alert{
-  background:var(--imds-danger-a10)!important;
-  border-color:color-mix(in srgb,var(--imds-danger) 34%,transparent)!important;
-  color:var(--imds-danger)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-deal>footer,
-:root[data-theme='light'] .funnel-v2-bottom>article>header,
-:root[data-theme='light'] .funnel-v2-stage-row,
-:root[data-theme='light'] .funnel-v2-event,
-:root[data-theme='light'] .funnel-v2-modal>header,
-:root[data-theme='light'] .funnel-v2-modal>footer{
-  border-color:var(--imds-border)!important;
-}
-
-:root[data-theme='light'] .funnel-v2-modal-layer{
-  background:rgba(15,47,57,.28)!important;
-  backdrop-filter:blur(8px)!important;
-  -webkit-backdrop-filter:blur(8px)!important;
-}
-
-:root[data-theme='light'] .danger-button{
-  background:var(--imds-danger-a10)!important;
-  border-color:var(--imds-danger)!important;
-  color:var(--imds-danger)!important;
-}
-
-@media(max-width:900px){
-  :root[data-theme='light'] .marketing-shell,
-  :root[data-theme='light'] .auth-screen{
-    background-position:62% center!important;
-    background-attachment:scroll!important;
-  }
-}
+@media(max-width:900px){:root[data-theme='light'] .marketing-shell,:root[data-theme='light'] .auth-screen{background-position:62% center!important;background-attachment:scroll!important}}
