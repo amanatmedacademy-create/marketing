@@ -1,0 +1,300 @@
+/* Deal Workspace theme bridge. Loaded last so the CRM deal detail follows IMDS light/dark tokens. */
+:root[data-theme='light'] .deal-workspace-backdrop{
+  background:rgba(16,47,57,.12)!important;
+  backdrop-filter:blur(2px)!important;
+  -webkit-backdrop-filter:blur(2px)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-panel{
+  background:rgba(246,251,251,.94)!important;
+  color:var(--imds-text)!important;
+  box-shadow:-18px 0 52px rgba(28,70,77,.12)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-header{
+  background:rgba(255,255,255,.82)!important;
+  border-color:var(--imds-border)!important;
+  backdrop-filter:blur(18px) saturate(108%)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(108%)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-close,
+:root[data-theme='light'] .deal-workspace-header-actions>a,
+:root[data-theme='light'] .deal-workspace-header-actions>button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:none!important;
+}
+
+:root[data-theme='light'] .deal-workspace-close:hover,
+:root[data-theme='light'] .deal-workspace-header-actions>a:hover,
+:root[data-theme='light'] .deal-workspace-header-actions>button:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--imds-border-strong)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-identity>span{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .deal-workspace-identity small{
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-identity h1{
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-identity p{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-header-actions .workspace-save{
+  background:var(--imds-primary)!important;
+  border-color:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .deal-workspace-header-actions .workspace-save:hover{
+  background:var(--imds-primary-strong)!important;
+  border-color:var(--imds-primary-strong)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon{
+  background:rgba(255,255,255,.54)!important;
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon button{
+  background:rgba(255,255,255,.72)!important;
+  border-color:var(--imds-border)!important;
+  border-top-color:var(--stage-color)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon button:hover{
+  background:#fff!important;
+  border-color:var(--imds-border-strong)!important;
+  border-top-color:var(--stage-color)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon button>span{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon button small,
+:root[data-theme='light'] .deal-workspace-stage-ribbon button>svg{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-stage-ribbon button.active{
+  background:color-mix(in srgb,var(--stage-color) 10%,white)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--stage-color)!important;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--stage-color) 20%,transparent)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-error{
+  background:var(--imds-danger-a10)!important;
+  color:var(--imds-danger)!important;
+  border-color:color-mix(in srgb,var(--imds-danger) 35%,transparent)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-body{
+  background:transparent!important;
+}
+
+:root[data-theme='light'] .deal-workspace-details{
+  background:rgba(248,252,252,.66)!important;
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-summary>div,
+:root[data-theme='light'] .deal-workspace-field-section,
+:root[data-theme='light'] .deal-workspace-relations{
+  background:rgba(255,255,255,.76)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-summary small,
+:root[data-theme='light'] .deal-workspace-field-section>header small,
+:root[data-theme='light'] .deal-workspace-fields label>span,
+:root[data-theme='light'] .deal-workspace-relations>div span{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-summary strong,
+:root[data-theme='light'] .deal-workspace-field-section>header,
+:root[data-theme='light'] .deal-workspace-relations>header,
+:root[data-theme='light'] .deal-workspace-relations>div strong{
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-field-section>header,
+:root[data-theme='light'] .deal-workspace-relations>header,
+:root[data-theme='light'] .deal-workspace-relations>div{
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-field-section header svg,
+:root[data-theme='light'] .deal-workspace-relations header svg{
+  color:var(--imds-primary)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-fields input,
+:root[data-theme='light'] .deal-workspace-fields select,
+:root[data-theme='light'] .deal-workspace-fields textarea{
+  background:rgba(255,255,255,.90)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-fields input:focus,
+:root[data-theme='light'] .deal-workspace-fields select:focus,
+:root[data-theme='light'] .deal-workspace-fields textarea:focus{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px var(--imds-primary-a10)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-feed{
+  background:linear-gradient(135deg,rgba(255,255,255,.56),rgba(244,251,251,.66))!important;
+}
+
+:root[data-theme='light'] .deal-workspace-tabs{
+  background:linear-gradient(180deg,rgba(248,252,252,.96) 75%,rgba(248,252,252,0))!important;
+}
+
+:root[data-theme='light'] .deal-workspace-tabs button{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-tabs button:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-tabs button.active{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer{
+  background:rgba(255,255,255,.78)!important;
+  border-color:var(--imds-border)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+:root[data-theme='light'] .composer-modes,
+:root[data-theme='light'] .deal-workspace-composer footer{
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .composer-modes button,
+:root[data-theme='light'] .composer-modes a{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .composer-modes button:hover,
+:root[data-theme='light'] .composer-modes a:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .composer-modes .active{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer textarea{
+  background:rgba(255,255,255,.72)!important;
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer textarea::placeholder{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer footer label{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer footer input{
+  background:#fff!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer footer button{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .deal-workspace-composer footer button:hover{
+  background:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .timeline-icon{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+  color:var(--imds-primary)!important;
+}
+
+:root[data-theme='light'] .timeline-card,
+:root[data-theme='light'] .deal-workspace-links article{
+  background:rgba(255,255,255,.78)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+:root[data-theme='light'] .timeline-card>header span,
+:root[data-theme='light'] .timeline-card>header time,
+:root[data-theme='light'] .deal-workspace-links span{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .timeline-card p{
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .timeline-recording,
+:root[data-theme='light'] .deal-workspace-links article>svg,
+:root[data-theme='light'] .deal-workspace-links a{
+  color:var(--imds-primary)!important;
+}
+
+:root[data-theme='light'] .timeline-card footer button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-empty{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .deal-workspace-empty strong{
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .skeleton-line,
+:root[data-theme='light'] .skeleton-stages span,
+:root[data-theme='light'] .skeleton-grid aside span,
+:root[data-theme='light'] .skeleton-grid main article{
+  background:linear-gradient(90deg,#e7f1f1,#f7fbfb,#e7f1f1)!important;
+  background-size:200% 100%!important;
+}
+
+@media(max-width:760px){
+  :root[data-theme='light'] .deal-workspace-panel{
+    background:rgba(246,251,251,.98)!important;
+  }
+}
