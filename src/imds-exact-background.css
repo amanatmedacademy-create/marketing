@@ -2,7 +2,8 @@
 :root,
 :root[data-theme='light']{
   --imds-app-bg:url('/imds-bg-light.jpg');
-  --imds-app-overlay:rgba(250,254,254,.02);
+  --imds-app-fallback:#eef9fb;
+  --imds-app-overlay:transparent;
   --imds-glass:rgba(255,255,255,.82);
   --imds-glass-soft:rgba(255,255,255,.70);
   --imds-glass-strong:rgba(255,255,255,.90);
@@ -10,46 +11,106 @@
 
 :root[data-theme='dark']{
   --imds-app-bg:url('/imds-bg-dark.jpg');
-  --imds-app-overlay:rgba(2,14,20,.02);
+  --imds-app-fallback:#031923;
+  --imds-app-overlay:transparent;
   --imds-glass:rgba(5,25,36,.82);
   --imds-glass-soft:rgba(5,25,36,.70);
   --imds-glass-strong:rgba(5,25,36,.90);
 }
 
-html,body,#root{min-height:100%;background:transparent!important}
-body{background:transparent!important}
-.marketing-shell,.marketing-shell>main,.marketing-content{background:transparent!important}
+html,body,#root{
+  min-height:100%;
+  background:var(--imds-app-fallback)!important;
+}
+body{margin:0;background:var(--imds-app-fallback)!important}
 
+/*
+ * Do not use negative z-index for the fixed artwork. Chromium can drop a
+ * negative compositing layer behind transparent/backdrop-filter surfaces,
+ * which produced the grey lower half in the light theme. Keep the artwork
+ * inside the shell stacking context at z-index 0 and all UI at z-index 1+.
+ */
+.marketing-shell{
+  position:relative!important;
+  isolation:isolate!important;
+  min-height:100vh!important;
+  min-height:100dvh!important;
+  background:var(--imds-app-fallback)!important;
+}
 .marketing-shell::before{
-  content:'';
-  position:fixed;
-  inset:0;
-  z-index:-3;
-  pointer-events:none;
+  content:''!important;
+  position:fixed!important;
+  inset:0!important;
+  z-index:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  height:100dvh!important;
+  pointer-events:none!important;
+  opacity:1!important;
+  background-color:var(--imds-app-fallback)!important;
   background-image:var(--imds-app-bg)!important;
   background-position:center center!important;
   background-size:cover!important;
   background-repeat:no-repeat!important;
+  filter:none!important;
+  transform:none!important;
+  mask-image:none!important;
+  -webkit-mask-image:none!important;
 }
-.marketing-shell::after{
-  content:'';
-  position:fixed;
-  inset:0;
-  z-index:-2;
-  pointer-events:none;
-  background:var(--imds-app-overlay)!important;
+.marketing-shell::after{display:none!important;content:none!important}
+
+.marketing-shell>aside,
+.marketing-shell>main{
+  position:relative!important;
+  z-index:1!important;
+}
+.marketing-shell>main{
+  min-width:0!important;
+  min-height:100vh!important;
+  min-height:100dvh!important;
+  background:transparent!important;
+}
+.marketing-content{
+  position:relative!important;
+  z-index:1!important;
+  min-height:calc(100vh - 70px)!important;
+  min-height:calc(100dvh - 70px)!important;
+  background:transparent!important;
+}
+
+/* Route roots must never paint a page-sized opaque background over artwork. */
+.analytics-page,.calls-page,.strategic-page,.suite-page,.funnel-page-root,
+.mis-schedule-page,.phone-workspace,.callcenter-root,.ads-manager-page,
+.leads-workspace,.v36-dashboard,.iv2-page,.marketing-os,.imds-dashboard,
+.operations-shell,.customer360-page,.growth-engine-page,.journey-automation-page,
+.call-center-chat-page,.sales-funnel-page,.clinic-schedule-page,.phone-workspace-page{
+  background:transparent!important;
+}
+
+/* Chrome/WebKit: avoid page-sized backdrop compositing artifacts in light mode. */
+:root[data-theme='light'] .marketing-content,
+:root[data-theme='light'] .analytics-page,
+:root[data-theme='light'] .calls-page,
+:root[data-theme='light'] .strategic-page,
+:root[data-theme='light'] .suite-page,
+:root[data-theme='light'] .funnel-page-root,
+:root[data-theme='light'] .mis-schedule-page,
+:root[data-theme='light'] .phone-workspace,
+:root[data-theme='light'] .callcenter-root,
+:root[data-theme='light'] .ads-manager-page,
+:root[data-theme='light'] .leads-workspace,
+:root[data-theme='light'] .v36-dashboard,
+:root[data-theme='light'] .iv2-page,
+:root[data-theme='light'] .marketing-os,
+:root[data-theme='light'] .imds-dashboard{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
 }
 
 .marketing-shell>aside,.marketing-topbar{
   background:var(--imds-glass-strong)!important;
   backdrop-filter:blur(20px) saturate(112%)!important;
-}
-
-.marketing-content,
-.analytics-page,.calls-page,.strategic-page,.suite-page,.funnel-page-root,
-.mis-schedule-page,.phone-workspace,.callcenter-root,.ads-manager-page,
-.leads-workspace,.v36-dashboard,.iv2-page,.marketing-os,.imds-dashboard{
-  background:transparent!important;
+  -webkit-backdrop-filter:blur(20px) saturate(112%)!important;
 }
 
 .panel,.metric,.imds-kpi-card,.imds-finance-strip,.lead-table-panel,.lead-card,
@@ -61,7 +122,15 @@ body{background:transparent!important}
 .journey-card,.strategic-status article,.customer-facts div,.access-matrix-scroll,.user-editor{
   background:var(--imds-glass)!important;
   backdrop-filter:blur(18px) saturate(110%)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(110%)!important;
 }
 
-:root[data-theme='light'] .marketing-content{color:var(--imds-text)}
-:root[data-theme='dark'] .marketing-content{color:var(--imds-text)}
+:root[data-theme='light'] .marketing-content{color:var(--imds-text)!important}
+:root[data-theme='dark'] .marketing-content{color:var(--imds-text)!important}
+
+@media(max-width:900px){
+  .marketing-shell::before{background-position:62% center!important}
+}
+@media(max-width:620px){
+  .marketing-shell::before{background-position:68% center!important}
+}
