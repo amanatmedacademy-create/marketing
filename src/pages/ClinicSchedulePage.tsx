@@ -28,7 +28,7 @@ function dateKey(value: Date) {
   return `${map.year}-${map.month}-${map.day}`;
 }
 function addDays(key: string, amount: number) { const d = new Date(`${key}T12:00:00+05:00`); d.setUTCDate(d.getUTCDate() + amount); return dateKey(d); }
-function minutes(value: string) { const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Almaty',hour:'2-digit',minute:'2-digit',hour12:false}).format(value).split(':').map(Number); return parts[0]*60+parts[1]; }
+function minutes(value: string) { const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Almaty',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)).split(':').map(Number); return parts[0]*60+parts[1]; }
 function minuteLabel(value: number) { return `${String(Math.floor(value / 60)).padStart(2,'0')}:${String(value % 60).padStart(2,'0')}`; }
 function timeLabel(value: string) { return new Date(value).toLocaleTimeString('ru-KZ',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Almaty'}); }
 function fullDate(key: string) { return new Date(`${key}T12:00:00+05:00`).toLocaleDateString('ru-KZ',{weekday:'short',day:'numeric',month:'long',timeZone:'Asia/Almaty'}); }
