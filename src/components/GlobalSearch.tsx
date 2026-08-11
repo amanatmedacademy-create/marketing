@@ -13,6 +13,11 @@ type Result = {
 };
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const customerKey = (lead: MarketingLead) => {
+  const phone = String(lead.phone || '').replace(/\D/g, '').replace(/^8(?=\d{10}$)/, '7');
+  const email = normalize(lead.email);
+  return phone ? `phone:${phone}` : email ? `email:${email}` : `lead:${lead.id}`;
+};
 
 export default function GlobalSearch() {
   const navigate = useNavigate();
@@ -54,7 +59,8 @@ export default function GlobalSearch() {
 
     const leadMatches = leads.filter((lead) => [
       lead.name, lead.phone, lead.email, lead.source, lead.platform, lead.campaign,
-      lead.manager, lead.utm_source, lead.utm_campaign,
+      lead.manager, lead.utm_source, lead.utm_medium, lead.utm_campaign, lead.utm_content,
+      lead.utm_term, lead.campaign_id, lead.adset_id, lead.ad_id,
     ].some((value) => normalize(value).includes(needle))).slice(0, 6).map<Result>((lead) => ({
       id: `lead:${lead.id}`,
       title: lead.name || lead.phone || 'Лид без имени',
@@ -69,21 +75,21 @@ export default function GlobalSearch() {
       if (customers.length >= 4) break;
       const matched = [lead.name, lead.phone, lead.email].some((value) => normalize(value).includes(needle));
       if (!matched) continue;
-      const key = normalize(lead.phone || lead.email || lead.id);
+      const key = customerKey(lead);
       if (customerKeys.has(key)) continue;
       customerKeys.add(key);
       customers.push({
         id: `customer:${key}`,
-        title: lead.name || lead.phone || 'Клиент',
+        title: lead.name || lead.phone || lead.email || 'Клиент',
         meta: [lead.phone, lead.email, 'Customer 360'].filter(Boolean).join(' · '),
-        route: '/customers',
+        route: `/customers?customer=${encodeURIComponent(key)}`,
         kind: 'customer',
       });
     }
 
     const campaigns = ads.filter((row) => [
       row.campaign_name, row.adset_name, row.creative_name, row.platform, row.source,
-      row.campaign_id, row.ad_id,
+      row.campaign_id, row.adset_id, row.ad_id,
     ].some((value) => normalize(value).includes(needle))).slice(0, 5).map<Result>((row) => ({
       id: `campaign:${row.row_key}`,
       title: row.campaign_name || row.creative_name || 'Рекламная кампания',
