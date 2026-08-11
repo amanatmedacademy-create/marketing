@@ -1,0 +1,135 @@
+/* Final IMDS color authority. Keep this file last in main.tsx. */
+:root,:root[data-theme='light']{
+  color-scheme:light;
+  --imds-app-fallback:#edf8f9;
+  --imds-bg:#edf8f9;
+  --imds-sidebar:rgba(250,253,253,.94);
+  --imds-topbar:rgba(255,255,255,.86);
+  --imds-surface:#fff;
+  --imds-surface-2:#f6fbfb;
+  --imds-surface-3:#eaf5f4;
+  --imds-glass:rgba(255,255,255,.84);
+  --imds-glass-soft:rgba(248,252,252,.76);
+  --imds-glass-strong:rgba(255,255,255,.94);
+  --imds-border:#d3e4e4;
+  --imds-border-strong:#bad1d1;
+  --imds-text:#102f39;
+  --imds-text-soft:#47646b;
+  --imds-muted:#758d93;
+  --imds-primary:#11b8a5;
+  --imds-primary-strong:#087f80;
+  --imds-primary-soft:#e4f7f4;
+  --imds-blue:#3f89a8;
+  --imds-success:#229a72;
+  --imds-warning:#c98f31;
+  --imds-danger:#d45f68;
+  --imds-chart-grid:#dce9e9;
+  --imds-row-hover:rgba(228,247,244,.78);
+  --imds-shadow:0 16px 38px rgba(28,70,77,.10);
+  --imds-shadow-soft:0 7px 22px rgba(28,70,77,.07);
+  --imds-primary-a10:rgba(17,184,165,.10);
+  --imds-primary-a18:rgba(17,184,165,.18);
+  --imds-danger-a10:rgba(212,95,104,.10);
+  --imds-success-a10:rgba(34,154,114,.10);
+  --imds-warning-a10:rgba(201,143,49,.10);
+}
+:root[data-theme='dark']{
+  color-scheme:dark;
+  --imds-app-fallback:#031923;
+  --imds-bg:#031923;
+  --imds-sidebar:rgba(5,23,31,.95);
+  --imds-topbar:rgba(5,22,30,.89);
+  --imds-surface:#0a222c;
+  --imds-surface-2:#0d2a34;
+  --imds-surface-3:#123640;
+  --imds-glass:rgba(7,29,39,.86);
+  --imds-glass-soft:rgba(10,34,44,.78);
+  --imds-glass-strong:rgba(7,27,37,.95);
+  --imds-border:#1c4650;
+  --imds-border-strong:#2b5a65;
+  --imds-text:#f3fbfb;
+  --imds-text-soft:#b8ced1;
+  --imds-muted:#7f9aa0;
+  --imds-primary:#24c7b6;
+  --imds-primary-strong:#12a897;
+  --imds-primary-soft:#0b3d3d;
+  --imds-blue:#58a8c6;
+  --imds-success:#45c18e;
+  --imds-warning:#e1ad56;
+  --imds-danger:#ee7a82;
+  --imds-chart-grid:#193b45;
+  --imds-row-hover:rgba(16,61,67,.82);
+  --imds-shadow:0 18px 44px rgba(0,0,0,.28);
+  --imds-shadow-soft:0 8px 24px rgba(0,0,0,.20);
+  --imds-primary-a10:rgba(36,199,182,.10);
+  --imds-primary-a18:rgba(36,199,182,.18);
+  --imds-danger-a10:rgba(238,122,130,.10);
+  --imds-success-a10:rgba(69,193,142,.10);
+  --imds-warning-a10:rgba(225,173,86,.10);
+}
+
+html,body,#root{background-color:var(--imds-app-fallback)!important;color:var(--imds-text)!important}
+body{color:var(--imds-text)!important}
+::selection{background:var(--imds-primary-a18);color:var(--imds-text)}
+h1,h2,h3,h4,h5,h6,strong,b{color:var(--imds-text)}
+p,small,.muted,.note{color:var(--imds-muted)}
+
+.marketing-shell{color:var(--imds-text)!important}
+.marketing-shell>aside{background:var(--imds-sidebar)!important;border-color:var(--imds-border)!important}
+.marketing-topbar{background:var(--imds-topbar)!important;border-color:var(--imds-border)!important}
+.marketing-brand{border-color:var(--imds-border)!important}
+.marketing-nav-label{color:var(--imds-muted)!important}
+.marketing-shell nav a{color:var(--imds-text-soft)!important}
+.marketing-shell nav a:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important}
+.marketing-shell nav a.active{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important;border-color:var(--imds-primary-a18)!important;box-shadow:inset 3px 0 0 var(--imds-primary)!important}
+.marketing-shell nav a.active svg{color:var(--imds-primary)!important}
+
+.marketing-search,.topbar-settings-button,.topbar-profile-button,.imds-theme-toggle,.company-switcher__button{background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important;border-color:var(--imds-border)!important}
+.marketing-search input{color:var(--imds-text)!important}
+.marketing-search input::placeholder{color:var(--imds-muted)!important}
+.topbar-profile-button>span,.marketing-top-actions>span{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+
+.panel,.metric,.creative,.integration,.integration-config,.integration-unlock,.module-card,.automation-card,.dashboard-chart-card,.marketing-kpis article,.architecture-map article,.architecture-pipeline article,.lead-table-panel,.lead-card,.ads-saved-views,.ads-toolbar,.ads-controls,.ads-filter-panel,.ads-table-wrap,.v36-toolbar,.v36-card,.v36-kpi,.iv2-summary article,.iv2-modal,.iv2-section,.imds-kpi-card,.imds-finance-strip,.mis-panel,.calls-list-panel,.call-detail,.inbox-workspace,.refdash-card,.refdash-kpis article,.rop-filterbar,.rop-column,.rop-lead-card,.suite-kpis article,.suite-template-grid article,.journey-card,.strategic-status article,.access-matrix-scroll,.user-editor{background:var(--imds-glass)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow-soft)!important}
+
+.kanban>section,.kanban article,.task-row,.content-plan article,.attribution-flow article,.module-checklist span,.dashboard-finance-strip span,.lead-status-grid article,.lead-message,.phone-workspace__facts article,.phone-workspace__history-calls button,.phone-workspace__ai-summary,.phone-workspace__setup-needed,.phone-workspace__chips span,.customer-facts div{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+
+button,input,select,textarea{color:var(--imds-text)}
+input,select,textarea,.ads-search,.v36-search,.iv2-creative-search,.integration-unlock input,.integration-form input,.lead-filter-select{background:var(--imds-glass-soft)!important;color:var(--imds-text)!important;border-color:var(--imds-border)!important}
+input::placeholder,textarea::placeholder{color:var(--imds-muted)!important}
+input:focus,select:focus,textarea:focus,.marketing-search:focus-within,.ads-search:focus-within,.v36-search:focus-within{border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px var(--imds-primary-a10)!important;outline:0!important}
+.button,.ads-toolbar button,.ads-controls button,.ads-level-tabs button,.ads-saved-views button,.v36-toolbar button,.v36-table-actions button,.v36-mode button,.iv2-header button,.iv2-modal button,.lead-filters>button{background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important;border-color:var(--imds-border)!important;box-shadow:none!important}
+.button:hover,.ads-toolbar button:hover,.ads-controls button:hover,.ads-level-tabs button:hover,.ads-saved-views button:hover,.v36-toolbar button:hover,.v36-table-actions button:hover,.v36-mode button:hover,.iv2-header button:hover,.iv2-modal button:hover,.lead-filters>button:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important;border-color:var(--imds-border-strong)!important}
+.button--primary,.iv2-primary,.phone-workspace__book,.inbox-send-button{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+.button--primary:hover,.iv2-primary:hover,.phone-workspace__book:hover,.inbox-send-button:hover{background:var(--imds-primary-strong)!important}
+
+table{background:transparent!important;color:var(--imds-text)!important}
+th,.lead-table-wrap th,.ads-table-wrap th,.v36-table th{background:var(--imds-glass-strong)!important;color:var(--imds-muted)!important;border-color:var(--imds-border)!important}
+td,.lead-table-wrap td,.ads-table-wrap td,.v36-table td{background:transparent!important;color:var(--imds-text-soft)!important;border-color:var(--imds-border)!important}
+tbody tr:hover td,.lead-table-wrap tr:hover td,.ads-table-wrap tbody tr:hover td,.v36-hierarchy-row:hover td{background:var(--imds-row-hover)!important}
+.lead-table-wrap tr.selected td,.ads-table-wrap tr.selected td{background:var(--imds-primary-soft)!important}
+
+.badge,.lead-stage,.inbox-channel-badge{background:var(--imds-surface-3)!important;color:var(--imds-text-soft)!important;border-color:var(--imds-border)!important}
+.stage-diagnostic,.badge--cyan{background:var(--imds-primary-a10)!important;color:var(--imds-primary)!important;border-color:var(--imds-primary-a18)!important}
+.stage-course,.badge--green{background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+.stage-qualification,.stage-appointment,.badge--amber{background:var(--imds-warning-a10)!important;color:var(--imds-warning)!important}
+.stage-lost,.badge--red,.alert--error,.lead-error,.v36-error,.iv2-message--error,.auth-error{background:var(--imds-danger-a10)!important;color:var(--imds-danger)!important}
+.alert--ok,.iv2-message--ok{background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+
+.imds-dashboard-hero{background:linear-gradient(135deg,var(--imds-glass-strong) 0%,var(--imds-glass) 62%,var(--imds-primary-a10) 100%)!important;border-color:var(--imds-border)!important}
+.legend-primary{background:var(--imds-primary)!important}.legend-secondary{background:var(--imds-blue)!important}.legend-success{background:var(--imds-success)!important}
+.imds-pipeline-track{background:var(--imds-surface-3)!important}.imds-pipeline-track i{background:linear-gradient(90deg,var(--imds-primary),var(--imds-blue))!important}
+.recharts-cartesian-grid line{stroke:var(--imds-chart-grid)!important}.recharts-text,.recharts-wrapper text{fill:var(--imds-muted)!important}
+.recharts-tooltip-wrapper .recharts-default-tooltip{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+
+.operations-shell,.analytics-page,.ads-manager-page,.leads-workspace,.v36-dashboard,.iv2-page,.marketing-os,.growth-engine-page,.customer360-page,.journey-automation-page,.call-center-chat-page,.sales-funnel-page,.clinic-schedule-page,.phone-workspace-page,.mis-schedule-page,.phone-workspace,.callcenter-root,.imds-dashboard,.calls-page,.strategic-page,.suite-page,.funnel-page-root{background:transparent!important;color:var(--imds-text)!important}
+
+.auth-screen{color:var(--imds-text)!important;background-color:var(--imds-app-fallback)!important;background-image:linear-gradient(color-mix(in srgb,var(--imds-app-fallback) 70%,transparent),color-mix(in srgb,var(--imds-app-fallback) 70%,transparent)),var(--imds-app-bg)!important;background-size:cover!important;background-position:center!important}
+.auth-showcase,.auth-login-panel{border-color:var(--imds-border)!important;background:transparent!important}
+.auth-login-card,.auth-preview,.auth-benefits>div,.auth-security-note,.auth-user-bar{background:var(--imds-glass)!important;color:var(--imds-text)!important;border-color:var(--imds-border)!important;box-shadow:var(--imds-shadow)!important;backdrop-filter:blur(20px)!important}
+.auth-brand-mark,.auth-login-icon,.auth-user-bar>span{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+.auth-brand span,.auth-copy p,.auth-login-card>p,.auth-security-note,.auth-terms,.auth-support,.auth-loading-card p,.auth-preview>header,.auth-preview-kpis small,.auth-user-bar small{color:var(--imds-muted)!important}
+.auth-eyebrow{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important;border-color:var(--imds-primary-a18)!important}
+.auth-benefits svg,.auth-preview-kpis em{color:var(--imds-success)!important}
+.auth-preview-kpis>div,.google-login{background:var(--imds-glass-strong)!important;color:var(--imds-text)!important;border-color:var(--imds-border)!important}
+.auth-preview-chart i{background:linear-gradient(180deg,var(--imds-primary),var(--imds-blue))!important}
+.auth-secondary-action,.auth-security-note svg,.auth-loading-card>span{color:var(--imds-primary)!important}
