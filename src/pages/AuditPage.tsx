@@ -52,6 +52,7 @@ export function AuditPage() {
   const [tab, setTab] = useState<Tab>('errors');
   const [errors, setErrors] = useState<ErrorRecord[]>([]);
   const [audit, setAudit] = useState<AuditRecord[]>([]);
+  const [knownAuditActions, setKnownAuditActions] = useState<string[]>(Object.keys(ACTION_LABELS));
   const [statusFilter, setStatusFilter] = useState<ErrorStatus | ''>('');
   const [actionFilter, setActionFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,11 @@ export function AuditPage() {
     setPageError(null);
     try {
       if (tab === 'errors') setErrors(await fetchErrors(statusFilter));
-      else setAudit(await fetchAuditLog({ action: actionFilter || undefined, limit: 300 }));
+      else {
+        const rows = await fetchAuditLog({ action: actionFilter || undefined, limit: 300 });
+        setAudit(rows);
+        setKnownAuditActions((current) => Array.from(new Set([...current, ...rows.map((item) => item.action), ...Object.keys(ACTION_LABELS)])).sort());
+      }
     } catch (nextError) {
       setPageError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить журнал');
     } finally {
@@ -104,7 +109,10 @@ export function AuditPage() {
     }
   };
 
-  const auditActions = useMemo(() => Array.from(new Set(audit.map((item) => item.action))).sort(), [audit]);
+  const auditActions = useMemo(
+    () => Array.from(new Set([...knownAuditActions, ...audit.map((item) => item.action), ...Object.keys(ACTION_LABELS)])).sort(),
+    [audit, knownAuditActions]
+  );
 
   return <div className="stack audit-root">
     <div className="audit-heading">
