@@ -22,6 +22,7 @@ const iso = (value: unknown): string => {
   const parsed = raw ? new Date(raw) : new Date('invalid');
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : '';
 };
+const time5 = (value: unknown): string => text(value).slice(0, 5);
 
 function headers(env: Env, extra: HeadersInit = {}): Headers {
   const next = new Headers(extra);
@@ -48,9 +49,11 @@ function admin(request: Request): boolean {
 }
 
 function almatyDateKey(value: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(value);
+  }).formatToParts(value);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
 }
 
 function almatyDayRange(dateKey: string): { from: string; to: string } {
@@ -74,6 +77,14 @@ function almatyWeekday(value: string): number {
   return shifted.getUTCDay();
 }
 
+function monthRange(month: string): { from: string; to: string; month: string } {
+  const safe = /^\d{4}-\d{2}$/.test(month) ? month : almatyDateKey(new Date()).slice(0, 7);
+  const from = new Date(`${safe}-01T00:00:00+05:00`);
+  const next = new Date(from.getTime());
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  return { from: from.toISOString(), to: next.toISOString(), month: safe };
+}
+
 async function snapshot(env: ScopedEnv, url: URL): Promise<Response> {
   const companyId = requireCompanyId(env);
   const range = appointmentRange(url);
@@ -86,6 +97,18 @@ async function snapshot(env: ScopedEnv, url: URL): Promise<Response> {
     db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&starts_at=lt.${encodeURIComponent(range.to)}&ends_at=gt.${encodeURIComponent(range.from)}&select=id,doctor_id,starts_at,ends_at,block_type,title,note,metadata,created_at,updated_at&order=starts_at.asc&limit=750`).catch(() => []),
   ]);
   return json({ branches, doctors, schedules, appointments, patients, blocks, range, timezone: 'Asia/Almaty' });
+}
+
+async function calendarCounts(env: ScopedEnv, url: URL): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const range = monthRange(text(url.searchParams.get('month')));
+  const appointments = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(range.from)}&starts_at=lt.${encodeURIComponent(range.to)}&select=starts_at,status&order=starts_at.asc&limit=5000`);
+  const counts: Record<string, number> = {};
+  for (const item of appointments) {
+    const key = almatyDateKey(new Date(text(item.starts_at)));
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return json({ month: range.month, counts });
 }
 
 async function saveBranch(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
@@ -140,20 +163,32 @@ async function saveSchedule(request: Request, env: ScopedEnv, body: Row): Promis
   const id = text(body.id);
   const doctorId = text(body.doctor_id);
   const weekday = Number(body.weekday);
-  const startTime = text(body.start_time);
-  const endTime = text(body.end_time);
+  const startTime = time5(body.start_time);
+  const endTime = time5(body.end_time);
+  const breakStart = time5(body.break_start);
+  const breakEnd = time5(body.break_end);
   const slotMinutes = Number(body.slot_minutes) || 30;
   if (!doctorId || !Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !startTime || !endTime) return json({ error: 'Заполните врача, день и время' }, 400);
   if (startTime >= endTime) return json({ error: 'Начало смены должно быть раньше окончания' }, 400);
+  if (Boolean(breakStart) !== Boolean(breakEnd)) return json({ error: 'Укажите начало и конец перерыва вместе' }, 400);
+  if (breakStart && (breakStart >= breakEnd || breakStart < startTime || breakEnd > endTime)) return json({ error: 'Перерыв должен находиться внутри рабочей смены' }, 400);
   if (slotMinutes < 5 || slotMinutes > 240) return json({ error: 'Длительность слота должна быть от 5 до 240 минут' }, 400);
   const doctors = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(doctorId)}&select=id&limit=1`);
   if (!doctors[0]) return json({ error: 'Врач не принадлежит выбранной клинике' }, 404);
   const existing = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&weekday=eq.${weekday}&active=eq.true&select=id,start_time,end_time`);
-  const overlap = existing.find((row) => text(row.id) !== id && startTime < text(row.end_time) && endTime > text(row.start_time));
-  if (overlap) return json({ error: `Интервал пересекается с ${text(overlap.start_time).slice(0, 5)}–${text(overlap.end_time).slice(0, 5)}` }, 409);
+  const overlap = existing.find((row) => text(row.id) !== id && startTime < time5(row.end_time) && endTime > time5(row.start_time));
+  if (overlap) return json({ error: `Интервал пересекается с ${time5(overlap.start_time)}–${time5(overlap.end_time)}` }, 409);
   const payload = {
-    company_id: companyId, doctor_id: doctorId, weekday, start_time: startTime, end_time: endTime,
-    slot_minutes: slotMinutes, active: body.active !== false, updated_at: new Date().toISOString(),
+    company_id: companyId,
+    doctor_id: doctorId,
+    weekday,
+    start_time: startTime,
+    end_time: endTime,
+    break_start: breakStart || null,
+    break_end: breakEnd || null,
+    slot_minutes: slotMinutes,
+    active: body.active !== false,
+    updated_at: new Date().toISOString(),
   };
   try {
     const rows = id
@@ -199,7 +234,7 @@ async function appointmentInCompany(env: ScopedEnv, companyId: string, id: strin
 }
 
 async function appointmentConflict(env: ScopedEnv, companyId: string, doctorId: string, startsAt: string, endsAt: string, excludeId = ''): Promise<Row | null> {
-  const statusFilter = encodeURIComponent(`(${OCCUPYING_APPOINTMENT_STATUSES.join(',')})`);
+  const statusFilter = `(${OCCUPYING_APPOINTMENT_STATUSES.join(',')})`;
   const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.${statusFilter}&starts_at=lt.${encodeURIComponent(endsAt)}&ends_at=gt.${encodeURIComponent(startsAt)}&select=id,patient_name,starts_at,ends_at&order=starts_at.asc&limit=20`);
   return rows.find((row) => text(row.id) !== excludeId) || null;
 }
@@ -209,10 +244,14 @@ async function validateDoctorWorkWindow(env: ScopedEnv, companyId: string, docto
   const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit', hour12: false });
   const startTime = formatter.format(new Date(startsAt));
   const endTime = formatter.format(new Date(endsAt));
-  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&weekday=eq.${weekday}&active=eq.true&select=id,start_time,end_time`);
+  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&weekday=eq.${weekday}&active=eq.true&select=id,start_time,end_time,break_start,break_end`);
   if (!schedules.length) return 'На выбранный день у специалиста нет рабочего графика';
-  return schedules.some((row) => startTime >= text(row.start_time).slice(0, 5) && endTime <= text(row.end_time).slice(0, 5))
-    ? null : 'Время записи выходит за рабочий интервал специалиста';
+  const containing = schedules.find((row) => startTime >= time5(row.start_time) && endTime <= time5(row.end_time));
+  if (!containing) return 'Время записи выходит за рабочий интервал специалиста';
+  const breakStart = time5(containing.break_start);
+  const breakEnd = time5(containing.break_end);
+  if (breakStart && breakEnd && startTime < breakEnd && endTime > breakStart) return 'Время попадает в перерыв специалиста';
+  return null;
 }
 
 async function createBlock(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
@@ -295,7 +334,7 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
     return json({ ok: true, item: rows[0] || null }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('В выбранном времени специалист недоступен')) return json({ error: 'В выбранном времени специалист недоступен' }, 409);
+    if (message.includes('В выбранном времени специалист недоступен') || message.includes('Время попадает в перерыв специалиста')) return json({ error: 'В выбранном времени специалист недоступен' }, 409);
     throw error;
   }
 }
@@ -334,7 +373,7 @@ async function moveAppointment(request: Request, env: ScopedEnv, body: Row): Pro
     return json({ ok: true, item: rows[0] || null });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('В выбранном времени специалист недоступен')) return json({ error: 'В выбранном времени специалист недоступен' }, 409);
+    if (message.includes('В выбранном времени специалист недоступен') || message.includes('Время попадает в перерыв специалиста')) return json({ error: 'В выбранном времени специалист недоступен' }, 409);
     throw error;
   }
 }
@@ -400,6 +439,7 @@ async function deleteAppointment(request: Request, env: ScopedEnv, body: Row): P
 export async function handleClinicSchedule(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/clinic-schedule')) return null;
   const scoped = env as ScopedEnv;
+  if (url.pathname === '/api/clinic-schedule/calendar' && request.method === 'GET') return calendarCounts(scoped, url);
   if (url.pathname === '/api/clinic-schedule' && request.method === 'GET') return snapshot(scoped, url);
   if (url.pathname !== '/api/clinic-schedule' || request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const body = record(await request.json().catch(() => ({})));
