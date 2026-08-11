@@ -147,7 +147,7 @@ async function upsertOne(env: MisEnv, table: string, companyId: string, type: st
 
 function ext(item: JsonRecord): string { return text(item.id) || text(item.external_id) || text(item.externalId); }
 function bool(value: unknown, fallback = true): boolean { return typeof value === 'boolean' ? value : value == null ? fallback : ['1','true','yes','y','да'].includes(String(value).toLowerCase()); }
-function status(value: unknown): string { const raw = text(value).toUpperCase(); return ['BOOKED','CONFIRMED','COMPLETED','CANCELLED','NO_SHOW'].includes(raw) ? raw : 'BOOKED'; }
+function status(value: unknown): string { const raw = text(value).toUpperCase(); return ['BOOKED','CONFIRMED','ARRIVED','COMPLETED','CANCELLED','NO_SHOW'].includes(raw) ? raw : 'BOOKED'; }
 
 async function syncBranches(env: MisEnv, companyId: string, config: MisCredentials, enabled: boolean) {
   if (!enabled) return 0; const list = rows(await misFetch(config, config.branchesPath || '/branches')); let count = 0;
