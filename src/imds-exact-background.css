@@ -1,7 +1,7 @@
 /* Final IMDS background layer. Keep this stylesheet loaded last. */
 :root,
 :root[data-theme='light']{
-  --imds-app-bg:url('/imds-bg-light.jpg?v=20260811-2');
+  --imds-app-bg:url('/imds-bg-light.webp?v=20260811-3');
   --imds-app-fallback:#eef9fb;
   --imds-glass:rgba(255,255,255,.82);
   --imds-glass-soft:rgba(255,255,255,.70);
