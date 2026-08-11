@@ -56,6 +56,70 @@
   box-shadow:0 12px 34px rgba(38,93,91,.07)!important;
 }
 
+/* Sales Funnel is an imported CRM workspace and defines its own dark palette.
+   Rebind those local variables in light mode so it follows the IMDS theme. */
+:root[data-theme='light'] .funnel-page-root{
+  --border:var(--imds-border);
+  --border2:var(--imds-border-strong);
+  --surface:rgba(255,255,255,.72);
+  --surface2:rgba(248,252,252,.68);
+  --surface3:rgba(235,247,246,.74);
+  --control:rgba(255,255,255,.76);
+  --text:var(--imds-text);
+  --text2:var(--imds-text-soft);
+  --text3:var(--imds-muted);
+  --muted:var(--imds-muted);
+  --accent:var(--imds-primary);
+  --accent2:var(--imds-blue);
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .funnel-state,
+:root[data-theme='light'] .refdash-kpis article,
+:root[data-theme='light'] .refdash-card,
+:root[data-theme='light'] .rop-filterbar,
+:root[data-theme='light'] .rop-column,
+:root[data-theme='light'] .rop-lead-card,
+:root[data-theme='light'] .rop-modal{
+  background:var(--imds-glass)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+:root[data-theme='light'] .rop-column-body,
+:root[data-theme='light'] .rop-owner-grid span,
+:root[data-theme='light'] .rop-table-head{
+  background:transparent!important;
+}
+
+:root[data-theme='light'] .funnel-page-root input,
+:root[data-theme='light'] .funnel-page-root select,
+:root[data-theme='light'] .funnel-page-root .button,
+:root[data-theme='light'] .rop-filterbar>button,
+:root[data-theme='light'] .rop-lead-card>footer button,
+:root[data-theme='light'] .rop-modal>header button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .funnel-page-root .button-primary{
+  background:var(--imds-primary)!important;
+  border-color:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .rop-column.drag-active,
+:root[data-theme='light'] .rop-lead-card:hover{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+}
+
+:root[data-theme='light'] .rop-lead-avatar{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+}
+
 @media(max-width:900px){
   :root[data-theme='light'] .marketing-shell,
   :root[data-theme='light'] .auth-screen{
