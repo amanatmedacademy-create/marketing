@@ -1,5 +1,6 @@
 import { resolveCompanyId } from './companyContext';
 import { isFrontendAdmin } from './credentials';
+import { handleMisIntegration } from './misIntegration';
 import { handleZadarmaWebhookSetup } from './zadarmaWebhookSetup';
 
 type JsonRecord = Record<string, unknown>;
@@ -14,6 +15,7 @@ type LifecycleEnv = {
   ZADARMA_API_SECRET?: string;
   ZADARMA_PBX_EXTENSION?: string;
   ZADARMA_TENANT_CONFIGURED?: string;
+  INTEGRATION_ENCRYPTION_KEY?: string;
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -187,6 +189,9 @@ async function disconnectProvider(request: Request, env: LifecycleEnv, url: URL)
 }
 
 export async function handleIntegrationLifecycle(request: Request, env: LifecycleEnv, url: URL): Promise<Response | null> {
+  const misResponse = await handleMisIntegration(request, env, url);
+  if (misResponse) return misResponse;
+
   const zadarmaWebhook = await handleZadarmaWebhookSetup(request, env, url);
   if (zadarmaWebhook) return zadarmaWebhook;
 
