@@ -1,0 +1,67 @@
+/* Final IMDS background layer. Keep this stylesheet loaded last. */
+:root,
+:root[data-theme='light']{
+  --imds-app-bg:url('/imds-bg-light.jpg');
+  --imds-app-overlay:rgba(250,254,254,.02);
+  --imds-glass:rgba(255,255,255,.82);
+  --imds-glass-soft:rgba(255,255,255,.70);
+  --imds-glass-strong:rgba(255,255,255,.90);
+}
+
+:root[data-theme='dark']{
+  --imds-app-bg:url('/imds-bg-dark.jpg');
+  --imds-app-overlay:rgba(2,14,20,.02);
+  --imds-glass:rgba(5,25,36,.82);
+  --imds-glass-soft:rgba(5,25,36,.70);
+  --imds-glass-strong:rgba(5,25,36,.90);
+}
+
+html,body,#root{min-height:100%;background:transparent!important}
+body{background:transparent!important}
+.marketing-shell,.marketing-shell>main,.marketing-content{background:transparent!important}
+
+.marketing-shell::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  z-index:-3;
+  pointer-events:none;
+  background-image:var(--imds-app-bg)!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+}
+.marketing-shell::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  pointer-events:none;
+  background:var(--imds-app-overlay)!important;
+}
+
+.marketing-shell>aside,.marketing-topbar{
+  background:var(--imds-glass-strong)!important;
+  backdrop-filter:blur(20px) saturate(112%)!important;
+}
+
+.marketing-content,
+.analytics-page,.calls-page,.strategic-page,.suite-page,.funnel-page-root,
+.mis-schedule-page,.phone-workspace,.callcenter-root,.ads-manager-page,
+.leads-workspace,.v36-dashboard,.iv2-page,.marketing-os,.imds-dashboard{
+  background:transparent!important;
+}
+
+.panel,.metric,.imds-kpi-card,.imds-finance-strip,.lead-table-panel,.lead-card,
+.ads-saved-views,.ads-toolbar,.ads-controls,.ads-filter-panel,.ads-table-wrap,
+.v36-card,.v36-kpi,.iv2-summary article,.iv2-modal,.mis-panel,
+.calls-list-panel,.call-detail,.phone-workspace__queue,.phone-workspace__patient,
+.phone-workspace__assistant>section,.inbox-workspace,.refdash-card,.refdash-kpis article,
+.rop-filterbar,.rop-column,.rop-lead-card,.suite-kpis article,.suite-template-grid article,
+.journey-card,.strategic-status article,.customer-facts div,.access-matrix-scroll,.user-editor{
+  background:var(--imds-glass)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+}
+
+:root[data-theme='light'] .marketing-content{color:var(--imds-text)}
+:root[data-theme='dark'] .marketing-content{color:var(--imds-text)}
