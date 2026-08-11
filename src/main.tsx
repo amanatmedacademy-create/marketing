@@ -17,6 +17,7 @@ import './clinic-schedule-mis-parity.css';
 import './imds-redesign.css';
 import './dashboard-redesign.css';
 import './imds-modules-redesign.css';
+import './imds-strict-theme.css';
 
 function Root() {
   if (window.location.pathname === '/operations') {
