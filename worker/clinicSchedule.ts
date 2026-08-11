@@ -4,12 +4,23 @@ import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 type Row = Record<string, unknown>;
 type ScopedEnv = Env & TenantScopedEnv;
 
+type AppointmentStatus = 'BOOKED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+
+const ACTIVE_APPOINTMENT_STATUSES = ['BOOKED', 'CONFIRMED'];
+const ALLOWED_APPOINTMENT_STATUSES = new Set<AppointmentStatus>(['BOOKED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
 });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+const number = (value: unknown, fallback = 0): number => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const iso = (value: unknown): string => {
+  const raw = text(value);
+  const parsed = raw ? new Date(raw) : new Date('invalid');
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : '';
+};
 
 function headers(env: Env, extra: HeadersInit = {}): Headers {
   const next = new Headers(extra);
@@ -35,16 +46,42 @@ function admin(request: Request): boolean {
   return text(request.headers.get('x-amanat-auth-role')) === 'administrator';
 }
 
-async function snapshot(env: ScopedEnv): Promise<Response> {
+function almatyDateKey(value: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+
+function almatyDayRange(dateKey: string): { from: string; to: string } {
+  const safe = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : almatyDateKey(new Date());
+  const from = new Date(`${safe}T00:00:00+05:00`);
+  const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function appointmentRange(url: URL): { from: string; to: string } {
+  const date = text(url.searchParams.get('date'));
+  if (date) return almatyDayRange(date);
+  const from = iso(url.searchParams.get('from'));
+  const to = iso(url.searchParams.get('to'));
+  if (from && to && new Date(to) > new Date(from)) return { from, to };
+  return almatyDayRange(almatyDateKey(new Date()));
+}
+
+function almatyWeekday(value: string): number {
+  const shifted = new Date(new Date(value).getTime() + 5 * 60 * 60 * 1000);
+  return shifted.getUTCDay();
+}
+
+async function snapshot(env: ScopedEnv, url: URL): Promise<Response> {
   const companyId = requireCompanyId(env);
-  const now = new Date().toISOString();
-  const [branches, doctors, schedules, appointments] = await Promise.all([
+  const range = appointmentRange(url);
+  const [branches, doctors, schedules, appointments, patients] = await Promise.all([
     db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`),
     db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`),
     db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=weekday.asc,start_time.asc`),
-    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(now)}&select=id,branch_id,doctor_id,lead_id,starts_at,ends_at,patient_name,phone,status,source,metadata&order=starts_at.asc&limit=250`),
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(range.from)}&starts_at=lt.${encodeURIComponent(range.to)}&select=id,branch_id,doctor_id,lead_id,patient_id,starts_at,ends_at,patient_name,phone,status,source,metadata,created_at,updated_at&order=starts_at.asc&limit=750`),
+    db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&select=id,name,phone,email,last_visit_at,next_visit_at,source_system,metadata,updated_at&order=updated_at.desc&limit=500`).catch(() => []),
   ]);
-  return json({ branches, doctors, schedules, appointments });
+  return json({ branches, doctors, schedules, appointments, patients, range, timezone: 'Asia/Almaty' });
 }
 
 async function saveBranch(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
@@ -151,12 +188,162 @@ async function toggle(request: Request, env: ScopedEnv, body: Row): Promise<Resp
   return json({ ok: true });
 }
 
+async function doctorInCompany(env: ScopedEnv, companyId: string, doctorId: string): Promise<Row | null> {
+  const rows = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(doctorId)}&select=id,branch_id,name,specialty,active&limit=1`);
+  return rows[0] || null;
+}
+
+async function patientInCompany(env: ScopedEnv, companyId: string, patientId: string): Promise<Row | null> {
+  if (!patientId) return null;
+  const rows = await db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(patientId)}&select=id,name,phone&limit=1`).catch(() => []);
+  return rows[0] || null;
+}
+
+async function appointmentInCompany(env: ScopedEnv, companyId: string, id: string): Promise<Row | null> {
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
+  return rows[0] || null;
+}
+
+async function appointmentConflict(env: ScopedEnv, companyId: string, doctorId: string, startsAt: string, endsAt: string, excludeId = ''): Promise<Row | null> {
+  const statusFilter = encodeURIComponent(`(${ACTIVE_APPOINTMENT_STATUSES.join(',')})`);
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.${statusFilter}&starts_at=lt.${encodeURIComponent(endsAt)}&ends_at=gt.${encodeURIComponent(startsAt)}&select=id,patient_name,starts_at,ends_at&order=starts_at.asc&limit=20`);
+  return rows.find((row) => text(row.id) !== excludeId) || null;
+}
+
+async function validateDoctorWorkWindow(env: ScopedEnv, companyId: string, doctorId: string, startsAt: string, endsAt: string): Promise<string | null> {
+  const weekday = almatyWeekday(startsAt);
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit', hour12: false });
+  const startTime = timeFormatter.format(new Date(startsAt));
+  const endTime = timeFormatter.format(new Date(endsAt));
+  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&weekday=eq.${weekday}&active=eq.true&select=id,start_time,end_time`);
+  if (!schedules.length) return 'На выбранный день у специалиста нет рабочего графика';
+  const fits = schedules.some((row) => startTime >= text(row.start_time).slice(0, 5) && endTime <= text(row.end_time).slice(0, 5));
+  return fits ? null : 'Время записи выходит за рабочий интервал специалиста';
+}
+
+async function createAppointment(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const doctorId = text(body.doctor_id);
+  const patientId = text(body.patient_id);
+  const leadId = text(body.lead_id);
+  const startsAt = iso(body.starts_at);
+  const endsAt = iso(body.ends_at);
+  if (!doctorId || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) return json({ error: 'Укажите специалиста и корректное время записи' }, 400);
+
+  const doctor = await doctorInCompany(env, companyId, doctorId);
+  if (!doctor || doctor.active === false) return json({ error: 'Специалист недоступен в выбранной клинике' }, 404);
+  const branchId = text(doctor.branch_id);
+  const workError = await validateDoctorWorkWindow(env, companyId, doctorId, startsAt, endsAt);
+  if (workError) return json({ error: workError }, 409);
+  const conflict = await appointmentConflict(env, companyId, doctorId, startsAt, endsAt);
+  if (conflict) return json({ error: `У специалиста уже есть запись ${text(conflict.patient_name) || ''} в это время`.trim() }, 409);
+
+  const patient = patientId ? await patientInCompany(env, companyId, patientId) : null;
+  if (patientId && !patient) return json({ error: 'Пациент не найден в выбранной клинике' }, 404);
+  const patientName = text(body.patient_name) || text(patient?.name);
+  const phone = text(body.phone) || text(patient?.phone);
+  if (!patientName) return json({ error: 'Укажите пациента' }, 400);
+
+  const now = new Date().toISOString();
+  const metadata = {
+    ...record(body.metadata),
+    note: text(body.note) || null,
+    created_from: 'clinic_schedule',
+    created_by: text(request.headers.get('x-amanat-auth-user')) || null,
+  };
+  const rows = await db<Row[]>(env, 'waba_clinic_appointments?select=*', {
+    method: 'POST',
+    headers: { prefer: 'return=representation' },
+    body: JSON.stringify({
+      company_id: companyId,
+      branch_id: branchId,
+      doctor_id: doctorId,
+      patient_id: patientId || null,
+      lead_id: leadId || null,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      patient_name: patientName,
+      phone,
+      status: 'BOOKED',
+      source: text(body.source) || 'Clinic Schedule',
+      metadata,
+      created_at: now,
+      updated_at: now,
+    }),
+  });
+  return json({ ok: true, item: rows[0] || null }, 201);
+}
+
+async function moveAppointment(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const id = text(body.id);
+  const doctorId = text(body.doctor_id);
+  const startsAt = iso(body.starts_at);
+  const endsAt = iso(body.ends_at);
+  if (!id || !doctorId || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) return json({ error: 'Некорректные данные переноса' }, 400);
+  const current = await appointmentInCompany(env, companyId, id);
+  if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  if (!ACTIVE_APPOINTMENT_STATUSES.includes(text(current.status))) return json({ error: 'Переносить можно только активную запись' }, 409);
+  const doctor = await doctorInCompany(env, companyId, doctorId);
+  if (!doctor || doctor.active === false) return json({ error: 'Специалист недоступен' }, 404);
+  const workError = await validateDoctorWorkWindow(env, companyId, doctorId, startsAt, endsAt);
+  if (workError) return json({ error: workError }, 409);
+  const conflict = await appointmentConflict(env, companyId, doctorId, startsAt, endsAt, id);
+  if (conflict) return json({ error: 'В выбранном времени уже есть другая запись' }, 409);
+
+  const metadata = record(current.metadata);
+  const movedAt = new Date().toISOString();
+  const history = Array.isArray(metadata.move_history) ? metadata.move_history : [];
+  const nextMetadata = {
+    ...metadata,
+    move_history: [...history, {
+      from_doctor_id: text(current.doctor_id),
+      from_starts_at: text(current.starts_at),
+      from_ends_at: text(current.ends_at),
+      to_doctor_id: doctorId,
+      to_starts_at: startsAt,
+      to_ends_at: endsAt,
+      at: movedAt,
+      by: text(request.headers.get('x-amanat-auth-user')) || null,
+    }].slice(-50),
+  };
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=*`, {
+    method: 'PATCH',
+    headers: { prefer: 'return=representation' },
+    body: JSON.stringify({ doctor_id: doctorId, branch_id: text(doctor.branch_id), starts_at: startsAt, ends_at: endsAt, metadata: nextMetadata, updated_at: movedAt }),
+  });
+  return json({ ok: true, item: rows[0] || null });
+}
+
+async function updateAppointment(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const id = text(body.id);
+  if (!id) return json({ error: 'Не указана запись' }, 400);
+  const current = await appointmentInCompany(env, companyId, id);
+  if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+
+  const patientId = body.patient_id === undefined ? text(current.patient_id) : text(body.patient_id);
+  const patient = patientId ? await patientInCompany(env, companyId, patientId) : null;
+  if (patientId && !patient) return json({ error: 'Пациент не найден в выбранной клинике' }, 404);
+  const nextMetadata = { ...record(current.metadata), note: body.note === undefined ? record(current.metadata).note ?? null : text(body.note) || null };
+  const payload = {
+    patient_id: patientId || null,
+    patient_name: text(body.patient_name) || text(patient?.name) || text(current.patient_name),
+    phone: body.phone === undefined ? text(current.phone) : text(body.phone),
+    metadata: nextMetadata,
+    updated_at: new Date().toISOString(),
+  };
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=*`, {
+    method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload),
+  });
+  return json({ ok: true, item: rows[0] || null });
+}
+
 async function appointmentStatus(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
   const companyId = requireCompanyId(env);
   const id = text(body.id);
-  const status = text(body.status).toUpperCase();
-  const allowed = new Set(['BOOKED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
-  if (!id || !allowed.has(status)) return json({ error: 'Некорректный статус записи' }, 400);
+  const status = text(body.status).toUpperCase() as AppointmentStatus;
+  if (!id || !ALLOWED_APPOINTMENT_STATUSES.has(status)) return json({ error: 'Некорректный статус записи' }, 400);
   const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=id,status,metadata,lead_id&limit=1`);
   const current = rows[0];
   if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
@@ -174,10 +361,21 @@ async function appointmentStatus(request: Request, env: ScopedEnv, body: Row): P
   return json({ ok: true, item: updated[0] || null });
 }
 
+async function deleteAppointment(request: Request, env: ScopedEnv, body: Row): Promise<Response> {
+  if (!admin(request)) return json({ error: 'Удалять запись может только администратор' }, 403);
+  const companyId = requireCompanyId(env);
+  const id = text(body.id);
+  if (!id) return json({ error: 'Не указана запись' }, 400);
+  const current = await appointmentInCompany(env, companyId, id);
+  if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  await db(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { prefer: 'return=minimal' } });
+  return json({ ok: true });
+}
+
 export async function handleClinicSchedule(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/clinic-schedule')) return null;
   const scoped = env as ScopedEnv;
-  if (url.pathname === '/api/clinic-schedule' && request.method === 'GET') return snapshot(scoped);
+  if (url.pathname === '/api/clinic-schedule' && request.method === 'GET') return snapshot(scoped, url);
   if (url.pathname !== '/api/clinic-schedule' || request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const body = record(await request.json().catch(() => ({})));
   const action = text(body.action);
@@ -185,6 +383,10 @@ export async function handleClinicSchedule(request: Request, env: Env, url: URL)
   if (action === 'save_doctor') return saveDoctor(request, scoped, body);
   if (action === 'save_schedule') return saveSchedule(request, scoped, body);
   if (action === 'set_active') return toggle(request, scoped, body);
+  if (action === 'create_appointment') return createAppointment(request, scoped, body);
+  if (action === 'move_appointment') return moveAppointment(request, scoped, body);
+  if (action === 'update_appointment') return updateAppointment(request, scoped, body);
   if (action === 'set_appointment_status') return appointmentStatus(request, scoped, body);
+  if (action === 'delete_appointment') return deleteAppointment(request, scoped, body);
   return json({ error: 'Неизвестное действие' }, 400);
 }
