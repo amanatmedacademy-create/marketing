@@ -56,8 +56,7 @@
   box-shadow:0 12px 34px rgba(38,93,91,.07)!important;
 }
 
-/* Sales Funnel is an imported CRM workspace and defines its own dark palette.
-   Rebind those local variables in light mode so it follows the IMDS theme. */
+/* Legacy Sales Funnel workspace. */
 :root[data-theme='light'] .funnel-page-root{
   --border:var(--imds-border);
   --border2:var(--imds-border-strong);
@@ -89,9 +88,7 @@
 
 :root[data-theme='light'] .rop-column-body,
 :root[data-theme='light'] .rop-owner-grid span,
-:root[data-theme='light'] .rop-table-head{
-  background:transparent!important;
-}
+:root[data-theme='light'] .rop-table-head{background:transparent!important}
 
 :root[data-theme='light'] .funnel-page-root input,
 :root[data-theme='light'] .funnel-page-root select,
@@ -118,6 +115,205 @@
 
 :root[data-theme='light'] .rop-lead-avatar{
   background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+}
+
+/* Sales Funnel V2 is the active CRM screen. It previously forced a dark navy board in light mode. */
+:root[data-theme='light'] .funnel-v2-page{
+  --f-bg:rgba(244,251,251,.24);
+  --f-panel:rgba(255,255,255,.62);
+  --f-panel2:rgba(255,255,255,.76);
+  --f-border:var(--imds-border);
+  --f-text:var(--imds-text);
+  --f-muted:var(--imds-muted);
+  color:var(--imds-text)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-heading span,
+:root[data-theme='light'] .funnel-v2-modal>header small,
+:root[data-theme='light'] .funnel-v2-event b{
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-heading p,
+:root[data-theme='light'] .funnel-v2-kpis small,
+:root[data-theme='light'] .funnel-v2-kpis em,
+:root[data-theme='light'] .funnel-v2-column>header small,
+:root[data-theme='light'] .funnel-v2-column>header em,
+:root[data-theme='light'] .funnel-v2-column-empty,
+:root[data-theme='light'] .funnel-v2-deal>header small,
+:root[data-theme='light'] .funnel-v2-deal-meta,
+:root[data-theme='light'] .funnel-v2-event time,
+:root[data-theme='light'] .funnel-v2-stage-settings>header small,
+:root[data-theme='light'] .funnel-v2-modal-body label>span{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-page .button,
+:root[data-theme='light'] .funnel-v2-filters input,
+:root[data-theme='light'] .funnel-v2-filters select,
+:root[data-theme='light'] .funnel-v2-filters button,
+:root[data-theme='light'] .funnel-v2-pipeline-tabs button,
+:root[data-theme='light'] .funnel-v2-deal>footer button,
+:root[data-theme='light'] .funnel-v2-modal>header button,
+:root[data-theme='light'] .funnel-v2-modal-body input,
+:root[data-theme='light'] .funnel-v2-modal-body select,
+:root[data-theme='light'] .funnel-v2-modal-body textarea{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:none!important;
+}
+
+:root[data-theme='light'] .funnel-v2-page .button:hover,
+:root[data-theme='light'] .funnel-v2-filters button:hover,
+:root[data-theme='light'] .funnel-v2-pipeline-tabs button:hover,
+:root[data-theme='light'] .funnel-v2-deal>footer button:hover{
+  background:var(--imds-surface-3)!important;
+  border-color:var(--imds-border-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-page .button-primary{
+  background:var(--imds-primary)!important;
+  border-color:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .funnel-v2-page .button-primary:hover{
+  background:var(--imds-primary-strong)!important;
+  border-color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-state,
+:root[data-theme='light'] .funnel-v2-kpis article,
+:root[data-theme='light'] .funnel-v2-filters,
+:root[data-theme='light'] .funnel-v2-kanban-shell,
+:root[data-theme='light'] .funnel-v2-empty-panel,
+:root[data-theme='light'] .funnel-v2-bottom>article,
+:root[data-theme='light'] .funnel-v2-modal{
+  background:var(--imds-glass)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(16px) saturate(106%)!important;
+  -webkit-backdrop-filter:blur(16px) saturate(106%)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-kpis article>svg{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-kpis article.warning>svg{
+  background:var(--imds-warning-a10)!important;
+  color:var(--imds-warning)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-pipeline-bar,
+:root[data-theme='light'] .funnel-v2-stage-strip,
+:root[data-theme='light'] .funnel-v2-column>header{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-pipeline-tabs button.active{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary)!important;
+  color:var(--imds-primary-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-pipeline-tabs i{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .funnel-v2-stage-strip b{
+  background:var(--imds-glass-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-stage-strip svg{color:var(--imds-muted)!important}
+
+:root[data-theme='light'] .funnel-v2-kanban-scroll{
+  background:rgba(244,251,251,.22)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-column{
+  background:rgba(255,255,255,.46)!important;
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-column.drag-active{
+  background:var(--imds-primary-a10)!important;
+  border-color:var(--imds-primary)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal{
+  background:rgba(255,255,255,.78)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:0 7px 22px rgba(28,70,77,.07)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal:hover{
+  background:#fff!important;
+  border-color:var(--imds-border-strong)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal>header>span{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+  color:#fff!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal>header i,
+:root[data-theme='light'] .funnel-v2-deal-owners>span,
+:root[data-theme='light'] .funnel-v2-next-action{
+  background:var(--imds-surface-2)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal>p,
+:root[data-theme='light'] .funnel-v2-deal-owners b{
+  color:var(--imds-text-soft)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal-owners small,
+:root[data-theme='light'] .funnel-v2-deal-owners svg,
+:root[data-theme='light'] .funnel-v2-next-action time{
+  color:var(--imds-muted)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal-amount{
+  background:var(--imds-success-a10)!important;
+  color:var(--imds-success)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-next-action.overdue,
+:root[data-theme='light'] .funnel-v2-lost,
+:root[data-theme='light'] .funnel-v2-modal-error,
+:root[data-theme='light'] .funnel-v2-alert{
+  background:var(--imds-danger-a10)!important;
+  border-color:color-mix(in srgb,var(--imds-danger) 34%,transparent)!important;
+  color:var(--imds-danger)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-deal>footer,
+:root[data-theme='light'] .funnel-v2-bottom>article>header,
+:root[data-theme='light'] .funnel-v2-stage-row,
+:root[data-theme='light'] .funnel-v2-event,
+:root[data-theme='light'] .funnel-v2-modal>header,
+:root[data-theme='light'] .funnel-v2-modal>footer{
+  border-color:var(--imds-border)!important;
+}
+
+:root[data-theme='light'] .funnel-v2-modal-layer{
+  background:rgba(15,47,57,.28)!important;
+  backdrop-filter:blur(8px)!important;
+  -webkit-backdrop-filter:blur(8px)!important;
+}
+
+:root[data-theme='light'] .danger-button{
+  background:var(--imds-danger-a10)!important;
+  border-color:var(--imds-danger)!important;
+  color:var(--imds-danger)!important;
 }
 
 @media(max-width:900px){
