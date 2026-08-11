@@ -4,11 +4,11 @@ import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 type Row = Record<string, unknown>;
 type ScopedEnv = Env & TenantScopedEnv;
 
-type AppointmentStatus = 'BOOKED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+type AppointmentStatus = 'BOOKED' | 'CONFIRMED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 type ScheduleBlockType = 'training' | 'lunch' | 'meeting' | 'maintenance' | 'personal' | 'other';
 
-const ACTIVE_APPOINTMENT_STATUSES = ['BOOKED', 'CONFIRMED'];
-const ALLOWED_APPOINTMENT_STATUSES = new Set<AppointmentStatus>(['BOOKED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
+const ACTIVE_APPOINTMENT_STATUSES = ['BOOKED', 'CONFIRMED', 'ARRIVED'];
+const ALLOWED_APPOINTMENT_STATUSES = new Set<AppointmentStatus>(['BOOKED', 'CONFIRMED', 'ARRIVED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
 const ALLOWED_BLOCK_TYPES = new Set<ScheduleBlockType>(['training', 'lunch', 'meeting', 'maintenance', 'personal', 'other']);
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -420,6 +420,8 @@ async function appointmentStatus(request: Request, env: ScopedEnv, body: Row): P
   const leadId = text(current.lead_id);
   if (leadId && (status === 'BOOKED' || status === 'CONFIRMED')) {
     await db(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(leadId)}`, { method: 'PATCH', body: JSON.stringify({ stage: 'Запись', updated_at: changedAt }) }).catch(() => null);
+  } else if (leadId && status === 'ARRIVED') {
+    await db(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(leadId)}`, { method: 'PATCH', body: JSON.stringify({ stage: 'Пришёл', arrived_at: changedAt, updated_at: changedAt }) }).catch(() => null);
   }
   return json({ ok: true, item: updated[0] || null });
 }
