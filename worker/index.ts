@@ -21,6 +21,8 @@ import { handleAutomationEngineRequest, runAutomationEngine } from './automation
 import { handleTenantDataApi } from './tenantDataApi';
 import { handleGrowthEngine } from './growthEngine';
 import { zadarmaRequest } from './zadarmaTelephony';
+import { handleZadarmaWebhookSetup } from './zadarmaWebhookSetup';
+import { handleTelephonySettings } from './telephonySettings';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -155,6 +157,10 @@ export default {
       const credentialResponse = await handleCredentialRequest(request, env, url);
       if (credentialResponse) return credentialResponse;
       const runtimeEnv = await hydrateIntegrationEnv(env);
+      const zadarmaWebhookSetup = await handleZadarmaWebhookSetup(request, runtimeEnv, url);
+      if (zadarmaWebhookSetup) return zadarmaWebhookSetup;
+      const telephonySettings = await handleTelephonySettings(request, runtimeEnv, url);
+      if (telephonySettings) return telephonySettings;
       if (url.pathname === '/api/health') return json({ ok: true, service: 'amanat-marketing-api', supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname === '/api/exchange-rates' && request.method === 'GET') return handleRates(request, runtimeEnv);
       if (url.pathname === '/api/web-analytics' && request.method === 'GET') {
