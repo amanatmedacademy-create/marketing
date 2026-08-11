@@ -24,6 +24,7 @@ import './imds-exact-background.css';
 import './imds-color-legacy-bridge.css';
 import './imds-color-system-final.css';
 import './imds-light-reference.css';
+import './imds-deal-workspace-theme.css';
 
 type ThemeMode = 'light' | 'dark';
 
