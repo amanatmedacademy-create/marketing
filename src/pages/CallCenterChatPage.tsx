@@ -41,7 +41,7 @@ const LIVE_REFRESH_VISIBLE_MS = 2500;
 const LIVE_REFRESH_HIDDEN_MS = 12000;
 
 type ChannelFilter = 'ALL' | 'WHATSAPP' | 'INSTAGRAM' | 'WEB' | 'PHONE' | 'OTHER';
-type MobilePanel = 'list' | 'chat' | 'crm';
+type MobilePanel = 'chat' | 'crm';
 
 type NewThreadDraft = {
   title: string;
@@ -137,7 +137,8 @@ export function CallCenterChatPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsAppTemplate[]>([]);
-  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('list');
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('chat');
+  const [listOpen, setListOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef('');
@@ -286,6 +287,7 @@ export function CallCenterChatPage() {
   const selectThread = (threadId: string) => {
     setSelectedId(threadId);
     setMobilePanel('chat');
+    setListOpen(false);
     setTemplatesOpen(false);
     setWhatsappTemplates([]);
     setAttachment(null);
@@ -404,6 +406,7 @@ export function CallCenterChatPage() {
       setCreating(false);
       setNewThread(emptyThreadDraft());
       setMobilePanel('chat');
+      setListOpen(false);
     } catch (nextError) {
       setActionError(nextError instanceof Error ? nextError.message : 'Не удалось создать диалог');
     } finally {
@@ -446,7 +449,7 @@ export function CallCenterChatPage() {
       </div>
     </div>
 
-    <section className={`inbox-workspace mobile-${mobilePanel}`}>
+    <section className={`inbox-workspace mobile-${mobilePanel}${listOpen ? ' list-open' : ''}`}>
       <header className="inbox-workspace-header">
         <div><span>CRM · CALL CENTER</span><h2>Единый чат колл-центра</h2></div>
         <div className="inbox-header-stats"><span><b>{openTotal}</b> открытых</span><span><b>{pendingTotal}</b> ожидают</span><span><b>{unreadTotal}</b> непрочитано</span></div>
@@ -457,8 +460,10 @@ export function CallCenterChatPage() {
       {error !== null && <div className="inbox-state inbox-state-error">{error}<button className="button button-secondary" type="button" onClick={() => void load()}>Повторить</button></div>}
 
       {!loading && error === null && <main className="inbox-layout">
+        {listOpen && <button className="inbox-list-backdrop" type="button" aria-label="Закрыть список диалогов" onClick={() => setListOpen(false)}/>}
         <aside className="inbox-left">
           <div className="inbox-left-top">
+            <div className="inbox-list-head"><strong>Диалоги</strong><button type="button" aria-label="Закрыть" onClick={() => setListOpen(false)}>×</button></div>
             <label className="inbox-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по чатам" />{query && <button type="button" onClick={() => setQuery('')}>×</button>}</label>
             <div className="inbox-channel-tabs">
               {(['ALL', 'WHATSAPP', 'INSTAGRAM', 'WEB', 'PHONE'] as ChannelFilter[]).map((value) => <button type="button" key={value} className={channel === value ? 'active' : ''} onClick={() => setChannel(value)}>{value === 'ALL' ? 'Все' : CHANNEL_LABELS[value]}{value === 'ALL' && unreadTotal > 0 && <b>{unreadTotal}</b>}</button>)}
@@ -482,7 +487,7 @@ export function CallCenterChatPage() {
         <section className="inbox-center">
           {selected ? <>
             <header className="inbox-contact-bar">
-              <button className="inbox-mobile-back" type="button" onClick={() => setMobilePanel('list')}>‹</button>
+              <button className="inbox-mobile-back" type="button" aria-label="Открыть список диалогов" onClick={() => setListOpen(true)}>☰</button>
               <span className="inbox-contact-avatar">{initials(selectedContact?.fullName || selected.title || selected.phone || '?')}</span>
               <div className="inbox-contact-title"><strong>{selectedContact?.fullName || selected.title || selected.phone || 'Диалог'}</strong><small>{CHANNEL_LABELS[selected.channel] || selected.channel} · {selected.phone || selectedContact?.phone || 'телефон не указан'}</small></div>
               <div className="inbox-contact-actions">
@@ -524,7 +529,7 @@ export function CallCenterChatPage() {
                 <button className="inbox-send-button" disabled={sending || (!text.trim() && !attachment)}>{sending ? '…' : '➤'}</button>
               </div>
             </form>
-          </> : <div className="inbox-empty inbox-empty-main">Выберите диалог</div>}
+          </> : <div className="inbox-empty inbox-empty-main"><span>Выберите диалог</span><button className="button button-secondary inbox-empty-open" type="button" onClick={() => setListOpen(true)}>☰ Открыть диалоги</button></div>}
         </section>
 
         <aside className="inbox-right">

@@ -80,6 +80,11 @@
 .inbox-center{min-width:0;display:flex;flex-direction:column;background:#050b1a}
 .inbox-contact-bar{min-height:56px;padding:9px 13px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--surface)}
 .inbox-mobile-back{display:none;border:0;background:none;color:var(--text2);font-size:1.2rem;cursor:pointer}
+.inbox-list-backdrop{display:none}
+.inbox-list-head{display:none;align-items:center;justify-content:space-between;gap:10px;padding-bottom:2px}
+.inbox-list-head strong{color:var(--text);font-size:.82rem}
+.inbox-list-head button{width:30px;height:30px;border:1px solid var(--border2);border-radius:7px;background:transparent;color:var(--text2);cursor:pointer;font-size:1rem}
+.inbox-empty-open{display:none}
 .inbox-contact-avatar{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:.66rem;font-weight:900}
 .inbox-contact-title{min-width:0;flex:1}
 .inbox-contact-title strong,.inbox-contact-title small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -183,12 +188,41 @@
   .inbox-crm-mobile-head{display:flex}
 }
 @media(max-width:760px){
+  /* Чат — базовый полноэкранный вид; список диалогов — drawer слева. */
   .inbox-layout{grid-template-columns:minmax(0,1fr);height:calc(100dvh - 220px)}
-  .inbox-left,.inbox-center{display:none}
-  .inbox-workspace.mobile-list .inbox-left{display:flex}
-  .inbox-workspace.mobile-chat .inbox-center{display:flex}
+  .inbox-center{display:flex;width:100%}
+  .inbox-left{
+    position:fixed;
+    top:0;
+    bottom:0;
+    left:0;
+    z-index:1210;
+    display:flex;
+    width:min(330px,88vw);
+    height:100dvh;
+    border-right:1px solid var(--border);
+    transform:translateX(-104%);
+    transition:transform .22s ease;
+    box-shadow:24px 0 60px rgba(0,0,0,.35);
+    backdrop-filter:blur(20px) saturate(112%);
+    -webkit-backdrop-filter:blur(20px) saturate(112%);
+  }
+  .inbox-workspace.list-open .inbox-left{transform:none}
+  .inbox-list-backdrop{
+    position:fixed;
+    inset:0;
+    z-index:1205;
+    margin:0;
+    padding:0;
+    border:0;
+    background:rgba(2,8,20,.55);
+    backdrop-filter:blur(2px);
+    cursor:pointer;
+  }
+  .inbox-list-head{display:flex}
   .inbox-workspace.mobile-crm .inbox-right{display:flex}
   .inbox-mobile-back{display:block}
+  .inbox-empty-open{display:inline-flex;margin-top:12px}
   .inbox-modal-body{grid-template-columns:1fr}
   .callcenter-heading{align-items:stretch;flex-direction:column}
 }
