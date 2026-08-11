@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { marketingApi, type MarketingCall, type MarketingLead } from '../services/api';
 import '../strategic-platform.css';
 
@@ -16,7 +17,14 @@ async function fetchJourney(leadId: string): Promise<JourneyEvent[]> {
   return response.json() as Promise<JourneyEvent[]>;
 }
 
+function customerKey(lead: MarketingLead) {
+  const phone = normalizePhone(lead.phone);
+  const email = normalize(lead.email);
+  return phone ? `phone:${phone}` : email ? `email:${email}` : `lead:${lead.id}`;
+}
+
 export default function Customer360Page() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<MarketingLead[]>([]);
   const [calls, setCalls] = useState<MarketingCall[]>([]);
   const [journeyEvents, setJourneyEvents] = useState<JourneyEvent[]>([]);
@@ -38,9 +46,7 @@ export default function Customer360Page() {
   const customers = useMemo(() => {
     const map = new Map<string, MarketingLead[]>();
     for (const lead of leads) {
-      const phone = normalizePhone(lead.phone);
-      const email = normalize(lead.email);
-      const key = phone ? `phone:${phone}` : email ? `email:${email}` : `lead:${lead.id}`;
+      const key = customerKey(lead);
       map.set(key, [...(map.get(key) || []), lead]);
     }
     return Array.from(map.entries()).map(([key, items]) => {
@@ -57,9 +63,22 @@ export default function Customer360Page() {
   }, [customers, query]);
 
   useEffect(() => {
-    if (selected && customers.some(customer => customer.key === selected)) return;
-    setSelected(customers[0]?.key || '');
-  }, [customers, selected]);
+    if (!customers.length) { setSelected(''); return; }
+    const requestedCustomer = searchParams.get('customer');
+    const requestedLead = searchParams.get('lead_id');
+    let nextKey = '';
+    if (requestedCustomer && customers.some(customer => customer.key === requestedCustomer)) nextKey = requestedCustomer;
+    else if (requestedLead) nextKey = customers.find(customer => customer.items.some(lead => lead.id === requestedLead))?.key || '';
+    if (!nextKey && selected && customers.some(customer => customer.key === selected)) nextKey = selected;
+    if (!nextKey) nextKey = customers[0].key;
+    if (nextKey !== selected) setSelected(nextKey);
+    if ((requestedCustomer || requestedLead) && nextKey) {
+      const next = new URLSearchParams(searchParams);
+      next.set('customer', nextKey);
+      next.delete('lead_id');
+      if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    }
+  }, [customers, searchParams, selected, setSearchParams]);
 
   const current = customers.find(item => item.key === selected) || customers[0];
   const currentPhones = useMemo(() => new Set((current?.items || []).map(lead => normalizePhone(lead.phone)).filter(Boolean)), [current]);
@@ -93,12 +112,20 @@ export default function Customer360Page() {
     return rows.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 100);
   }, [current, journeyEvents, relatedCalls]);
 
+  const selectCustomer = (key: string) => {
+    setSelected(key);
+    const next = new URLSearchParams(searchParams);
+    next.set('customer', key);
+    next.delete('lead_id');
+    setSearchParams(next, { replace: true });
+  };
+
   return <div className="strategic-page">
-    <div className="strategic-head"><div><span>CRM / Customer 360</span><h1>Клиенты 360°</h1><p>Профиль объединяется только по валидному телефону, email или явной связи call → lead. История касаний теперь берётся из канонического Patient Journey Growth Engine.</p></div><button className="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/>{loading ? 'Обновление…' : 'Обновить'}</button></div>
+    <div className="strategic-head"><div><span>CRM / Customer 360</span><h1>Клиенты 360°</h1><p>Профиль объединяется только по валидному телефону, email или явной связи call → lead. История касаний берётся из канонического Patient Journey Growth Engine.</p></div><button className="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/>{loading ? 'Обновление…' : 'Обновить'}</button></div>
     {message && <div className="alert alert--error">{message}</div>}
     {loading ? <div className="suite-state">Загружаем клиентскую историю…</div> : <div className="customer-layout">
-      <section className="panel"><label className="ads-search"><Search size={15}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Имя, телефон, email, источник, менеджер"/></label><div className="customer-list">{visibleCustomers.map(customer => <button key={customer.key} className={`customer-row ${current?.key === customer.key ? 'active' : ''}`} onClick={() => setSelected(customer.key)}><div><b>{customer.latest.name || customer.latest.phone || customer.latest.email || 'Без имени'}</b><small>{customer.latest.phone || customer.latest.email || 'Нет контакта'} · {customer.latest.stage || 'Стадия не указана'}</small></div><strong>{money(customer.revenue)}</strong></button>)}{!visibleCustomers.length && <div className="suite-state">Клиенты не найдены.</div>}</div></section>
-      <section className="panel customer-profile">{current ? <><div className="customer-profile-head"><div><h2>{current.latest.name || current.latest.phone || current.latest.email || 'Без имени'}</h2><p>{current.latest.phone || 'телефон не указан'} · {current.latest.email || 'email не указан'}</p></div><span className="badge">{current.latest.stage || '—'}</span></div><div className="customer-facts"><div><span>Лидов</span><b>{current.items.length}</b></div><div><span>Звонков</span><b>{relatedCalls.length}</b></div><div><span>Выручка</span><b>{money(current.revenue)}</b></div><div><span>Менеджер</span><b>{current.latest.manager || 'Не назначен'}</b></div></div><div className="customer-facts"><div><span>Первый источник</span><b>{[...current.items].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]?.source || '—'}</b></div><div><span>Последний источник</span><b>{current.latest.source || current.latest.platform || '—'}</b></div><div><span>UTM campaign</span><b>{current.latest.utm_campaign || '—'}</b></div><div><span>Продаж</span><b>{current.items.filter(item => Number(item.sale_amount || 0) > 0 || Boolean(item.sold_at)).length}</b></div></div><div><h3>Patient Journey</h3><div className="timeline">{timeline.map((item, index) => <div className="timeline-item" key={`${item.date}-${index}`}><i/><div><b>{item.title}</b><p>{item.text} · {item.date ? new Date(item.date).toLocaleString('ru-RU') : '—'}</p></div></div>)}</div></div></> : <div className="suite-state">Клиентов пока нет.</div>}</section>
+      <section className="panel"><label className="ads-search"><Search size={15}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Имя, телефон, email, источник, менеджер"/></label><div className="customer-list">{visibleCustomers.map(customer => <button key={customer.key} className={`customer-row ${current?.key === customer.key ? 'active' : ''}`} onClick={() => selectCustomer(customer.key)}><div><b>{customer.latest.name || customer.latest.phone || customer.latest.email || 'Без имени'}</b><small>{customer.latest.phone || customer.latest.email || 'Нет контакта'} · {customer.latest.stage || 'Стадия не указана'}</small></div><strong>{money(customer.revenue)}</strong></button>)}{!visibleCustomers.length && <div className="suite-state">Клиенты не найдены.</div>}</div></section>
+      <section className="panel customer-profile">{current ? <><div className="customer-profile-head"><div><h2>{current.latest.name || current.latest.phone || current.latest.email || 'Без имени'}</h2><p>{current.latest.phone || 'телефон не указан'} · {current.latest.email || 'email не указан'}</p></div><span className="badge">{current.latest.stage || '—'}</span></div><div className="customer-facts"><div><span>Лидов</span><b>{current.items.length}</b></div><div><span>Звонков</span><b>{relatedCalls.length}</b></div><div><span>Выручка</span><b>{money(current.revenue)}</b></div><div><span>Менеджер</span><b>{current.latest.manager || 'Не назначен'}</b></div></div><div className="customer-facts"><div><span>Первый источник</span><b>{[...current.items].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]?.source || [...current.items].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]?.platform || '—'}</b></div><div><span>Последний источник</span><b>{current.latest.source || current.latest.platform || '—'}</b></div><div><span>UTM campaign</span><b>{current.latest.utm_campaign || '—'}</b></div><div><span>Продаж</span><b>{current.items.filter(item => Number(item.sale_amount || 0) > 0 || Boolean(item.sold_at)).length}</b></div></div><div><h3>Patient Journey</h3><div className="timeline">{timeline.map((item, index) => <div className="timeline-item" key={`${item.date}-${index}`}><i/><div><b>{item.title}</b><p>{item.text} · {item.date ? new Date(item.date).toLocaleString('ru-RU') : '—'}</p></div></div>)}</div></div></> : <div className="suite-state">Клиентов пока нет.</div>}</section>
     </div>}
   </div>;
 }
