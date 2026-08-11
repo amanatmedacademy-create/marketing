@@ -65,7 +65,7 @@ export default function GlobalSearch() {
       id: `lead:${lead.id}`,
       title: lead.name || lead.phone || 'Лид без имени',
       meta: [lead.phone, lead.stage, lead.source || lead.platform].filter(Boolean).join(' · '),
-      route: `/leads?lead=${encodeURIComponent(lead.id)}`,
+      route: '/leads',
       kind: 'lead',
     }));
 
@@ -135,6 +135,6 @@ export default function GlobalSearch() {
         </button>;
       })}
       {results.length > 0 && <footer>Enter — открыть первый результат · Esc — закрыть</footer>}
-    </div>
+    </div>}
   </div>;
 }
