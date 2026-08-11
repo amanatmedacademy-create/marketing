@@ -23,6 +23,8 @@ const iso = (value: unknown): string => {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : '';
 };
 const time5 = (value: unknown): string => text(value).slice(0, 5);
+const isMisAppointment = (row: Row): boolean => text(row.source).toUpperCase() === 'MIS' || record(row.metadata).external_busy === true;
+const misReadOnlyError = () => json({ error: 'Запись создана в МИС и в Marketing доступна только как занятое время' }, 409);
 
 function headers(env: Env, extra: HeadersInit = {}): Headers {
   const next = new Headers(extra);
@@ -96,7 +98,16 @@ async function snapshot(env: ScopedEnv, url: URL): Promise<Response> {
     db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&select=id,name,phone,email,last_visit_at,next_visit_at,source_system,metadata,updated_at&order=updated_at.desc&limit=500`).catch(() => []),
     db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&starts_at=lt.${encodeURIComponent(range.to)}&ends_at=gt.${encodeURIComponent(range.from)}&select=id,doctor_id,starts_at,ends_at,block_type,title,note,metadata,created_at,updated_at&order=starts_at.asc&limit=750`).catch(() => []),
   ]);
-  return json({ branches, doctors, schedules, appointments, patients, blocks, range, timezone: 'Asia/Almaty' });
+  const visibleAppointments = appointments.map((item) => isMisAppointment(item) ? {
+    ...item,
+    lead_id: null,
+    patient_id: null,
+    patient_name: 'Занято',
+    phone: '',
+    metadata: { external_busy: true },
+  } : item);
+  const visiblePatients = patients.filter((item) => text(item.source_system).toLowerCase() !== 'mis');
+  return json({ branches, doctors, schedules, appointments: visibleAppointments, patients: visiblePatients, blocks, range, timezone: 'Asia/Almaty' });
 }
 
 async function calendarCounts(env: ScopedEnv, url: URL): Promise<Response> {
@@ -224,8 +235,9 @@ async function doctorInCompany(env: ScopedEnv, companyId: string, doctorId: stri
 
 async function patientInCompany(env: ScopedEnv, companyId: string, patientId: string): Promise<Row | null> {
   if (!patientId) return null;
-  const rows = await db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(patientId)}&select=id,name,phone&limit=1`).catch(() => []);
-  return rows[0] || null;
+  const rows = await db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(patientId)}&select=id,name,phone,source_system&limit=1`).catch(() => []);
+  const patient = rows[0] || null;
+  return patient && text(patient.source_system).toLowerCase() !== 'mis' ? patient : null;
 }
 
 async function appointmentInCompany(env: ScopedEnv, companyId: string, id: string): Promise<Row | null> {
@@ -307,7 +319,7 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
   const conflict = await appointmentConflict(env, companyId, doctorId, startsAt, endsAt);
   if (conflict) return json({ error: `У специалиста уже есть запись ${text(conflict.patient_name) || ''} в это время`.trim() }, 409);
   const patient = patientId ? await patientInCompany(env, companyId, patientId) : null;
-  if (patientId && !patient) return json({ error: 'Пациент не найден в выбранной клинике' }, 404);
+  if (patientId && !patient) return json({ error: 'Пациент не найден в Marketing выбранной клиники' }, 404);
   const patientName = text(body.patient_name) || text(patient?.name);
   if (!patientName) return json({ error: 'Укажите пациента' }, 400);
   const now = new Date().toISOString();
@@ -325,7 +337,7 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
         patient_name: patientName,
         phone: text(body.phone) || text(patient?.phone),
         status: 'BOOKED',
-        source: text(body.source) || 'Clinic Schedule',
+        source: 'Clinic Schedule',
         metadata: { ...record(body.metadata), note: text(body.note) || null, created_from: 'clinic_schedule', created_by: text(request.headers.get('x-amanat-auth-user')) || null },
         created_at: now,
         updated_at: now,
@@ -348,6 +360,7 @@ async function moveAppointment(request: Request, env: ScopedEnv, body: Row): Pro
   if (!id || !doctorId || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) return json({ error: 'Некорректные данные переноса' }, 400);
   const current = await appointmentInCompany(env, companyId, id);
   if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  if (isMisAppointment(current)) return misReadOnlyError();
   if (!MOVABLE_APPOINTMENT_STATUSES.includes(text(current.status) as AppointmentStatus)) return json({ error: 'Переносить можно только записанного или подтверждённого пациента' }, 409);
   const doctor = await doctorInCompany(env, companyId, doctorId);
   if (!doctor || doctor.active === false) return json({ error: 'Специалист недоступен' }, 404);
@@ -384,9 +397,10 @@ async function updateAppointment(_request: Request, env: ScopedEnv, body: Row): 
   if (!id) return json({ error: 'Не указана запись' }, 400);
   const current = await appointmentInCompany(env, companyId, id);
   if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  if (isMisAppointment(current)) return misReadOnlyError();
   const patientId = body.patient_id === undefined ? text(current.patient_id) : text(body.patient_id);
   const patient = patientId ? await patientInCompany(env, companyId, patientId) : null;
-  if (patientId && !patient) return json({ error: 'Пациент не найден в выбранной клинике' }, 404);
+  if (patientId && !patient) return json({ error: 'Пациент не найден в Marketing выбранной клиники' }, 404);
   const metadata = record(current.metadata);
   const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=*`, {
     method: 'PATCH', headers: { prefer: 'return=representation' },
@@ -406,9 +420,10 @@ async function appointmentStatus(request: Request, env: ScopedEnv, body: Row): P
   const id = text(body.id);
   const status = text(body.status).toUpperCase() as AppointmentStatus;
   if (!id || !ALLOWED_APPOINTMENT_STATUSES.has(status)) return json({ error: 'Некорректный статус записи' }, 400);
-  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=id,status,metadata,lead_id&limit=1`);
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=id,status,source,metadata,lead_id&limit=1`);
   const current = rows[0];
   if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  if (isMisAppointment(current)) return misReadOnlyError();
   const metadata = record(current.metadata);
   const history = Array.isArray(metadata.status_history) ? metadata.status_history : [];
   const changedAt = new Date().toISOString();
@@ -432,6 +447,7 @@ async function deleteAppointment(request: Request, env: ScopedEnv, body: Row): P
   if (!id) return json({ error: 'Не указана запись' }, 400);
   const current = await appointmentInCompany(env, companyId, id);
   if (!current) return json({ error: 'Запись не найдена в выбранной клинике' }, 404);
+  if (isMisAppointment(current)) return misReadOnlyError();
   await db(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { prefer: 'return=minimal' } });
   return json({ ok: true });
 }
