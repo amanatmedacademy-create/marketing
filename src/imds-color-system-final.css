@@ -1,0 +1,394 @@
+/*
+ * IMDS Marketing final color system.
+ * This file MUST stay last in src/main.tsx.
+ * It is the single visual authority for light/dark colors and neutralizes legacy
+ * blue/violet palettes without changing layout or semantic status meaning.
+ */
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --imds-app-fallback: #edf8f9;
+  --imds-glass: rgba(255,255,255,.84);
+  --imds-glass-soft: rgba(248,252,252,.76);
+  --imds-glass-strong: rgba(255,255,255,.94);
+  --imds-sidebar: rgba(250,253,253,.92);
+  --imds-topbar: rgba(255,255,255,.84);
+  --imds-surface: #ffffff;
+  --imds-surface-2: #f6fbfb;
+  --imds-surface-3: #eaf5f4;
+  --imds-border: #d3e4e4;
+  --imds-border-strong: #bad1d1;
+  --imds-text: #102f39;
+  --imds-text-soft: #47646b;
+  --imds-muted: #758d93;
+  --imds-primary: #11b8a5;
+  --imds-primary-strong: #087f80;
+  --imds-primary-soft: #e4f7f4;
+  --imds-blue: #3f89a8;
+  --imds-success: #229a72;
+  --imds-warning: #c98f31;
+  --imds-danger: #d45f68;
+  --imds-chart-grid: #dce9e9;
+  --imds-row-hover: rgba(228,247,244,.78);
+  --imds-shadow: 0 16px 38px rgba(28,70,77,.10);
+  --imds-shadow-soft: 0 7px 22px rgba(28,70,77,.07);
+  --imds-overlay: rgba(242,249,249,.38);
+  --imds-auth-overlay: rgba(238,249,249,.72);
+  --imds-primary-a08: rgba(17,184,165,.08);
+  --imds-primary-a12: rgba(17,184,165,.12);
+  --imds-primary-a18: rgba(17,184,165,.18);
+  --imds-primary-a28: rgba(17,184,165,.28);
+  --imds-info-a10: rgba(63,137,168,.10);
+  --imds-success-a10: rgba(34,154,114,.10);
+  --imds-warning-a10: rgba(201,143,49,.10);
+  --imds-danger-a10: rgba(212,95,104,.10);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --imds-app-fallback: #031923;
+  --imds-glass: rgba(7,29,39,.86);
+  --imds-glass-soft: rgba(10,34,44,.78);
+  --imds-glass-strong: rgba(7,27,37,.95);
+  --imds-sidebar: rgba(5,23,31,.95);
+  --imds-topbar: rgba(5,22,30,.88);
+  --imds-surface: #0a222c;
+  --imds-surface-2: #0d2a34;
+  --imds-surface-3: #123640;
+  --imds-border: #1c4650;
+  --imds-border-strong: #2b5a65;
+  --imds-text: #f3fbfb;
+  --imds-text-soft: #b8ced1;
+  --imds-muted: #7f9aa0;
+  --imds-primary: #24c7b6;
+  --imds-primary-strong: #12a897;
+  --imds-primary-soft: #0b3d3d;
+  --imds-blue: #58a8c6;
+  --imds-success: #45c18e;
+  --imds-warning: #e1ad56;
+  --imds-danger: #ee7a82;
+  --imds-chart-grid: #193b45;
+  --imds-row-hover: rgba(16,61,67,.82);
+  --imds-shadow: 0 18px 44px rgba(0,0,0,.28);
+  --imds-shadow-soft: 0 8px 24px rgba(0,0,0,.20);
+  --imds-overlay: rgba(2,16,22,.30);
+  --imds-auth-overlay: rgba(2,17,24,.78);
+  --imds-primary-a08: rgba(36,199,182,.08);
+  --imds-primary-a12: rgba(36,199,182,.12);
+  --imds-primary-a18: rgba(36,199,182,.18);
+  --imds-primary-a28: rgba(36,199,182,.28);
+  --imds-info-a10: rgba(88,168,198,.10);
+  --imds-success-a10: rgba(69,193,142,.10);
+  --imds-warning-a10: rgba(225,173,86,.10);
+  --imds-danger-a10: rgba(238,122,130,.10);
+}
+
+html, body, #root {
+  background-color: var(--imds-app-fallback) !important;
+  color: var(--imds-text) !important;
+}
+body { color: var(--imds-text) !important; }
+::selection { background: var(--imds-primary-a28); color: var(--imds-text); }
+
+/* ---- Global typography ---- */
+h1,h2,h3,h4,h5,h6,strong,b { color: var(--imds-text); }
+p,small,.muted,.note { color: var(--imds-muted); }
+a { color: var(--imds-primary-strong); }
+.heading>span,.leads-heading>div>span,.iv2-header>div>span,.imds-card-heading>div>span,.imds-dashboard-eyebrow,
+.marketing-nav-label,.auth-login-product { color: var(--imds-primary) !important; }
+
+/* ---- Shell and primary chrome ---- */
+.marketing-shell { color: var(--imds-text) !important; }
+.marketing-shell>aside {
+  background: var(--imds-sidebar) !important;
+  border-color: var(--imds-border) !important;
+}
+.marketing-topbar {
+  background: var(--imds-topbar) !important;
+  border-color: var(--imds-border) !important;
+}
+.marketing-brand { border-color: var(--imds-border) !important; }
+.marketing-nav-label { color: var(--imds-muted) !important; }
+.marketing-shell nav a { color: var(--imds-text-soft) !important; }
+.marketing-shell nav a:hover {
+  background: var(--imds-surface-3) !important;
+  color: var(--imds-text) !important;
+}
+.marketing-shell nav a.active {
+  background: var(--imds-primary-soft) !important;
+  color: var(--imds-primary-strong) !important;
+  border-color: var(--imds-primary-a18) !important;
+  box-shadow: inset 3px 0 0 var(--imds-primary) !important;
+}
+.marketing-shell nav a.active svg { color: var(--imds-primary) !important; }
+
+.marketing-search,.topbar-settings-button,.topbar-profile-button,.imds-theme-toggle,.company-switcher__button {
+  background: var(--imds-glass-soft) !important;
+  color: var(--imds-text-soft) !important;
+  border-color: var(--imds-border) !important;
+}
+.marketing-search input { color: var(--imds-text) !important; }
+.marketing-search input::placeholder { color: var(--imds-muted) !important; }
+.topbar-profile-button>span,.marketing-top-actions>span,.avatar,.brand>svg {
+  background: linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong)) !important;
+  color: #fff !important;
+}
+
+/* ---- Canonical surface language ---- */
+.panel,.metric,.creative,.integration,.integration-config,.integration-unlock,
+.module-card,.automation-card,.dashboard-chart-card,.marketing-kpis article,
+.architecture-map article,.architecture-pipeline article,.lead-table-panel,.lead-card,
+.ads-saved-views,.ads-toolbar,.ads-controls,.ads-filter-panel,.ads-table-wrap,
+.v36-toolbar,.v36-card,.v36-kpi,.iv2-summary article,.iv2-modal,.iv2-section,
+.imds-kpi-card,.imds-finance-strip,.mis-panel,.calls-list-panel,.call-detail,
+.inbox-workspace,.refdash-card,.refdash-kpis article,.rop-filterbar,.rop-column,.rop-lead-card,
+.suite-kpis article,.suite-template-grid article,.journey-card,.strategic-status article,
+.access-matrix-scroll,.user-editor {
+  background: var(--imds-glass) !important;
+  border-color: var(--imds-border) !important;
+  color: var(--imds-text) !important;
+  box-shadow: var(--imds-shadow-soft) !important;
+}
+
+.kanban>section,.kanban article,.task-row,.content-plan article,.attribution-flow article,
+.module-checklist span,.dashboard-finance-strip span,.lead-status-grid article,.lead-message,
+.phone-workspace__facts article,.phone-workspace__history-calls button,.phone-workspace__ai-summary,
+.phone-workspace__setup-needed,.phone-workspace__chips span,.v36-level-account td,
+.iv2-history,.iv2-meta-selection,.customer-facts div {
+  background: var(--imds-glass-soft) !important;
+  border-color: var(--imds-border) !important;
+  color: var(--imds-text-soft) !important;
+}
+
+.architecture-pipeline article>span,.module-card__icon,.attribution-flow b,.architecture-map article>div,
+.integration>div,.integration-unlock__icon,.integration-config__icon,.imds-kpi-card__icon,.insight-icon,
+.phone-workspace__call-icon,.phone-workspace__avatar {
+  background: var(--imds-primary-soft) !important;
+  color: var(--imds-primary) !important;
+  border-color: var(--imds-primary-a18) !important;
+}
+.creative__preview {
+  background: linear-gradient(135deg,var(--imds-primary-a18),var(--imds-info-a10)) !important;
+}
+
+/* ---- Controls ---- */
+button,input,select,textarea { color: var(--imds-text); }
+input,select,textarea,.ads-search,.v36-search,.iv2-creative-search,
+.integration-unlock input,.integration-form input,.lead-filter-select {
+  background: var(--imds-glass-soft) !important;
+  color: var(--imds-text) !important;
+  border-color: var(--imds-border) !important;
+}
+input::placeholder,textarea::placeholder { color: var(--imds-muted) !important; }
+input:focus,select:focus,textarea:focus,.marketing-search:focus-within,.ads-search:focus-within,.v36-search:focus-within {
+  border-color: var(--imds-primary) !important;
+  box-shadow: 0 0 0 3px var(--imds-primary-a12) !important;
+  outline: 0 !important;
+}
+.button,.ads-toolbar button,.ads-controls button,.ads-level-tabs button,.ads-saved-views button,
+.v36-toolbar button,.v36-table-actions button,.v36-mode button,.iv2-header button,.iv2-modal button,
+.lead-filters>button,.topbar-settings-button,.topbar-profile-button,.imds-theme-toggle {
+  background: var(--imds-glass-soft) !important;
+  color: var(--imds-text-soft) !important;
+  border-color: var(--imds-border) !important;
+  box-shadow: none !important;
+}
+.button:hover,.ads-toolbar button:hover,.ads-controls button:hover,.ads-level-tabs button:hover,
+.ads-saved-views button:hover,.v36-toolbar button:hover,.v36-table-actions button:hover,.v36-mode button:hover,
+.iv2-header button:hover,.iv2-modal button:hover,.lead-filters>button:hover {
+  background: var(--imds-surface-3) !important;
+  color: var(--imds-text) !important;
+  border-color: var(--imds-border-strong) !important;
+}
+.button--primary,.iv2-primary,.phone-workspace__book,.inbox-send-button {
+  background: var(--imds-primary) !important;
+  border-color: var(--imds-primary) !important;
+  color: #fff !important;
+}
+.button--primary:hover,.iv2-primary:hover,.phone-workspace__book:hover,.inbox-send-button:hover {
+  background: var(--imds-primary-strong) !important;
+}
+
+/* ---- Tables ---- */
+table { background: transparent !important; color: var(--imds-text) !important; }
+th,.lead-table-wrap th,.ads-table-wrap th,.v36-table th {
+  background: var(--imds-glass-strong) !important;
+  color: var(--imds-muted) !important;
+  border-color: var(--imds-border) !important;
+}
+td,.lead-table-wrap td,.ads-table-wrap td,.v36-table td {
+  background: transparent !important;
+  color: var(--imds-text-soft) !important;
+  border-color: var(--imds-border) !important;
+}
+tbody tr:hover td,.lead-table-wrap tr:hover td,.ads-table-wrap tbody tr:hover td,.v36-hierarchy-row:hover td {
+  background: var(--imds-row-hover) !important;
+}
+.lead-table-wrap tr.selected td,.ads-table-wrap tr.selected td { background: var(--imds-primary-soft) !important; }
+
+/* ---- Status and badges: semantic colors only ---- */
+.badge,.lead-stage,.inbox-channel-badge {
+  background: var(--imds-surface-3) !important;
+  color: var(--imds-text-soft) !important;
+  border-color: var(--imds-border) !important;
+}
+.stage-new,.badge--blue,.inbox-channel-badge.channel-web {
+  background: var(--imds-info-a10) !important;
+  color: var(--imds-blue) !important;
+  border-color: color-mix(in srgb,var(--imds-blue) 24%,transparent) !important;
+}
+.stage-qualification,.stage-appointment,.badge--amber,.inbox-channel-badge.channel-phone {
+  background: var(--imds-warning-a10) !important;
+  color: var(--imds-warning) !important;
+  border-color: color-mix(in srgb,var(--imds-warning) 24%,transparent) !important;
+}
+.stage-diagnostic,.badge--cyan,.inbox-channel-badge.channel-instagram {
+  background: var(--imds-primary-a12) !important;
+  color: var(--imds-primary) !important;
+  border-color: var(--imds-primary-a18) !important;
+}
+.stage-course,.badge--green,.inbox-channel-badge.channel-whatsapp {
+  background: var(--imds-success-a10) !important;
+  color: var(--imds-success) !important;
+  border-color: color-mix(in srgb,var(--imds-success) 24%,transparent) !important;
+}
+.stage-lost,.badge--red,.alert--error,.lead-error,.v36-error,.iv2-message--error {
+  background: var(--imds-danger-a10) !important;
+  color: var(--imds-danger) !important;
+  border-color: color-mix(in srgb,var(--imds-danger) 28%,transparent) !important;
+}
+.alert--ok,.iv2-message--ok {
+  background: var(--imds-success-a10) !important;
+  color: var(--imds-success) !important;
+  border-color: color-mix(in srgb,var(--imds-success) 28%,transparent) !important;
+}
+
+/* ---- Dashboard and charts ---- */
+.imds-dashboard-hero {
+  background: linear-gradient(135deg,var(--imds-glass-strong) 0%,var(--imds-glass) 62%,var(--imds-primary-a12) 100%) !important;
+  border-color: var(--imds-border) !important;
+}
+.imds-dashboard-hero::before,.imds-dashboard-hero::after { opacity: .32 !important; }
+.legend-primary { background: var(--imds-primary) !important; }
+.legend-secondary { background: var(--imds-blue) !important; }
+.legend-success { background: var(--imds-success) !important; }
+.imds-pipeline-track { background: var(--imds-surface-3) !important; }
+.imds-pipeline-track i { background: linear-gradient(90deg,var(--imds-primary),var(--imds-blue)) !important; }
+.recharts-cartesian-grid line,.recharts-cartesian-grid-horizontal line,.recharts-cartesian-grid-vertical line {
+  stroke: var(--imds-chart-grid) !important;
+}
+.recharts-wrapper text,.recharts-text { fill: var(--imds-muted) !important; }
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--imds-glass-strong) !important;
+  border-color: var(--imds-border) !important;
+  color: var(--imds-text) !important;
+}
+.v36-kpi.tone-purple>i,.v36-kpi.tone-violet>i,.v36-kpi.tone-cyan>i { background: var(--imds-primary) !important; }
+.v36-kpi.tone-blue>i { background: var(--imds-blue) !important; }
+.v36-kpi.tone-green>i { background: var(--imds-success) !important; }
+.v36-kpi.tone-amber>i { background: var(--imds-warning) !important; }
+.v36-kpi.tone-red>i { background: var(--imds-danger) !important; }
+
+/* ---- Modals / drawers ---- */
+.lead-modal-layer,.iv2-overlay,.modal-backdrop,.drawer-backdrop {
+  background: rgba(2,15,20,.68) !important;
+  backdrop-filter: blur(9px) !important;
+}
+.lead-modal,.iv2-modal,.v36-popover,.ads-columns>div,[role='dialog'] {
+  background: var(--imds-glass-strong) !important;
+  color: var(--imds-text) !important;
+  border-color: var(--imds-border) !important;
+  box-shadow: 0 28px 80px rgba(0,0,0,.28) !important;
+}
+
+/* ---- Workspace roots: never paint a conflicting page background ---- */
+.operations-shell,.analytics-page,.ads-manager-page,.leads-workspace,.v36-dashboard,.iv2-page,
+.marketing-os,.growth-engine-page,.customer360-page,.journey-automation-page,.call-center-chat-page,
+.sales-funnel-page,.clinic-schedule-page,.phone-workspace-page,.mis-schedule-page,.phone-workspace,
+.callcenter-root,.imds-dashboard,.calls-page,.strategic-page,.suite-page,.funnel-page-root {
+  background: transparent !important;
+  color: var(--imds-text) !important;
+}
+
+/* ---- Auth: same visual system as the product shell ---- */
+.auth-screen {
+  color: var(--imds-text) !important;
+  background-color: var(--imds-app-fallback) !important;
+  background-image: linear-gradient(var(--imds-auth-overlay),var(--imds-auth-overlay)),var(--imds-app-bg) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
+}
+.auth-orb--one {
+  background: radial-gradient(circle,var(--imds-primary-a28) 0,transparent 70%) !important;
+}
+.auth-orb--two {
+  background: radial-gradient(circle,var(--imds-info-a10) 0,transparent 70%) !important;
+}
+.auth-showcase {
+  border-color: var(--imds-border) !important;
+  background: color-mix(in srgb,var(--imds-glass-soft) 72%,transparent) !important;
+}
+.auth-login-panel { background: color-mix(in srgb,var(--imds-glass-soft) 54%,transparent) !important; }
+.auth-login-card,.auth-preview,.auth-benefits>div,.auth-security-note,.auth-user-bar {
+  background: var(--imds-glass) !important;
+  color: var(--imds-text) !important;
+  border-color: var(--imds-border) !important;
+  box-shadow: var(--imds-shadow) !important;
+  backdrop-filter: blur(20px) saturate(110%) !important;
+}
+.auth-brand-mark,.auth-login-icon,.auth-user-bar>span {
+  background: linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong)) !important;
+  color: #fff !important;
+  box-shadow: 0 14px 36px var(--imds-primary-a18) !important;
+}
+.auth-brand span,.auth-copy p,.auth-login-card>p,.auth-security-note,.auth-terms,.auth-support,.auth-loading-card p,
+.auth-preview>header,.auth-preview-kpis small,.auth-user-bar small {
+  color: var(--imds-muted) !important;
+}
+.auth-eyebrow {
+  background: var(--imds-primary-soft) !important;
+  color: var(--imds-primary-strong) !important;
+  border-color: var(--imds-primary-a18) !important;
+}
+.auth-benefits svg,.auth-preview-kpis em { color: var(--imds-success) !important; }
+.auth-preview>header { border-color: var(--imds-border) !important; }
+.auth-preview>header i {
+  background: var(--imds-success-a10) !important;
+  color: var(--imds-success) !important;
+}
+.auth-preview-kpis>div {
+  background: var(--imds-glass-soft) !important;
+  border: 1px solid var(--imds-border) !important;
+}
+.auth-preview-chart i {
+  background: linear-gradient(180deg,var(--imds-primary),var(--imds-blue)) !important;
+  box-shadow: 0 0 18px var(--imds-primary-a12) !important;
+}
+.google-login {
+  background: var(--imds-glass-strong) !important;
+  color: var(--imds-text) !important;
+  border-color: var(--imds-border-strong) !important;
+}
+.google-login:hover:not(:disabled) {
+  background: var(--imds-surface-3) !important;
+  box-shadow: var(--imds-shadow) !important;
+}
+.auth-secondary-action { color: var(--imds-primary-strong) !important; }
+.auth-security-note svg { color: var(--imds-primary) !important; }
+.auth-user-bar button {
+  background: var(--imds-glass-soft) !important;
+  color: var(--imds-muted) !important;
+}
+.auth-user-bar button:hover {
+  background: var(--imds-surface-3) !important;
+  color: var(--imds-text) !important;
+}
+
+/* External brand colors (for example Google logo paths) are intentionally preserved. */
+
+@media (max-width: 900px) {
+  .auth-screen { background-attachment: scroll !important; }
+}
