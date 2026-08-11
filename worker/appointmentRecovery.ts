@@ -162,8 +162,8 @@ export async function runAppointmentRecovery(
   const graceMinutes = Math.min(Math.max(Math.round(num(cfg.no_show_grace_minutes) || 60), 0), 10080);
   const cutoff = new Date(Date.now() - graceMinutes * 60000).toISOString();
   const [noShows, unconfirmed] = await Promise.all([
-    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&status=eq.NO_SHOW&select=id,company_id,lead_id,conversation_id,patient_name,status,starts_at,ends_at&order=ends_at.asc&limit=1000`),
-    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&status=in.(BOOKED,CONFIRMED)&ends_at=lte.${encodeURIComponent(cutoff)}&select=id,company_id,lead_id,conversation_id,patient_name,status,starts_at,ends_at&order=ends_at.asc&limit=1000`),
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&source=neq.MIS&status=eq.NO_SHOW&select=id,company_id,lead_id,conversation_id,patient_name,status,starts_at,ends_at&order=ends_at.asc&limit=1000`),
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&source=neq.MIS&status=in.(BOOKED,CONFIRMED)&ends_at=lte.${encodeURIComponent(cutoff)}&select=id,company_id,lead_id,conversation_id,patient_name,status,starts_at,ends_at&order=ends_at.asc&limit=1000`),
   ]);
 
   let tasksCreated = 0;
