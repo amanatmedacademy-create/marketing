@@ -58,7 +58,9 @@ async function payloadFrom(request: Request): Promise<Row> {
   }
   const raw = await request.text();
   const params = new URLSearchParams(raw);
-  return Object.fromEntries(params.entries());
+  const result: Row = {};
+  params.forEach((value, key) => { result[key] = value; });
+  return result;
 }
 
 function signatureInput(event: string, payload: Row): string {
