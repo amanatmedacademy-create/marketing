@@ -75,7 +75,7 @@ export function SalesFunnelKanban({ pipelines, selectedPipelineId, deals, users,
     </div>
 
     <div className="funnel-v2-kanban-scroll">
-      <div className="funnel-v2-board" style={{ gridTemplateColumns: `repeat(${Math.max(1, pipeline.stages.length)}, minmax(280px, 1fr))` }}>
+      <div className="funnel-v2-board" style={{ gridTemplateColumns: `repeat(${Math.max(1, pipeline.stages.length)}, minmax(230px, 1fr))` }}>
         {pipeline.stages.map((stage) => {
           const stageDeals = deals.filter((deal) => deal.stageId === stage.id).sort((a, b) => a.position - b.position);
           const stageAmount = stageDeals.reduce((sum, deal) => sum + deal.amount, 0);
