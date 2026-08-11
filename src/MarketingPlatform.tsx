@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
@@ -86,6 +86,18 @@ function Shell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
+
+  // Мобильный drawer: фон не скроллится, Escape закрывает меню.
+  useEffect(() => {
+    document.body.classList.toggle('nav-drawer-open', open);
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.classList.remove('nav-drawer-open');
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
   const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canView(item.moduleId)) })).filter(group => group.items.length > 0);
@@ -100,6 +112,7 @@ function Shell() {
         <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
       </section>)}</div>
     </aside>
+    {open && <button className="marketing-nav-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setOpen(false)}/>}
     <main>
       <header className="marketing-topbar">
         <button className="marketing-menu" type="button" onClick={() => setOpen(!open)}><Menu size={21}/></button>

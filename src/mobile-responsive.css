@@ -1,0 +1,110 @@
+/* ============================================================================
+   Мобильный слой IMDS Marketing.
+   Импортируется ПОСЛЕДНИМ (main.tsx), чтобы выигрывать каскад у override-файлов
+   без media queries (integrations-imds, integration-page-overrides и т.п.).
+
+   Брейкпоинты платформы:
+     ≤900px  — шелл: сайдбар становится drawer (задан в marketing-platform.css);
+     ≤760px  — планшет-портрет / крупный телефон (основной для страниц);
+     ≤480px  — телефон;
+     ≤390px  — компактный телефон.
+   ========================================================================== */
+
+/* --- 1. Шелл: drawer с подложкой, scroll-lock, safe-area, тач-таргеты ----- */
+
+.marketing-nav-backdrop{display:none}
+
+/* imds-exact-background.css ставит .marketing-shell>aside position:relative
+   !important ради фоновых слоёв — это ломает и sticky-сайдбар на десктопе,
+   и fixed-drawer на мобильных (сайдбар остаётся в потоке первым grid-рядом
+   в 100vh: пустой первый экран, меню в нём недоступно). Возвращаем
+   правильные режимы с той же важностью — этот файл импортируется последним. */
+@media (min-width: 901px){
+  .marketing-shell>aside{position:sticky!important;top:0!important}
+}
+
+@media (max-width: 900px){
+  .marketing-shell>aside{
+    position:fixed!important;
+    top:0!important;
+    bottom:0!important;
+    height:100dvh!important;
+    z-index:70!important;
+  }
+
+  .marketing-nav-backdrop{
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:65; /* под сайдбаром (70), над контентом и topbar (50) */
+    margin:0;
+    padding:0;
+    border:0;
+    background:rgba(2,8,20,.58);
+    backdrop-filter:blur(2px);
+    cursor:pointer;
+  }
+  body.nav-drawer-open{overflow:hidden}
+
+  .marketing-shell>aside{
+    padding-top:calc(18px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .marketing-content{
+    padding-bottom:calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (pointer: coarse){
+  .marketing-shell nav a{min-height:44px}
+  .marketing-topbar button{min-height:40px;min-width:40px}
+}
+
+/* --- 2. Телефон ≤480px: полы сеток, которые останавливались на 2 колонках -- */
+
+@media (max-width: 480px){
+  /* /phone: KPI-факты упирались в repeat(2,1fr) — на 390px это ~160px ячейки */
+  .phone-workspace__facts{grid-template-columns:1fr!important}
+
+  /* /calls: метрики так же останавливались на двух колонках */
+  .calls-metrics{grid-template-columns:1fr!important}
+
+  /* /customers, /growth, /automation, /assistant */
+  .customer-facts,
+  .strategic-status{grid-template-columns:1fr!important}
+
+  /* /marketing: полиш ниже 800px-уровня operations.css */
+  .operations-content{padding:12px}
+  .marketing-os .panel{padding:13px}
+  .content-plan article{grid-template-columns:1fr;gap:6px}
+  .content-plan time{order:-1}
+
+  /* Топбар: экономим ширину, поиск получает остаток */
+  .marketing-topbar{gap:8px}
+  .marketing-top-actions{gap:6px}
+}
+
+/* --- 3. Компактный телефон ≤390px --------------------------------------- */
+
+@media (max-width: 390px){
+  .marketing-content{padding:12px 10px 32px}
+  .marketing-content h1{font-size:1.25rem}
+  .marketing-kpis{gap:9px}
+  .marketing-kpis article{padding:13px}
+}
+
+/* --- 4. Глобальные предохранители --------------------------------------- */
+
+@media (max-width: 760px){
+  /* Медиа никогда не распирает контейнер */
+  .marketing-content img,
+  .marketing-content video,
+  .marketing-content canvas{max-width:100%;height:auto}
+
+  /* Страница не скроллится по горизонтали: широкие таблицы/канбаны
+     скроллятся в собственных обёртках, а не тянут всю страницу */
+  .marketing-shell>main{overflow-x:clip}
+
+  /* Recharts-контейнеры не выходят за ширину карточки */
+  .marketing-content .recharts-responsive-container{max-width:100%}
+}
