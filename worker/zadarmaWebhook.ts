@@ -13,6 +13,13 @@ const text = (value: unknown): string => typeof value === 'string' ? value.trim(
 const digits = (value: unknown): string => text(value).replace(/\D/g, '').slice(0, 20);
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 
+function normalizedPhone(value: unknown): string {
+  let valueDigits = digits(value);
+  if (valueDigits.length === 11 && valueDigits.startsWith('8')) valueDigits = `7${valueDigits.slice(1)}`;
+  if (valueDigits.length === 10) valueDigits = `7${valueDigits}`;
+  return valueDigits ? `+${valueDigits}` : '';
+}
+
 function secureEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
   let result = 0;
@@ -91,10 +98,153 @@ async function recordWebhookEvent(env: WebhookEnv, companyId: string, event: str
   });
 }
 
+async function telephonySettings(env: WebhookEnv, companyId: string): Promise<Row> {
+  const rows = await db<Row[]>(env, `telephony_settings?company_id=eq.${encodeURIComponent(companyId)}&select=inbound_capture_enabled,missed_call_tasks_enabled,missed_call_task_delay_minutes&limit=1`);
+  return rows[0] || { inbound_capture_enabled: true, missed_call_tasks_enabled: true, missed_call_task_delay_minutes: 0 };
+}
+
+async function findCallByPbx(env: WebhookEnv, companyId: string, pbxCallId: string): Promise<Row | null> {
+  if (!pbxCallId) return null;
+  const rows = await db<Row[]>(env, `marketing_calls?company_id=eq.${encodeURIComponent(companyId)}&pbx_call_id=eq.${encodeURIComponent(pbxCallId)}&select=*&limit=1`);
+  return rows[0] || null;
+}
+
 async function findCorrelationByPbx(env: WebhookEnv, companyId: string, pbxCallId: string): Promise<Row | null> {
   if (!pbxCallId) return null;
   const rows = await db<Row[]>(env, `telephony_callback_requests?company_id=eq.${encodeURIComponent(companyId)}&pbx_call_id=eq.${encodeURIComponent(pbxCallId)}&select=*&limit=1`);
   return rows[0] || null;
+}
+
+async function findOrCreateInboundLead(env: WebhookEnv, companyId: string, phone: string, now: string): Promise<Row | null> {
+  if (!phone) return null;
+  const bare = phone.replace(/^\+/, '');
+  const rows = await db<Row[]>(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&or=(phone.eq.${encodeURIComponent(phone)},phone.eq.${encodeURIComponent(bare)})&select=id,name,phone,stage,manager,created_at&order=lead_created_at.desc&limit=1`);
+  if (rows[0]) return rows[0];
+
+  const created = await db<Row[]>(env, 'marketing_leads?select=id,name,phone,stage,manager,created_at', {
+    method: 'POST',
+    headers: { prefer: 'return=representation' },
+    body: JSON.stringify({
+      company_id: companyId,
+      name: `Входящий звонок ${phone}`,
+      phone,
+      source: 'Zadarma',
+      platform: 'Phone',
+      stage: 'NEW',
+      first_message: 'Первичное обращение по входящему звонку',
+      direction: 'INBOUND',
+      lead_created_at: now,
+      metadata: { created_by: 'zadarma_inbound_webhook' },
+      created_at: now,
+      updated_at: now,
+    }),
+  });
+  return created[0] || null;
+}
+
+async function captureInboundStart(env: WebhookEnv, companyId: string, payload: Row): Promise<Row | null> {
+  const pbxCallId = text(payload.pbx_call_id);
+  const phone = normalizedPhone(payload.caller_id);
+  if (!pbxCallId || !phone) return null;
+  const existing = await findCallByPbx(env, companyId, pbxCallId);
+  if (existing) return existing;
+
+  const settings = await telephonySettings(env, companyId);
+  if (settings.inbound_capture_enabled === false) return null;
+  const now = new Date().toISOString();
+  const lead = await findOrCreateInboundLead(env, companyId, phone, now);
+  const startedAt = text(payload.call_start) || now;
+  try {
+    const calls = await db<Row[]>(env, 'marketing_calls?select=*', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify({
+        company_id: companyId,
+        lead_id: text(lead?.id) || null,
+        client_name: text(lead?.name) || null,
+        client_phone: phone,
+        source: 'ZADARMA',
+        channel: 'PHONE',
+        call_status: 'PENDING',
+        call_direction: 'INBOUND',
+        called_did: text(payload.called_did) || null,
+        pbx_call_id: pbxCallId,
+        started_at: startedAt,
+        duration_seconds: 0,
+        transcription_status: 'idle',
+        metadata: {
+          provider: 'zadarma',
+          direction: 'INBOUND',
+          called_did: text(payload.called_did) || null,
+          caller_id: phone,
+        },
+        created_at: now,
+        updated_at: now,
+      }),
+    });
+    return calls[0] || null;
+  } catch (error) {
+    const replay = await findCallByPbx(env, companyId, pbxCallId);
+    if (replay) return replay;
+    throw error;
+  }
+}
+
+async function createMissedCallTask(env: WebhookEnv, companyId: string, call: Row, payload: Row, settings: Row): Promise<void> {
+  if (settings.missed_call_tasks_enabled === false) return;
+  const pbxCallId = text(call.pbx_call_id) || text(payload.pbx_call_id);
+  if (!pbxCallId) return;
+  const phone = text(call.client_phone) || normalizedPhone(payload.caller_id) || 'номер не определён';
+  const delayMinutes = Math.max(0, Math.min(1440, Number(settings.missed_call_task_delay_minutes || 0)));
+  const now = new Date();
+  await db(env, 'crm_tasks?on_conflict=company_id,external_key&select=id', {
+    method: 'POST',
+    headers: { prefer: 'resolution=ignore-duplicates,return=representation' },
+    body: JSON.stringify({
+      company_id: companyId,
+      title: `Перезвонить: пропущенный ${phone}`,
+      description: `Пропущенный входящий звонок Zadarma. PBX call ID: ${pbxCallId}.`,
+      status: 'todo',
+      priority: 'high',
+      due_at: new Date(now.getTime() + delayMinutes * 60_000).toISOString(),
+      source: 'ZADARMA_MISSED_CALL',
+      external_key: `zadarma:missed:${pbxCallId}`,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    }),
+  });
+}
+
+async function completeInbound(env: WebhookEnv, companyId: string, payload: Row): Promise<Row | null> {
+  const pbxCallId = text(payload.pbx_call_id);
+  if (!pbxCallId) return null;
+  let call = await findCallByPbx(env, companyId, pbxCallId);
+  if (!call) call = await captureInboundStart(env, companyId, payload);
+  if (!call) return null;
+
+  const disposition = text(payload.disposition).toLowerCase();
+  const answered = disposition === 'answered';
+  const duration = Math.max(0, Math.round(Number(payload.duration) || 0));
+  const recordingId = text(payload.call_id_with_rec);
+  const recorded = ['1', 'true', 'yes'].includes(text(payload.is_recorded).toLowerCase()) || Boolean(recordingId);
+  const now = new Date().toISOString();
+  const rows = await db<Row[]>(env, `marketing_calls?id=eq.${encodeURIComponent(text(call.id))}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, {
+    method: 'PATCH',
+    headers: { prefer: 'return=representation' },
+    body: JSON.stringify({
+      call_status: answered ? 'COMPLETED' : 'CANCELLED',
+      duration_seconds: duration,
+      answered_at: answered ? now : null,
+      recording_external_id: recordingId || text(call.recording_external_id) || null,
+      recording_ready_at: recordingId ? now : call.recording_ready_at || null,
+      transcription_status: answered && recorded ? 'pending' : 'idle',
+      call_result: answered ? null : (disposition || 'Пропущенный входящий звонок'),
+      updated_at: now,
+    }),
+  });
+  const updated = rows[0] || call;
+  if (!answered) await createMissedCallTask(env, companyId, updated, payload, await telephonySettings(env, companyId));
+  return updated;
 }
 
 async function matchOutboundStart(env: WebhookEnv, companyId: string, payload: Row): Promise<Row | null> {
@@ -124,7 +274,7 @@ async function matchOutboundStart(env: WebhookEnv, companyId: string, payload: R
     }),
     db(env, `marketing_calls?id=eq.${encodeURIComponent(callId)}&company_id=eq.${encodeURIComponent(companyId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ pbx_call_id: pbxCallId, started_at: callStartedAt, updated_at: matchedAt }),
+      body: JSON.stringify({ pbx_call_id: pbxCallId, call_direction: 'OUTBOUND', started_at: callStartedAt, updated_at: matchedAt }),
     }),
   ]);
   return { ...correlation, pbx_call_id: pbxCallId, status: 'matched' };
@@ -158,8 +308,11 @@ async function completeOutbound(env: WebhookEnv, companyId: string, payload: Row
       method: 'PATCH',
       body: JSON.stringify({
         call_status: answered ? 'COMPLETED' : 'CANCELLED',
+        call_direction: 'OUTBOUND',
         duration_seconds: duration,
+        answered_at: answered ? now : null,
         recording_external_id: recordingId || null,
+        recording_ready_at: recordingId ? now : null,
         transcription_status: answered && recorded ? 'pending' : 'idle',
         call_result: answered ? null : (disposition || 'Звонок не состоялся'),
         updated_at: now,
@@ -172,19 +325,26 @@ async function markRecordingReady(env: WebhookEnv, companyId: string, payload: R
   const pbxCallId = text(payload.pbx_call_id);
   const recordingId = text(payload.call_id_with_rec);
   if (!pbxCallId || !recordingId) return;
-  const correlation = await findCorrelationByPbx(env, companyId, pbxCallId);
-  if (!correlation) return;
-  const callId = text(correlation.marketing_call_id);
-  if (!callId) return;
+  const call = await findCallByPbx(env, companyId, pbxCallId);
+  if (!call) return;
   const now = new Date().toISOString();
+  const correlation = await findCorrelationByPbx(env, companyId, pbxCallId);
   await Promise.all([
-    db(env, `telephony_callback_requests?id=eq.${encodeURIComponent(text(correlation.id))}&company_id=eq.${encodeURIComponent(companyId)}`, {
+    correlation ? db(env, `telephony_callback_requests?id=eq.${encodeURIComponent(text(correlation.id))}&company_id=eq.${encodeURIComponent(companyId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ external_recording_id: recordingId, updated_at: now }),
-    }),
-    db(env, `marketing_calls?id=eq.${encodeURIComponent(callId)}&company_id=eq.${encodeURIComponent(companyId)}`, {
+    }) : Promise.resolve(null),
+    db(env, `marketing_calls?id=eq.${encodeURIComponent(text(call.id))}&company_id=eq.${encodeURIComponent(companyId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ recording_external_id: recordingId, transcription_status: 'pending', transcription_error: null, updated_at: now }),
+      body: JSON.stringify({
+        recording_external_id: recordingId,
+        recording_ready_at: now,
+        transcription_status: text(call.call_status) === 'COMPLETED' ? 'pending' : text(call.transcription_status) || 'idle',
+        transcription_error: null,
+        transcription_attempts: 0,
+        last_transcription_attempt_at: null,
+        updated_at: now,
+      }),
     }),
   ]);
 }
@@ -208,11 +368,19 @@ export async function handleZadarmaWebhook(request: Request, baseEnv: WebhookEnv
 
   const payload = await payloadFrom(request);
   const event = text(payload.event).toUpperCase();
-  if (!['NOTIFY_OUT_START', 'NOTIFY_OUT_END', 'NOTIFY_RECORD'].includes(event)) return json({ ok: true, ignored: event || 'unknown' });
+  if (!['NOTIFY_START', 'NOTIFY_END', 'NOTIFY_OUT_START', 'NOTIFY_OUT_END', 'NOTIFY_RECORD'].includes(event)) return json({ ok: true, ignored: event || 'unknown' });
   if (!await verifySignature(request, env, event, payload)) return json({ error: 'Invalid Zadarma signature' }, 401);
 
   await recordWebhookEvent(env, companyId, event, payload).catch(() => undefined);
 
+  if (event === 'NOTIFY_START') {
+    const call = await captureInboundStart(env, companyId, payload);
+    return json({ ok: true, captured: Boolean(call), callId: text(call?.id) || null, leadId: text(call?.lead_id) || null });
+  }
+  if (event === 'NOTIFY_END') {
+    const call = await completeInbound(env, companyId, payload);
+    return json({ ok: true, callId: text(call?.id) || null, status: text(call?.call_status) || null });
+  }
   if (event === 'NOTIFY_OUT_START') {
     const correlation = await matchOutboundStart(env, companyId, payload);
     return json({ ok: true, matched: Boolean(correlation) });
