@@ -67,6 +67,13 @@ function weekdayFor(date: string): number {
   return new Date(`${date}T12:00:00+05:00`).getUTCDay();
 }
 
+function overlaps(start: Date, end: Date, row: Row): boolean {
+  const rowStart = new Date(text(row.starts_at));
+  const rowEnd = new Date(text(row.ends_at));
+  if (!Number.isFinite(rowStart.getTime()) || !Number.isFinite(rowEnd.getTime())) return false;
+  return start < rowEnd && end > rowStart;
+}
+
 async function branches(env: WabaClinicBookingEnv, companyId: string): Promise<Row[]> {
   return db<Row[]>(env,
     `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&active=eq.true&select=id,name,address&order=sort_order.asc,name.asc`,
@@ -91,10 +98,14 @@ async function buildSlots(env: WabaClinicBookingEnv, companyId: string, doctorId
   const dates = Array.from({ length: 21 }, (_, index) => isoDate(addDays(base, index)));
   const rangeStart = `${dates[0]}T00:00:00+05:00`;
   const rangeEnd = `${dates[dates.length - 1]}T23:59:59+05:00`;
-  const booked = await db<Row[]>(env,
-    `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED)&starts_at=gte.${encodeURIComponent(rangeStart)}&starts_at=lte.${encodeURIComponent(rangeEnd)}&select=starts_at`,
-  );
-  const occupied = new Set(booked.map((row) => new Date(text(row.starts_at)).toISOString()));
+  const [appointments, blocks] = await Promise.all([
+    db<Row[]>(env,
+      `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED,ARRIVED)&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`,
+    ),
+    db<Row[]>(env,
+      `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`,
+    ).catch(() => []),
+  ]);
   const output: Row[] = [];
 
   for (const date of dates) {
@@ -108,8 +119,10 @@ async function buildSlots(env: WabaClinicBookingEnv, companyId: string, doctorId
       while (cursor + slotMinutes <= endMinutes) {
         const startsAt = localIso(date, Math.floor(cursor / 60), cursor % 60);
         const startsDate = new Date(startsAt);
-        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied.has(startsDate.toISOString())) {
-          const endsDate = new Date(startsDate.getTime() + slotMinutes * 60 * 1000);
+        const endsDate = new Date(startsDate.getTime() + slotMinutes * 60 * 1000);
+        const occupied = appointments.some((row) => overlaps(startsDate, endsDate, row));
+        const blocked = blocks.some((row) => overlaps(startsDate, endsDate, row));
+        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked) {
           output.push(option(startsAt, timeLabel(startsAt), `${dateLabel(date)} · ${slotMinutes} мин`));
           (output[output.length - 1] as Row).ends_at = endsDate.toISOString();
         }
@@ -281,6 +294,9 @@ export async function createClinicAppointment(
         };
       }
     }
+    if (message.includes('В выбранном времени специалист недоступен')) {
+      throw new Error('Это время больше недоступно. Вернитесь и выберите другой слот.');
+    }
     if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) {
       throw new Error('Это время только что заняли. Вернитесь и выберите другой слот.');
     }
@@ -288,7 +304,7 @@ export async function createClinicAppointment(
   }
 }
 
-const APPOINTMENT_STATUSES = new Set(['BOOKED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
+const APPOINTMENT_STATUSES = new Set(['BOOKED', 'CONFIRMED', 'ARRIVED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
 
 async function setAppointmentStatus(
   request: Request,
@@ -343,7 +359,7 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
     const branchRows = await db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const doctorRows = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const scheduleRows = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=weekday.asc,start_time.asc`);
-    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED)&select=id,branch_id,doctor_id,lead_id,conversation_id,starts_at,ends_at,patient_name,phone,status,metadata,created_at,updated_at&order=starts_at.asc&limit=100`);
+    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED,ARRIVED)&select=id,branch_id,doctor_id,lead_id,conversation_id,starts_at,ends_at,patient_name,phone,status,metadata,created_at,updated_at&order=starts_at.asc&limit=100`);
     return json({ branches: branchRows, doctors: doctorRows, schedules: scheduleRows, upcoming });
   }
 
