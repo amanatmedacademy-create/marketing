@@ -3,14 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// Light theme background is served directly from Supabase Storage.
+// Only local backgrounds that still ship with the app are assembled here.
 const specs = [
-  {
-    theme: 'light',
-    filename: 'imds-bg-light.webp',
-    files: ['background.webp.b64'],
-    expectedBytes: 103_290,
-    format: 'webp',
-  },
   {
     theme: 'dark',
     filename: 'imds-bg-dark.jpg',
@@ -37,12 +33,10 @@ for (const spec of specs) {
     && output[1] === 0xd8
     && output[output.length - 2] === 0xff
     && output[output.length - 1] === 0xd9;
-  const isWebp = output.length >= 12
-    && output.subarray(0, 4).toString('ascii') === 'RIFF'
-    && output.subarray(8, 12).toString('ascii') === 'WEBP';
 
-  if (spec.format === 'jpeg' && !isJpeg) throw new Error(`IMDS ${spec.theme} background is an incomplete JPEG`);
-  if (spec.format === 'webp' && !isWebp) throw new Error(`IMDS ${spec.theme} background is an incomplete WEBP`);
+  if (spec.format === 'jpeg' && !isJpeg) {
+    throw new Error(`IMDS ${spec.theme} background is an incomplete JPEG`);
+  }
   if (output.length !== spec.expectedBytes) {
     throw new Error(
       `IMDS ${spec.theme} background size mismatch: ${output.length} != ${spec.expectedBytes}`,
