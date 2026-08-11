@@ -10,6 +10,7 @@ import DealWorkspaceHost from './components/DealWorkspace';
 import { DealWorkspaceProvider } from './components/DealWorkspaceController';
 import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
+import ThemeToggle from './components/ThemeToggle';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
@@ -105,6 +106,7 @@ function Shell() {
         <GlobalSearch />
         <div className="marketing-top-actions">
           <CompanySwitcher />
+          <ThemeToggle />
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
         </div>
