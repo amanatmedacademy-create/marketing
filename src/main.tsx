@@ -16,6 +16,7 @@ import './sales-funnel-fullheight.css';
 import './clinic-schedule-mis-parity.css';
 import './imds-redesign.css';
 import './dashboard-redesign.css';
+import './imds-modules-redesign.css';
 
 function Root() {
   if (window.location.pathname === '/operations') {
