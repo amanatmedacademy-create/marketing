@@ -1,0 +1,65 @@
+/* Visual authority for the approved IMDS light background reference. */
+:root[data-theme='light']{
+  --imds-app-fallback:#f4fbfb;
+  --imds-glass:rgba(255,255,255,.68);
+  --imds-glass-soft:rgba(255,255,255,.54);
+  --imds-glass-strong:rgba(255,255,255,.78);
+  --imds-sidebar:rgba(255,255,255,.76);
+  --imds-topbar:rgba(255,255,255,.70);
+}
+
+:root[data-theme='light'] .marketing-shell,
+:root[data-theme='light'] .auth-screen{
+  background-color:var(--imds-app-fallback)!important;
+  background-image:var(--imds-app-bg)!important;
+  background-position:center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+  background-attachment:fixed!important;
+}
+
+:root[data-theme='light'] .auth-screen::before,
+:root[data-theme='light'] .auth-screen::after,
+:root[data-theme='light'] .marketing-shell::before,
+:root[data-theme='light'] .marketing-shell::after{
+  content:none!important;
+  display:none!important;
+}
+
+:root[data-theme='light'] .auth-orb{display:none!important}
+
+:root[data-theme='light'] .auth-showcase,
+:root[data-theme='light'] .auth-login-panel,
+:root[data-theme='light'] .marketing-content,
+:root[data-theme='light'] .marketing-shell>main{
+  background:transparent!important;
+}
+
+:root[data-theme='light'] .marketing-shell>aside,
+:root[data-theme='light'] .marketing-topbar{
+  background:var(--imds-glass-strong)!important;
+  backdrop-filter:blur(18px) saturate(108%)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(108%)!important;
+  box-shadow:0 8px 28px rgba(38,93,91,.06)!important;
+}
+
+:root[data-theme='light'] .panel,
+:root[data-theme='light'] .metric,
+:root[data-theme='light'] .imds-kpi-card,
+:root[data-theme='light'] .dashboard-chart-card,
+:root[data-theme='light'] .marketing-kpis article,
+:root[data-theme='light'] .auth-login-card,
+:root[data-theme='light'] .auth-preview{
+  background:var(--imds-glass)!important;
+  backdrop-filter:blur(16px) saturate(106%)!important;
+  -webkit-backdrop-filter:blur(16px) saturate(106%)!important;
+  box-shadow:0 12px 34px rgba(38,93,91,.07)!important;
+}
+
+@media(max-width:900px){
+  :root[data-theme='light'] .marketing-shell,
+  :root[data-theme='light'] .auth-screen{
+    background-position:62% center!important;
+    background-attachment:scroll!important;
+  }
+}
