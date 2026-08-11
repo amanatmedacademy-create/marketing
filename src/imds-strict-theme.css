@@ -1,0 +1,177 @@
+/* Strict IMDS TECH visual system. Loaded last. Do not add module-local palette overrides. */
+
+:root,
+:root[data-theme='light']{
+  --imds-app-bg:url('/imds-background.svg');
+  --imds-app-overlay:rgba(245,250,251,.78);
+  --imds-glass:rgba(255,255,255,.86);
+  --imds-glass-strong:rgba(255,255,255,.94);
+  --imds-glass-soft:rgba(248,252,252,.82);
+  --imds-sidebar:rgba(250,253,253,.92);
+  --imds-topbar:rgba(255,255,255,.78);
+  --imds-surface:#ffffff;
+  --imds-surface-2:#f7fbfb;
+  --imds-surface-3:#edf7f6;
+  --imds-border:#d5e4e5;
+  --imds-border-strong:#bdd3d5;
+  --imds-text:#102b3a;
+  --imds-text-soft:#47636d;
+  --imds-muted:#789098;
+  --imds-primary:#11b8a5;
+  --imds-primary-strong:#078f92;
+  --imds-primary-soft:#e5f7f4;
+  --imds-blue:#2d7b9e;
+  --imds-success:#1d9d73;
+  --imds-warning:#cf942d;
+  --imds-danger:#d66068;
+  --imds-shadow:0 16px 38px rgba(28,70,77,.10);
+  --imds-shadow-soft:0 7px 22px rgba(28,70,77,.07);
+  --imds-row-hover:rgba(229,247,244,.72);
+  --imds-chart-grid:#dce9e9;
+}
+
+:root[data-theme='dark']{
+  --imds-app-bg:url('/imds-background.svg');
+  --imds-app-overlay:rgba(3,18,25,.86);
+  --imds-glass:rgba(9,30,40,.88);
+  --imds-glass-strong:rgba(8,26,35,.95);
+  --imds-glass-soft:rgba(12,38,48,.84);
+  --imds-sidebar:rgba(5,23,31,.95);
+  --imds-topbar:rgba(5,22,30,.82);
+  --imds-surface:#0b222c;
+  --imds-surface-2:#0d2933;
+  --imds-surface-3:#11333c;
+  --imds-border:#1b414b;
+  --imds-border-strong:#285662;
+  --imds-text:#f4fbfb;
+  --imds-text-soft:#b6cdd0;
+  --imds-muted:#78949a;
+  --imds-primary:#24c7b6;
+  --imds-primary-strong:#13a89a;
+  --imds-primary-soft:#0b3c3c;
+  --imds-blue:#57a7c3;
+  --imds-success:#44c18d;
+  --imds-warning:#e0ad56;
+  --imds-danger:#ef7b82;
+  --imds-shadow:0 18px 44px rgba(0,0,0,.28);
+  --imds-shadow-soft:0 8px 24px rgba(0,0,0,.20);
+  --imds-row-hover:rgba(17,61,67,.78);
+  --imds-chart-grid:#183943;
+}
+
+html,body,#root{min-height:100%;background:var(--imds-surface-2)!important;color:var(--imds-text)!important}
+body{background:none!important}
+.marketing-shell{position:relative;isolation:isolate;background:transparent!important;color:var(--imds-text)!important}
+.marketing-shell::before{content:''!important;position:fixed!important;z-index:-3!important;inset:0!important;width:auto!important;height:auto!important;opacity:1!important;background-image:var(--imds-app-bg)!important;background-size:cover!important;background-position:center center!important;background-repeat:no-repeat!important;filter:none!important;pointer-events:none!important}
+.marketing-shell::after{content:''!important;position:fixed!important;z-index:-2!important;inset:0!important;width:auto!important;height:auto!important;opacity:1!important;background:var(--imds-app-overlay)!important;mask-image:none!important;-webkit-mask-image:none!important;pointer-events:none!important}
+
+/* One surface language everywhere */
+.marketing-shell>aside,.marketing-topbar,.panel,.metric,.module-card,.automation-card,.integration,.integration-config,.integration-unlock,.creative,.dashboard-chart-card,.marketing-kpis article,.architecture-map article,.architecture-pipeline article,.lead-table-panel,.lead-card,.ads-saved-views,.ads-toolbar,.ads-controls,.ads-filter-panel,.ads-table-wrap,.v36-toolbar,.v36-card,.v36-kpi,.iv2-summary article,.iv2-modal,.iv2-section,.call-center-shell,.phone-workspace,.clinic-schedule-page,.sales-funnel-page,.customer360-page,.growth-engine-page,.journey-automation-page{
+  color:var(--imds-text)!important;
+}
+.marketing-shell>aside{background:var(--imds-sidebar)!important;backdrop-filter:blur(24px) saturate(120%)!important;border-color:var(--imds-border)!important}
+.marketing-topbar{background:var(--imds-topbar)!important;backdrop-filter:blur(24px) saturate(125%)!important;border-color:var(--imds-border)!important}
+.panel,.metric,.module-card,.automation-card,.integration,.integration-config,.integration-unlock,.creative,.dashboard-chart-card,.marketing-kpis article,.architecture-map article,.architecture-pipeline article,.lead-table-panel,.lead-card,.ads-saved-views,.ads-toolbar,.ads-controls,.ads-filter-panel,.ads-table-wrap,.v36-toolbar,.v36-card,.v36-kpi,.iv2-summary article{
+  background:var(--imds-glass)!important;
+  border:1px solid var(--imds-border)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+}
+.panel,.module-card,.integration,.integration-config,.integration-unlock,.lead-table-panel,.lead-card,.ads-table-wrap,.v36-card,.iv2-modal{border-radius:14px!important}
+.metric,.marketing-kpis article,.v36-kpi,.iv2-summary article{border-radius:13px!important}
+
+/* Typography and semantic colors */
+h1,h2,h3,h4,h5,h6,strong,b{color:var(--imds-text)}
+p,small,.note,.muted{color:var(--imds-muted)}
+a{color:var(--imds-primary-strong)}
+.heading>span,.leads-heading>div>span,.iv2-header>div>span,.imds-card-heading>div>span,.imds-dashboard-eyebrow{color:var(--imds-primary)!important}
+
+/* Inputs and controls */
+button,input,select,textarea{font-family:inherit}
+input,select,textarea,.marketing-search,.ads-search,.v36-search,.iv2-creative-search{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--imds-border)!important;
+}
+input::placeholder,textarea::placeholder{color:var(--imds-muted)!important}
+input:focus,select:focus,textarea:focus,.marketing-search:focus-within,.ads-search:focus-within,.v36-search:focus-within{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px rgba(17,184,165,.13)!important;
+  outline:none!important;
+}
+.button,.ads-toolbar button,.ads-controls button,.ads-level-tabs button,.ads-saved-views button,.v36-toolbar button,.v36-table-actions button,.v36-mode button,.iv2-header button,.iv2-modal button,.lead-filters>button,.topbar-settings-button,.topbar-profile-button,.imds-theme-toggle{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+  border-color:var(--imds-border)!important;
+  box-shadow:none!important;
+}
+.button:hover,.ads-toolbar button:hover,.ads-controls button:hover,.ads-level-tabs button:hover,.ads-saved-views button:hover,.v36-toolbar button:hover,.v36-table-actions button:hover,.v36-mode button:hover,.iv2-header button:hover,.iv2-modal button:hover,.lead-filters>button:hover{
+  background:var(--imds-surface-3)!important;color:var(--imds-text)!important;border-color:var(--imds-border-strong)!important
+}
+.button--primary,.iv2-primary{background:var(--imds-primary)!important;color:#fff!important;border-color:var(--imds-primary)!important}
+.button--primary:hover,.iv2-primary:hover{background:var(--imds-primary-strong)!important}
+
+/* Navigation */
+.marketing-shell nav a{color:var(--imds-text-soft)!important}
+.marketing-shell nav a:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important}
+.marketing-shell nav a.active{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important;border-color:rgba(17,184,165,.20)!important;box-shadow:inset 3px 0 0 var(--imds-primary)!important}
+
+/* Tables */
+.table-wrap,.lead-table-wrap,.v36-table,.ads-table-wrap{background:transparent!important}
+table{background:transparent!important;color:var(--imds-text)!important}
+th,.lead-table-wrap th,.ads-table-wrap th,.v36-table th{background:var(--imds-glass-strong)!important;color:var(--imds-muted)!important;border-color:var(--imds-border)!important}
+td,.lead-table-wrap td,.ads-table-wrap td,.v36-table td{background:transparent!important;color:var(--imds-text-soft)!important;border-color:var(--imds-border)!important}
+tbody tr:hover td,.lead-table-wrap tr:hover td,.ads-table-wrap tbody tr:hover td,.v36-hierarchy-row:hover td{background:var(--imds-row-hover)!important}
+.lead-table-wrap tr.selected td,.ads-table-wrap tr.selected td{background:var(--imds-primary-soft)!important}
+
+/* Cards/widgets that had legacy blue/purple backgrounds */
+.lead-status-grid article,.task-row,.content-plan article,.kanban>section,.kanban article,.attribution-flow article,.module-checklist span,.dashboard-finance-strip span,.v36-level-account td,.v36-level-account td:first-child,.iv2-history,.iv2-meta-selection,.lead-message{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+}
+.v36-level-platform td,.v36-level-platform td:first-child{background:color-mix(in srgb,var(--imds-primary-soft) 58%,var(--imds-glass))!important}
+.ads-table-wrap tbody tr:has(.ads-status.active) td{background:rgba(29,157,115,.07)!important}
+
+/* Strict accent policy: teal is primary; blue only for informational charts. */
+.stage-new,.badge--blue{background:rgba(45,123,158,.10)!important;color:var(--imds-blue)!important;border-color:rgba(45,123,158,.18)!important}
+.stage-qualification,.stage-appointment,.badge--amber{background:rgba(207,148,45,.10)!important;color:var(--imds-warning)!important;border-color:rgba(207,148,45,.18)!important}
+.stage-diagnostic,.badge--cyan{background:rgba(17,184,165,.10)!important;color:var(--imds-primary)!important;border-color:rgba(17,184,165,.18)!important}
+.stage-course,.badge--green{background:rgba(29,157,115,.10)!important;color:var(--imds-success)!important;border-color:rgba(29,157,115,.18)!important}
+.stage-lost,.badge--red{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important;border-color:rgba(214,96,104,.18)!important}
+
+/* Modals, drawers, popovers */
+.lead-modal-layer,.iv2-overlay,.modal-backdrop,.drawer-backdrop{background:rgba(2,15,20,.68)!important;backdrop-filter:blur(9px)!important}
+.lead-modal,.iv2-modal,.v36-popover,.ads-columns>div,[role='dialog']{
+  background:var(--imds-glass-strong)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--imds-border)!important;
+  box-shadow:0 28px 80px rgba(0,0,0,.28)!important;
+  backdrop-filter:blur(22px)!important;
+}
+
+/* Analytics/charts */
+.analytics-page{--background:transparent!important;--card-bg:var(--imds-glass)!important;--card-border:var(--imds-border)!important;--text-primary:var(--imds-text)!important;--text-secondary:var(--imds-text-soft)!important;--text-muted:var(--imds-muted)!important;--accent-blue:var(--imds-blue)!important;--accent-blue-light:var(--imds-primary)!important;--accent-cyan:var(--imds-primary)!important;--accent-purple:var(--imds-primary)!important;--accent-green:var(--imds-success)!important;--accent-amber:var(--imds-warning)!important;--accent-red:var(--imds-danger)!important;background:transparent!important}
+.recharts-cartesian-grid line{stroke:var(--imds-chart-grid)!important}
+.recharts-text{fill:var(--imds-muted)!important}
+.recharts-tooltip-wrapper .recharts-default-tooltip{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+
+/* Legacy hardcoded classes: neutralize module backgrounds */
+.operations-shell,.analytics-page,.ads-manager-page,.leads-workspace,.v36-dashboard,.iv2-page,.marketing-os,.growth-engine-page,.customer360-page,.journey-automation-page,.call-center-chat-page,.sales-funnel-page,.clinic-schedule-page,.phone-workspace-page{
+  background:transparent!important;
+  color:var(--imds-text)!important;
+}
+
+/* Only error/warning/success states may use semantic color surfaces. */
+.alert--error,.lead-error,.v36-error,.iv2-message--error{background:rgba(214,96,104,.10)!important;color:var(--imds-danger)!important;border-color:rgba(214,96,104,.25)!important}
+.iv2-message--ok{background:rgba(29,157,115,.10)!important;color:var(--imds-success)!important;border-color:rgba(29,157,115,.25)!important}
+
+@media(max-width:900px){
+  .marketing-shell::before{background-position:62% center!important}
+  .marketing-shell>aside{background:var(--imds-sidebar)!important}
+}
+@media(max-width:620px){
+  .marketing-shell::before{background-position:68% center!important}
+  :root,:root[data-theme='light']{--imds-app-overlay:rgba(248,252,252,.84)}
+  :root[data-theme='dark']{--imds-app-overlay:rgba(3,18,25,.90)}
+}
