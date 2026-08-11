@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
@@ -18,6 +18,7 @@ import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
 import PhoneWorkspacePage from './pages/PhoneWorkspacePage';
+import ClinicSchedulePage from './pages/ClinicSchedulePage';
 import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
@@ -46,6 +47,7 @@ const navigation: NavGroup[] = [
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
     { to: '/phone', label: 'Phone Workspace', icon: PhoneCall, moduleId: 'communications.calls' },
+    { to: '/schedule', label: 'Clinic Schedule', icon: CalendarDays, moduleId: 'communications.calls' },
     { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
@@ -114,6 +116,7 @@ function Shell() {
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
         <Route path="/phone" element={guard('communications.calls', <PhoneWorkspacePage/>)} />
+        <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
