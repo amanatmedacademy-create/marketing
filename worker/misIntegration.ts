@@ -78,9 +78,11 @@ async function saveCredentials(request: Request, env: MisEnv, companyId: string)
   const existing = await credentialRow(env, companyId);
   let stored: JsonRecord = {};
   if (existing) { try { stored = await decrypt(existing, encryptionSecret(env)); } catch { stored = {}; } }
-  const baseUrl = normalizeBaseUrl(text(incoming.baseUrl) || text(stored.baseUrl));
+  const rawBaseUrl = text(incoming.baseUrl) || text(stored.baseUrl);
   const apiKey = text(incoming.apiKey) || text(stored.apiKey);
-  if (!baseUrl || !apiKey) return json({ error: 'Заполните base URL и API key/token МИС' }, 400);
+  if (!rawBaseUrl || !apiKey) return json({ error: 'Заполните base URL и API key/token МИС' }, 400);
+  let baseUrl = '';
+  try { baseUrl = normalizeBaseUrl(rawBaseUrl); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Некорректный MIS base URL' }, 400); }
   const payload: JsonRecord = {
     baseUrl,
     apiKey,
@@ -126,7 +128,8 @@ async function updateVerification(env: MisEnv, companyId: string, ok: boolean, e
 }
 
 async function mapping(env: MisEnv, companyId: string, type: string, externalId: string): Promise<JsonRecord | null> { const list = await db<JsonRecord[]>(env, `mis_entity_mappings?company_id=eq.${encodeURIComponent(companyId)}&entity_type=eq.${encodeURIComponent(type)}&external_id=eq.${encodeURIComponent(externalId)}&select=*&limit=1`); return list[0] || null; }
-async function saveMapping(env: MisEnv, companyId: string, type: string, externalId: string, localId: string, metadata: JsonRecord = {}) { await db(env, 'mis_entity_mappings?on_conflict=company_id,entity_type,external_id', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ company_id: companyId, entity_type: type, external_id: externalId, local_id: localId, metadata, last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }); }
+async function mappingByLocalId(env: MisEnv, companyId: string, type: string, localIdValue: string): Promise<JsonRecord | null> { const list = await db<JsonRecord[]>(env, `mis_entity_mappings?company_id=eq.${encodeURIComponent(companyId)}&entity_type=eq.${encodeURIComponent(type)}&local_id=eq.${encodeURIComponent(localIdValue)}&select=*&limit=1`); return list[0] || null; }
+async function saveMapping(env: MisEnv, companyId: string, type: string, externalId: string, localIdValue: string, metadata: JsonRecord = {}) { await db(env, 'mis_entity_mappings?on_conflict=company_id,entity_type,external_id', { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ company_id: companyId, entity_type: type, external_id: externalId, local_id: localIdValue, metadata, last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }); }
 async function localId(env: MisEnv, companyId: string, type: string, externalId: string): Promise<string | null> { const item = await mapping(env, companyId, type, externalId); return item ? text(item.local_id) || null : null; }
 
 async function upsertOne(env: MisEnv, table: string, companyId: string, type: string, externalId: string, payload: JsonRecord): Promise<string> {
@@ -158,7 +161,7 @@ async function syncDoctors(env: MisEnv, companyId: string, config: MisCredential
 }
 async function syncSchedules(env: MisEnv, companyId: string, config: MisCredentials, enabled: boolean) {
   if (!enabled) return 0; const list = rows(await misFetch(config, config.schedulesPath || '/schedules')); let count = 0;
-  for (const item of list) { const id = ext(item), doctorExternal = text(item.doctor_id ?? item.doctorId); const doctorId = doctorExternal ? await localId(env, companyId, 'doctor', doctorExternal) : null; const weekday = Number(item.weekday); if (!id || !doctorId || !Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue; const local = await upsertOne(env, 'waba_clinic_schedules', companyId, 'schedule', id, { doctor_id: doctorId, weekday, start_time: text(item.start_time ?? item.startTime), end_time: text(item.end_time ?? item.endTime), slot_minutes: Math.max(5, Math.min(240, Number(item.slot_minutes ?? item.slotMinutes ?? 30) || 30)), active: bool(item.active) }); await saveMapping(env, companyId, 'schedule', id, local); count += 1; }
+  for (const item of list) { const id = ext(item), doctorExternal = text(item.doctor_id ?? item.doctorId); const doctorId = doctorExternal ? await localId(env, companyId, 'doctor', doctorExternal) : null; const weekday = Number(item.weekday); if (!id || !doctorId || !Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue; const local = await upsertOne(env, 'waba_clinic_schedules', companyId, 'schedule', id, { doctor_id: doctorId, weekday, start_time: text(item.start_time ?? item.startTime), end_time: text(item.end_time ?? item.endTime), slot_minutes: Math.max(10, Math.min(180, Number(item.slot_minutes ?? item.slotMinutes ?? 30) || 30)), active: bool(item.active) }); await saveMapping(env, companyId, 'schedule', id, local); count += 1; }
   return count;
 }
 async function syncPatients(env: MisEnv, companyId: string, config: MisCredentials, enabled: boolean) {
@@ -168,7 +171,6 @@ async function syncPatients(env: MisEnv, companyId: string, config: MisCredentia
 }
 async function syncAppointments(env: MisEnv, companyId: string, config: MisCredentials, enabled: boolean) {
   if (!enabled) return 0; const list = rows(await misFetch(config, config.appointmentsPath || '/appointments')); let count = 0;
-  await db(env, 'rpc/set_config', { method: 'POST', body: JSON.stringify({ setting: 'imds.mis_inbound', value: 'true', is_local: true }) }).catch(() => null);
   for (const item of list) {
     const id = ext(item), branchExternal = text(item.branch_id ?? item.branchId), doctorExternal = text(item.doctor_id ?? item.doctorId), patientExternal = text(item.patient_id ?? item.patientId);
     const branchId = await localId(env, companyId, 'branch', branchExternal), doctorId = await localId(env, companyId, 'doctor', doctorExternal), patientId = patientExternal ? await localId(env, companyId, 'patient', patientExternal) : null;
@@ -183,7 +185,9 @@ async function syncAppointments(env: MisEnv, companyId: string, config: MisCrede
 
 async function runPull(env: MisEnv, companyId: string) {
   const config = await credentials(env, companyId); if (!config) throw new Error('МИС credentials не настроены');
-  const settings = await readSettings(env, companyId); if (settings.enabled !== true) return { skipped: true, reason: 'mis_disabled' };
+  const settings = await readSettings(env, companyId);
+  if (settings.enabled !== true) return { skipped: true, reason: 'mis_disabled' };
+  if (settings.pull_enabled !== true) return { skipped: true, reason: 'pull_disabled' };
   const created = await db<JsonRecord[]>(env, 'mis_sync_runs', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify({ company_id: companyId, vendor: text(settings.vendor) || 'generic_rest', mode: 'pull', status: 'running' }) });
   const runId = text(created[0]?.id);
   try {
@@ -209,7 +213,7 @@ async function runPull(env: MisEnv, companyId: string) {
 async function pushOutbox(env: MisEnv, companyId: string) {
   const config = await credentials(env, companyId); if (!config) throw new Error('МИС credentials не настроены');
   const settings = await readSettings(env, companyId); if (settings.enabled !== true || settings.push_appointments !== true) return { skipped: true, reason: 'push_disabled' };
-  const pending = await db<JsonRecord[]>(env, `mis_outbox?company_id=eq.${encodeURIComponent(companyId)}&status=eq.pending&available_at=lte.${encodeURIComponent(new Date().toISOString())}&select=*&order=created_at.asc&limit=50`);
+  const pending = await db<JsonRecord[]>(env, `mis_outbox?company_id=eq.${encodeURIComponent(companyId)}&status=in.(pending,failed)&attempts=lt.5&available_at=lte.${encodeURIComponent(new Date().toISOString())}&select=*&order=created_at.asc&limit=50`);
   let sent = 0, failed = 0;
   for (const item of pending) {
     const outboxId = text(item.id), appointmentId = text(item.appointment_id);
@@ -217,10 +221,14 @@ async function pushOutbox(env: MisEnv, companyId: string) {
       await db(env, `mis_outbox?id=eq.${encodeURIComponent(outboxId)}&company_id=eq.${encodeURIComponent(companyId)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'processing', attempts: Number(item.attempts || 0) + 1, updated_at: new Date().toISOString() }) });
       const appointment = (await db<JsonRecord[]>(env, `waba_clinic_appointments?id=eq.${encodeURIComponent(appointmentId)}&company_id=eq.${encodeURIComponent(companyId)}&select=*&limit=1`))[0];
       if (!appointment) throw new Error('Appointment not found');
-      const extAppointment = await mapping(env, companyId, 'appointment', appointmentId);
-      const payload = { id: extAppointment ? text(extAppointment.external_id) : undefined, local_id: appointmentId, starts_at: appointment.starts_at, ends_at: appointment.ends_at, patient_name: appointment.patient_name, phone: appointment.phone, status: appointment.status };
-      const method = text(item.action) === 'cancel' ? 'PATCH' : 'POST';
-      await misFetch(config, config.appointmentsPath || '/appointments', { method, body: JSON.stringify(payload) });
+      const extAppointment = await mappingByLocalId(env, companyId, 'appointment', appointmentId);
+      const payload: JsonRecord = { local_id: appointmentId, starts_at: appointment.starts_at, ends_at: appointment.ends_at, patient_name: appointment.patient_name, phone: appointment.phone, status: appointment.status };
+      if (extAppointment) payload.id = text(extAppointment.external_id);
+      if (text(item.action) === 'cancel') payload.status = 'CANCELLED';
+      const result = await misFetch(config, config.appointmentsPath || '/appointments', { method: 'POST', body: JSON.stringify(payload) });
+      const resultRecord = record(result);
+      const returnedExternalId = ext(resultRecord);
+      if (returnedExternalId) await saveMapping(env, companyId, 'appointment', returnedExternalId, appointmentId, { direction: 'outbound' });
       await db(env, `mis_outbox?id=eq.${encodeURIComponent(outboxId)}&company_id=eq.${encodeURIComponent(companyId)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'sent', sent_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }) }); sent += 1;
     } catch (error) {
       await db(env, `mis_outbox?id=eq.${encodeURIComponent(outboxId)}&company_id=eq.${encodeURIComponent(companyId)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: error instanceof Error ? error.message : String(error), updated_at: new Date().toISOString() }) }).catch(() => null); failed += 1;
