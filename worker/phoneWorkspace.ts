@@ -85,11 +85,12 @@ async function patientJourney(env: PhoneWorkspaceEnv, companyId: string, lead: R
 async function patientAppointments(env: PhoneWorkspaceEnv, companyId: string, lead: Row | null, call: Row | null): Promise<Row[]> {
   const leadId = text(lead?.id);
   const phone = normalizePhone(text(lead?.phone) || text(call?.client_phone));
+  const marketingOnly = '&source=neq.MIS';
   if (leadId && phone) {
-    return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&or=(lead_id.eq.${encodeURIComponent(leadId)},phone.eq.${encodeURIComponent(phone)})&select=*&order=starts_at.desc&limit=30`);
+    return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}${marketingOnly}&or=(lead_id.eq.${encodeURIComponent(leadId)},phone.eq.${encodeURIComponent(phone)})&select=*&order=starts_at.desc&limit=30`);
   }
-  if (leadId) return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&lead_id=eq.${encodeURIComponent(leadId)}&select=*&order=starts_at.desc&limit=30`);
-  if (phone) return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&phone=eq.${encodeURIComponent(phone)}&select=*&order=starts_at.desc&limit=30`);
+  if (leadId) return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}${marketingOnly}&lead_id=eq.${encodeURIComponent(leadId)}&select=*&order=starts_at.desc&limit=30`);
+  if (phone) return db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}${marketingOnly}&phone=eq.${encodeURIComponent(phone)}&select=*&order=starts_at.desc&limit=30`);
   return [];
 }
 
@@ -130,11 +131,21 @@ function overlaps(start: Date, end: Date, row: Row): boolean {
   if (!Number.isFinite(rowStart.getTime()) || !Number.isFinite(rowEnd.getTime())) return false;
   return start < rowEnd && end > rowStart;
 }
+function overlapsScheduleBreak(startMinute: number, endMinute: number, schedule: Row): boolean {
+  const rawStart = text(schedule.break_start);
+  const rawEnd = text(schedule.break_end);
+  if (!rawStart || !rawEnd) return false;
+  const breakStart = timeParts(rawStart);
+  const breakEnd = timeParts(rawEnd);
+  const breakStartMinute = breakStart.hour * 60 + breakStart.minute;
+  const breakEndMinute = breakEnd.hour * 60 + breakEnd.minute;
+  return startMinute < breakEndMinute && endMinute > breakStartMinute;
+}
 
 async function buildSlots(env: PhoneWorkspaceEnv, companyId: string, doctorId: string): Promise<Row[]> {
   const doctors = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=id,branch_id,name,specialty&limit=1`);
   if (!doctors[0]) throw new Error('Врач не найден в выбранной клинике');
-  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,slot_minutes&order=weekday.asc,start_time.asc`);
+  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,break_start,break_end,slot_minutes&order=weekday.asc,start_time.asc`);
   if (!schedules.length) return [];
 
   const now = new Date();
@@ -158,12 +169,14 @@ async function buildSlots(env: PhoneWorkspaceEnv, companyId: string, doctorId: s
       let cursor = start.hour * 60 + start.minute;
       const endMinutes = end.hour * 60 + end.minute;
       while (cursor + slotMinutes <= endMinutes) {
+        const slotEndMinute = cursor + slotMinutes;
         const startsAt = localIso(date, Math.floor(cursor / 60), cursor % 60);
         const startsDate = new Date(startsAt);
         const endsDate = new Date(startsDate.getTime() + slotMinutes * 60_000);
         const occupied = appointments.some((row) => overlaps(startsDate, endsDate, row));
         const blocked = blocks.some((row) => overlaps(startsDate, endsDate, row));
-        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked) {
+        const onBreak = overlapsScheduleBreak(cursor, slotEndMinute, schedule);
+        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked && !onBreak) {
           result.push({ id: startsAt, starts_at: startsAt, ends_at: endsDate.toISOString(), slot_minutes: slotMinutes });
         }
         cursor += slotMinutes;
