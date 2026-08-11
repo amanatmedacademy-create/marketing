@@ -20,6 +20,7 @@ import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 import { handleTenantDataApi } from './tenantDataApi';
 import { handleGrowthEngine } from './growthEngine';
+import { handlePhoneWorkspace } from './phoneWorkspace';
 import { zadarmaRequest } from './zadarmaTelephony';
 import { handleZadarmaWebhookSetup } from './zadarmaWebhookSetup';
 import { handleTelephonySettings } from './telephonySettings';
@@ -161,6 +162,8 @@ export default {
       if (zadarmaWebhookSetup) return zadarmaWebhookSetup;
       const telephonySettings = await handleTelephonySettings(request, runtimeEnv, url);
       if (telephonySettings) return telephonySettings;
+      const phoneWorkspace = await handlePhoneWorkspace(request, runtimeEnv, url);
+      if (phoneWorkspace) return phoneWorkspace;
       if (url.pathname === '/api/health') return json({ ok: true, service: 'amanat-marketing-api', supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname === '/api/exchange-rates' && request.method === 'GET') return handleRates(request, runtimeEnv);
       if (url.pathname === '/api/web-analytics' && request.method === 'GET') {
