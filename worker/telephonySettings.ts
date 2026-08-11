@@ -82,7 +82,7 @@ async function saveSettings(request: Request, env: TelephonySettingsEnv): Promis
 }
 
 export async function handleTelephonySettings(request: Request, env: TelephonySettingsEnv, url: URL): Promise<Response | null> {
-  if (url.pathname !== '/api/telephony/settings') return null;
+  if (!['/api/telephony/settings', '/api/integrations/zadarma/telephony-settings'].includes(url.pathname)) return null;
   if (request.method === 'GET') return json({ settings: await getSettings(env) });
   if (request.method === 'PUT') return saveSettings(request, env);
   return json({ error: 'Method not allowed' }, 405);
