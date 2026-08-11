@@ -17,6 +17,7 @@ import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import Calls from './pages/Calls';
+import PhoneWorkspacePage from './pages/PhoneWorkspacePage';
 import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
@@ -44,6 +45,7 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
+    { to: '/phone', label: 'Phone Workspace', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
@@ -111,6 +113,7 @@ function Shell() {
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
+        <Route path="/phone" element={guard('communications.calls', <PhoneWorkspacePage/>)} />
         <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
