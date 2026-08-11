@@ -21,6 +21,7 @@ import './imds-strict-theme.css';
 import './imds-screen-normalization.css';
 import './imds-chart-normalization.css';
 import './imds-exact-background.css';
+import './mobile-responsive.css';
 
 function Root() {
   if (window.location.pathname === '/operations') {
