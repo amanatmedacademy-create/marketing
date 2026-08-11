@@ -1,0 +1,13 @@
+/* Targeted overrides for legacy inline/presentation colors. */
+.v36-source:nth-of-type(7n+1)>i,.v36-bar:nth-of-type(7n+1)>i>em{background:var(--imds-primary)!important}
+.v36-source:nth-of-type(7n+2)>i,.v36-bar:nth-of-type(7n+2)>i>em{background:var(--imds-blue)!important}
+.v36-source:nth-of-type(7n+3)>i,.v36-bar:nth-of-type(7n+3)>i>em{background:var(--imds-success)!important}
+.v36-source:nth-of-type(7n+4)>i,.v36-bar:nth-of-type(7n+4)>i>em{background:var(--imds-warning)!important}
+.v36-source:nth-of-type(7n+5)>i,.v36-bar:nth-of-type(7n+5)>i>em{background:var(--imds-primary-strong)!important}
+.v36-source:nth-of-type(7n+6)>i,.v36-bar:nth-of-type(7n+6)>i>em{background:var(--imds-text-soft)!important}
+.v36-source:nth-of-type(7n)>i,.v36-bar:nth-of-type(7n)>i>em{background:var(--imds-muted)!important}
+.v36-dashboard .recharts-line-curve[stroke="#2563eb"],.v36-dashboard .recharts-line-curve[stroke="#0ea5e9"],.v36-dashboard .recharts-line-curve[stroke="#8b5cf6"]{stroke:var(--imds-primary)!important}
+.v36-dashboard .recharts-line-curve[stroke="#22c55e"]{stroke:var(--imds-success)!important}
+.v36-dashboard .recharts-bar-rectangle path[fill="#1e3a5f"]{fill:var(--imds-blue)!important;opacity:.48}
+.marketing-content svg[stroke="#7c3aed"],.marketing-content svg[stroke="#8b5cf6"],.marketing-content svg[stroke="#ec4899"]{stroke:var(--imds-primary)!important}
+.marketing-content svg[fill="#7c3aed"],.marketing-content svg[fill="#8b5cf6"],.marketing-content svg[fill="#ec4899"]{fill:var(--imds-primary)!important}
