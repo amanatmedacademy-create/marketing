@@ -221,8 +221,8 @@ async function createAppointment(request: Request, env: PhoneWorkspaceEnv): Prom
   if (!branch || !doctor) return json({ error: 'Филиал или врач не принадлежат выбранной клинике' }, 404);
   if (!slot) return json({ error: 'Выбранное время уже недоступно. Обновите слоты.' }, 409);
 
-  const call = callRows[0] || null;
-  let lead = leadRows[0] || null;
+  const call: Row | null = callRows[0] ?? null;
+  let lead: Row | null = leadRows[0] ?? null;
   if (!lead && call) lead = await findLead(env, companyId, call);
   const patientName = text(body.patientName) || text(lead?.name) || text(call?.client_name) || 'Пациент';
   const phone = normalizePhone(text(body.phone) || text(lead?.phone) || text(call?.client_phone));
