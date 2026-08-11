@@ -14,7 +14,24 @@
 
 .marketing-nav-backdrop{display:none}
 
+/* imds-exact-background.css ставит .marketing-shell>aside position:relative
+   !important ради фоновых слоёв — это ломает и sticky-сайдбар на десктопе,
+   и fixed-drawer на мобильных (сайдбар остаётся в потоке первым grid-рядом
+   в 100vh: пустой первый экран, меню в нём недоступно). Возвращаем
+   правильные режимы с той же важностью — этот файл импортируется последним. */
+@media (min-width: 901px){
+  .marketing-shell>aside{position:sticky!important;top:0!important}
+}
+
 @media (max-width: 900px){
+  .marketing-shell>aside{
+    position:fixed!important;
+    top:0!important;
+    bottom:0!important;
+    height:100dvh!important;
+    z-index:70!important;
+  }
+
   .marketing-nav-backdrop{
     display:block;
     position:fixed;
