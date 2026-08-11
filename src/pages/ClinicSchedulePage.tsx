@@ -1,159 +1,135 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MapPin, Plus, RefreshCw, Stethoscope, UserRound, XCircle } from 'lucide-react';
-import { useAuth } from '../components/AuthGate';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Search, X } from 'lucide-react';
 import '../clinic-schedule.css';
 
 type Branch = { id: string; name: string; address?: string | null; active: boolean; sort_order: number };
 type Doctor = { id: string; branch_id: string; name: string; specialty?: string | null; active: boolean; sort_order: number };
 type Schedule = { id: string; doctor_id: string; weekday: number; start_time: string; end_time: string; slot_minutes: number; active: boolean };
-type Appointment = { id: string; branch_id: string; doctor_id: string; starts_at: string; ends_at: string; patient_name: string; phone: string; status: 'BOOKED'|'CONFIRMED'|'COMPLETED'|'CANCELLED'|'NO_SHOW'; source?: string | null };
-type Snapshot = { branches: Branch[]; doctors: Doctor[]; schedules: Schedule[]; appointments: Appointment[] };
+type Patient = { id: string; name: string; phone?: string | null };
+type AppointmentStatus = 'BOOKED'|'CONFIRMED'|'COMPLETED'|'CANCELLED'|'NO_SHOW';
+type Appointment = { id: string; branch_id: string; doctor_id: string; lead_id?: string | null; patient_id?: string | null; starts_at: string; ends_at: string; patient_name: string; phone: string; status: AppointmentStatus; source?: string | null; metadata?: Record<string, unknown> | null };
+type Snapshot = { branches: Branch[]; doctors: Doctor[]; schedules: Schedule[]; appointments: Appointment[]; patients: Patient[]; timezone: string };
+type Draft = { id?: string; doctorId: string; patientId: string; patientName: string; phone: string; date: string; time: string; duration: number; note: string };
 
-const weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-const statusLabels: Record<Appointment['status'], string> = { BOOKED: 'Новая', CONFIRMED: 'Подтверждена', COMPLETED: 'Завершена', CANCELLED: 'Отменена', NO_SHOW: 'Неявка' };
-const dt = (value: string) => new Date(value).toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+type Toast = { id: number; message: string; tone: 'ok'|'warn'|'err' };
 
-async function api<T>(init?: RequestInit): Promise<T> {
-  const response = await fetch('/api/clinic-schedule', { cache: 'no-store', ...init, headers: { accept: 'application/json', 'content-type': 'application/json', ...init?.headers } });
+const STATUS_LABELS: Record<AppointmentStatus,string> = { BOOKED:'Записан', CONFIRMED:'Подтверждён', COMPLETED:'Выполнено', CANCELLED:'Отменён', NO_SHOW:'Неявка' };
+const STEPS = [60,30,15] as const;
+const WORKDAY_START = 8 * 60;
+const WORKDAY_END = 21 * 60;
+const SLOT_HEIGHT = 50;
+
+function dateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+function addDays(key: string, amount: number) { const d = new Date(`${key}T12:00:00`); d.setDate(d.getDate() + amount); return dateKey(d); }
+function minutes(value: string) { const d = new Date(value); return d.getHours() * 60 + d.getMinutes(); }
+function minuteLabel(value: number) { return `${String(Math.floor(value / 60)).padStart(2,'0')}:${String(value % 60).padStart(2,'0')}`; }
+function timeLabel(value: string) { return new Date(value).toLocaleTimeString('ru-KZ',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Almaty'}); }
+function fullDate(key: string) { return new Date(`${key}T12:00:00`).toLocaleDateString('ru-KZ',{weekday:'short',day:'numeric',month:'long'}); }
+function appointmentIso(key: string, time: string) { return new Date(`${key}T${time}:00+05:00`).toISOString(); }
+function durationMinutes(item: Appointment) { return Math.max(15, Math.round((new Date(item.ends_at).getTime() - new Date(item.starts_at).getTime()) / 60000)); }
+function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0,2).map((x)=>x[0]?.toUpperCase()).join('') || '?'; }
+
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { cache:'no-store', ...init, headers:{ accept:'application/json','content-type':'application/json',...init?.headers } });
   const payload = await response.json().catch(() => ({})) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
   return payload;
 }
 
+function monthDays(current: string) {
+  const selected = new Date(`${current}T12:00:00`);
+  const first = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
+  const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  return Array.from({length:42},(_,i)=>{ const d=new Date(start); d.setDate(start.getDate()+i); return { key:dateKey(d), day:d.getDate(), other:d.getMonth()!==selected.getMonth() }; });
+}
+
 export default function ClinicSchedulePage() {
-  const { user } = useAuth();
-  const admin = user.role === 'administrator';
-  const [data, setData] = useState<Snapshot>({ branches: [], doctors: [], schedules: [], appointments: [] });
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState('');
-  const [message, setMessage] = useState('');
-  const [branchName, setBranchName] = useState('');
-  const [branchAddress, setBranchAddress] = useState('');
-  const [doctorBranch, setDoctorBranch] = useState('');
-  const [doctorName, setDoctorName] = useState('');
-  const [specialty, setSpecialty] = useState('');
-  const [scheduleDoctor, setScheduleDoctor] = useState('');
-  const [weekday, setWeekday] = useState(1);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
-  const [slotMinutes, setSlotMinutes] = useState(30);
+  const [selectedDate,setSelectedDate] = useState(dateKey(new Date()));
+  const [data,setData] = useState<Snapshot>({branches:[],doctors:[],schedules:[],appointments:[],patients:[],timezone:'Asia/Almaty'});
+  const [loading,setLoading] = useState(true);
+  const [query,setQuery] = useState('');
+  const [doctorFilter,setDoctorFilter] = useState('');
+  const [step,setStep] = useState<(typeof STEPS)[number]>(30);
+  const [selected,setSelected] = useState<Appointment|null>(null);
+  const [draft,setDraft] = useState<Draft|null>(null);
+  const [saving,setSaving] = useState(false);
+  const [draggedId,setDraggedId] = useState('');
+  const [toasts,setToasts] = useState<Toast[]>([]);
+  const [month,setMonth] = useState(()=>dateKey(new Date()));
+  const scrollRef = useRef<HTMLDivElement|null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const toast = (message:string,tone:Toast['tone']='ok') => { const id=Date.now()+Math.random(); setToasts((x)=>[...x,{id,message,tone}]); window.setTimeout(()=>setToasts((x)=>x.filter((t)=>t.id!==id)),3200); };
+  const load = async () => { setLoading(true); try { const next=await api<Snapshot>(`/api/clinic-schedule?date=${selectedDate}`); setData(next); setSelected((current)=>current ? next.appointments.find((x)=>x.id===current.id) || null : null); } catch(error) { toast(error instanceof Error ? error.message : String(error),'err'); } finally { setLoading(false); } };
+  useEffect(()=>{ void load(); },[selectedDate]);
+  useEffect(()=>{ setMonth(selectedDate); },[selectedDate]);
+
+  const activeDoctors = useMemo(()=>data.doctors.filter((x)=>x.active && (!doctorFilter || x.id===doctorFilter)),[data.doctors,doctorFilter]);
+  const normalizedQuery=query.trim().toLowerCase();
+  const appointments=useMemo(()=>data.appointments.filter((x)=>!normalizedQuery || `${x.patient_name} ${x.phone}`.toLowerCase().includes(normalizedQuery)),[data.appointments,normalizedQuery]);
+  const timeSlots=useMemo(()=>{ const out:number[]=[]; for(let m=WORKDAY_START;m<WORKDAY_END;m+=step) out.push(m); return out; },[step]);
+  const dayAppointmentsByDoctor=useMemo(()=>new Map(activeDoctors.map((doctor)=>[doctor.id,appointments.filter((x)=>x.doctor_id===doctor.id)])),[activeDoctors,appointments]);
+  const calendar=useMemo(()=>monthDays(month),[month]);
+  const appointmentDays=useMemo(()=>new Set(data.appointments.map((x)=>dateKey(new Date(x.starts_at)))),[data.appointments]);
+  const counters=useMemo(()=>({today:new Set(data.appointments.map((x)=>x.patient_name)).size,arrived:data.appointments.filter((x)=>x.status==='CONFIRMED').length,completed:data.appointments.filter((x)=>x.status==='COMPLETED').length,cancelled:data.appointments.filter((x)=>x.status==='CANCELLED'||x.status==='NO_SHOW').length}),[data.appointments]);
+
+  const createDraft=(doctorId:string,minute:number)=>setDraft({doctorId,patientId:'',patientName:'',phone:'',date:selectedDate,time:minuteLabel(minute),duration:30,note:''});
+  const editDraft=(item:Appointment)=>setDraft({id:item.id,doctorId:item.doctor_id,patientId:item.patient_id||'',patientName:item.patient_name,phone:item.phone||'',date:dateKey(new Date(item.starts_at)),time:timeLabel(item.starts_at),duration:durationMinutes(item),note:typeof item.metadata?.note==='string'?item.metadata.note:''});
+
+  const saveDraft=async()=>{
+    if(!draft) return;
+    if(!draft.doctorId || !draft.patientName.trim()) { toast('Укажите специалиста и пациента','warn'); return; }
+    setSaving(true);
     try {
-      const next = await api<Snapshot>();
-      setData(next);
-      setDoctorBranch((value) => value || next.branches.find((x) => x.active)?.id || '');
-      setScheduleDoctor((value) => value || next.doctors.find((x) => x.active)?.id || '');
-      setMessage('');
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    finally { setLoading(false); }
+      const startsAt=appointmentIso(draft.date,draft.time); const endsAt=new Date(new Date(startsAt).getTime()+draft.duration*60000).toISOString();
+      await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify(draft.id ? {action:'update_appointment',id:draft.id,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,note:draft.note} : {action:'create_appointment',doctor_id:draft.doctorId,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,starts_at:startsAt,ends_at:endsAt,note:draft.note})});
+      if(draft.id) {
+        const original=data.appointments.find((x)=>x.id===draft.id);
+        if(original && (original.doctor_id!==draft.doctorId || timeLabel(original.starts_at)!==draft.time || dateKey(new Date(original.starts_at))!==draft.date || durationMinutes(original)!==draft.duration)) {
+          await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify({action:'move_appointment',id:draft.id,doctor_id:draft.doctorId,starts_at:startsAt,ends_at:endsAt})});
+        }
+      }
+      setDraft(null); toast(draft.id?'Запись обновлена':'Запись создана'); await load();
+    } catch(error) { toast(error instanceof Error?error.message:String(error),'err'); } finally { setSaving(false); }
   };
 
-  useEffect(() => { void load(); }, []);
+  const changeStatus=async(item:Appointment,status:AppointmentStatus)=>{ try { await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify({action:'set_appointment_status',id:item.id,status})}); toast(`Статус: ${STATUS_LABELS[status]}`); await load(); } catch(error){toast(error instanceof Error?error.message:String(error),'err');} };
+  const remove=async(item:Appointment)=>{ if(!window.confirm('Удалить запись без возможности восстановления?')) return; try { await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify({action:'delete_appointment',id:item.id})}); setSelected(null); toast('Запись удалена'); await load(); } catch(error){toast(error instanceof Error?error.message:String(error),'err');} };
+  const move=async(item:Appointment,doctorId:string,minute:number)=>{ const startsAt=appointmentIso(selectedDate,minuteLabel(minute)); const endsAt=new Date(new Date(startsAt).getTime()+durationMinutes(item)*60000).toISOString(); try { await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify({action:'move_appointment',id:item.id,doctor_id:doctorId,starts_at:startsAt,ends_at:endsAt})}); toast('Запись перенесена'); await load(); } catch(error){toast(error instanceof Error?error.message:String(error),'err');} };
 
-  const action = async (payload: Record<string, unknown>, key: string) => {
-    setBusy(key); setMessage('');
-    try {
-      await api({ method: 'POST', body: JSON.stringify(payload) });
-      await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(''); }
-  };
-
-  const activeBranches = data.branches.filter((x) => x.active);
-  const activeDoctors = data.doctors.filter((x) => x.active);
-  const grouped = useMemo(() => weekdays.map((label, day) => ({ label, day, rows: data.schedules.filter((x) => x.weekday === day && x.active) })), [data.schedules]);
-  const today = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Almaty', weekday: 'short' }).format(new Date());
-  const todayIndex = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(today);
-
-  return <div className="clinic-schedule">
-    <header className="clinic-schedule__header">
-      <div><span>IMDS OPERATIONS</span><h1>Clinic Schedule</h1><p>Единое расписание для Phone Workspace и WhatsApp Flow.</p></div>
-      <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={16}/> Обновить</button>
+  return <div className="mis-schedule-page">
+    <header className="mis-schedule-topbar">
+      <div className="mis-topbar-nav"><button className="today" onClick={()=>setSelectedDate(dateKey(new Date()))}>Сегодня</button><button onClick={()=>setSelectedDate(addDays(selectedDate,-1))}><ChevronLeft size={16}/></button><button onClick={()=>setSelectedDate(addDays(selectedDate,1))}><ChevronRight size={16}/></button><strong>{fullDate(selectedDate)}</strong></div>
+      <div className="mis-topbar-controls"><label className="search"><Search size={15}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Поиск пациента..."/>{query&&<button onClick={()=>setQuery('')}><X size={12}/></button>}</label><select value={doctorFilter} onChange={(e)=>setDoctorFilter(e.target.value)}><option value="">Сотрудник</option>{data.doctors.filter((x)=>x.active).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select><div className="scale">{STEPS.map((x)=><button key={x} className={step===x?'active':''} onClick={()=>setStep(x)}>{x===60?'1 час':`${x} мин`}</button>)}</div></div>
+      <div className="mis-topbar-stats"><div><span>Сегодня</span><b>{counters.today}</b></div><div><span>Пришли</span><b>{counters.arrived}</b></div><div><span>Завершили</span><b>{counters.completed}</b></div><div><span>Отменили</span><b>{counters.cancelled}</b></div></div>
+      <button className="sync" onClick={()=>void load()} title="Синхронизировать"><RefreshCw size={16}/></button>
     </header>
 
-    {message && <div className="clinic-schedule__message">{message}</div>}
-    {loading ? <div className="clinic-schedule__loading"><LoaderCircle className="spin"/> Загружаем расписание…</div> : <>
-      <section className="clinic-schedule__metrics">
-        <article><Building2/><span>Филиалы</span><strong>{activeBranches.length}</strong></article>
-        <article><Stethoscope/><span>Врачи</span><strong>{activeDoctors.length}</strong></article>
-        <article><Clock3/><span>Интервалы</span><strong>{data.schedules.filter((x) => x.active).length}</strong></article>
-        <article><CalendarDays/><span>Будущие записи</span><strong>{data.appointments.filter((x) => ['BOOKED','CONFIRMED'].includes(x.status)).length}</strong></article>
-      </section>
+    <div className="mis-schedule-workspace">
+      <aside className="mis-schedule-sidebar">
+        <section className="mini-calendar"><header><button onClick={()=>{const d=new Date(`${month}T12:00:00`);d.setMonth(d.getMonth()-1);setMonth(dateKey(d));}}>‹</button><strong>{new Date(`${month}T12:00:00`).toLocaleDateString('ru-KZ',{month:'long',year:'numeric'})}</strong><button onClick={()=>{const d=new Date(`${month}T12:00:00`);d.setMonth(d.getMonth()+1);setMonth(dateKey(d));}}>›</button></header><div className="weekdays">{['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((x)=><span key={x}>{x}</span>)}</div><div className="days">{calendar.map((d)=><button key={d.key} onClick={()=>setSelectedDate(d.key)} className={`${d.other?'other':''} ${d.key===selectedDate?'selected':''} ${d.key===dateKey(new Date())?'today':''}`}>{d.day}{appointmentDays.has(d.key)&&<i/>}</button>)}</div></section>
+        <section className="doctor-list"><header><div><span>Специалисты</span><strong>{data.doctors.filter((x)=>x.active).length}</strong></div><small>Выберите одного или всех специалистов</small></header><button className={!doctorFilter?'active':''} onClick={()=>setDoctorFilter('')}><span>Все специалисты</span><b>{data.appointments.length}</b></button><div>{data.doctors.filter((x)=>x.active).map((doctor)=><button key={doctor.id} className={doctorFilter===doctor.id?'active':''} onClick={()=>setDoctorFilter(doctorFilter===doctor.id?'':doctor.id)}><span className="avatar">{initials(doctor.name)}</span><span><strong>{doctor.name}</strong><small>{doctor.specialty||'Специалист'}</small></span><b>{data.appointments.filter((x)=>x.doctor_id===doctor.id).length}</b></button>)}</div></section>
+      </aside>
 
-      <div className="clinic-schedule__layout">
-        <main>
-          <section className="clinic-schedule__panel">
-            <div className="clinic-schedule__panel-head"><div><CalendarDays size={18}/><strong>Недельный график</strong></div><small>Asia/Almaty</small></div>
-            <div className="clinic-schedule__week">
-              {grouped.map((day) => <div key={day.day} className={day.day === todayIndex ? 'today' : ''}>
-                <header>{day.label}{day.day === todayIndex && <span>сегодня</span>}</header>
-                {day.rows.map((row) => {
-                  const doctor = data.doctors.find((x) => x.id === row.doctor_id);
-                  const branch = data.branches.find((x) => x.id === doctor?.branch_id);
-                  return <article key={row.id}><strong>{doctor?.name || 'Врач'}</strong><span>{row.start_time.slice(0,5)}–{row.end_time.slice(0,5)}</span><small>{branch?.name || 'Филиал'} · {row.slot_minutes} мин</small>{admin && <button type="button" onClick={() => void action({ action:'set_active', entity:'schedule', id:row.id, active:false }, `schedule-${row.id}`)}>Отключить</button>}</article>;
-                })}
-                {!day.rows.length && <p>Нет графика</p>}
-              </div>)}
-            </div>
-          </section>
+      <main className="mis-schedule-stage">
+        {loading && <div className="schedule-loading">Загружаем расписание…</div>}
+        <div ref={scrollRef} className={`mis-schedule-scroll step-${step}`}>
+          <div className="mis-schedule-inner" style={{minWidth:52+Math.max(activeDoctors.length,1)*224}}>
+            <div className="staff-header"><div className="time-header">Время</div>{activeDoctors.map((doctor)=><div className="staff-card" key={doctor.id}><span className="avatar">{initials(doctor.name)}</span><span><strong>{doctor.name}</strong><small>{doctor.specialty||'Специалист'}</small><em>● Работает</em></span></div>)}</div>
+            <div className="grid-body" style={{height:timeSlots.length*SLOT_HEIGHT}}><div className="time-column">{timeSlots.map((m)=><div className="time-slot" style={{height:SLOT_HEIGHT}} key={m}><span>{minuteLabel(m)}</span></div>)}</div>{activeDoctors.map((doctor)=><div className={`staff-column ${draggedId?'drag-active':''}`} key={doctor.id}>{timeSlots.map((m)=><button key={m} className="column-slot" style={{height:SLOT_HEIGHT}} onDoubleClick={()=>createDraft(doctor.id,m)} onDragOver={(e)=>e.preventDefault()} onDrop={(e:DragEvent<HTMLButtonElement>)=>{e.preventDefault();const id=draggedId||e.dataTransfer.getData('text/plain');setDraggedId('');const item=data.appointments.find((x)=>x.id===id);if(item) void move(item,doctor.id,m);}}/>)}{(dayAppointmentsByDoctor.get(doctor.id)||[]).map((item)=>{const top=((minutes(item.starts_at)-WORKDAY_START)/step)*SLOT_HEIGHT;const height=Math.max(42,(durationMinutes(item)/step)*SLOT_HEIGHT-6);return <article draggable key={item.id} onDragStart={(e)=>{setDraggedId(item.id);e.dataTransfer.setData('text/plain',item.id)}} onDragEnd={()=>setDraggedId('')} onClick={()=>setSelected(item)} className={`appointment status-${item.status.toLowerCase()} ${normalizedQuery?'highlighted':''}`} style={{top,height}}><div className="appt-head"><strong>{item.patient_name}</strong><span>{timeLabel(item.starts_at)}</span></div><div className="appt-body"><b>{item.source||'Запись'}</b><small>{durationMinutes(item)} мин</small></div></article>})}</div>)}</div>
+          </div>
+        </div>
+      </main>
+    </div>
 
-          <section className="clinic-schedule__panel">
-            <div className="clinic-schedule__panel-head"><div><UserRound size={18}/><strong>Ближайшие записи</strong></div><small>{data.appointments.length}</small></div>
-            <div className="clinic-schedule__appointments">
-              {data.appointments.map((item) => {
-                const doctor = data.doctors.find((x) => x.id === item.doctor_id);
-                const branch = data.branches.find((x) => x.id === item.branch_id);
-                return <article key={item.id}>
-                  <div><strong>{item.patient_name}</strong><small>{item.phone}</small></div>
-                  <div><strong>{dt(item.starts_at)}</strong><small>{doctor?.name || 'Врач'} · {branch?.name || 'Филиал'}</small></div>
-                  <span className={`status status--${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
-                  <div className="clinic-schedule__appointment-actions">
-                    {item.status === 'BOOKED' && <button onClick={() => void action({ action:'set_appointment_status', id:item.id, status:'CONFIRMED' }, `appt-${item.id}`)}><CheckCircle2 size={14}/> Подтвердить</button>}
-                    {(item.status === 'BOOKED' || item.status === 'CONFIRMED') && <button onClick={() => void action({ action:'set_appointment_status', id:item.id, status:'CANCELLED' }, `appt-${item.id}`)}><XCircle size={14}/> Отменить</button>}
-                    {item.status === 'CONFIRMED' && <button onClick={() => void action({ action:'set_appointment_status', id:item.id, status:'COMPLETED' }, `appt-${item.id}`)}>Завершена</button>}
-                    {item.status === 'CONFIRMED' && <button onClick={() => void action({ action:'set_appointment_status', id:item.id, status:'NO_SHOW' }, `appt-${item.id}`)}>Неявка</button>}
-                  </div>
-                </article>;
-              })}
-              {!data.appointments.length && <div className="clinic-schedule__empty">Предстоящих записей пока нет.</div>}
-            </div>
-          </section>
-        </main>
+    {selected && <><button className="drawer-overlay" onClick={()=>setSelected(null)} aria-label="Закрыть"/><aside className="visit-drawer"><header><span className="avatar">{initials(selected.patient_name)}</span><div><h2>{selected.patient_name}</h2><p>{timeLabel(selected.starts_at)} · {new Date(selected.starts_at).toLocaleDateString('ru-KZ',{day:'numeric',month:'long',year:'numeric',timeZone:'Asia/Almaty'})}</p></div><button onClick={()=>setSelected(null)}>×</button></header><div className="visit-summary"><dl><div><dt>Телефон</dt><dd>{selected.phone||'—'}</dd></div><div><dt>Специалист</dt><dd>{data.doctors.find((x)=>x.id===selected.doctor_id)?.name||'—'}</dd></div><div><dt>Время</dt><dd>{timeLabel(selected.starts_at)}–{timeLabel(selected.ends_at)}</dd></div><div><dt>Статус</dt><dd>{STATUS_LABELS[selected.status]}</dd></div></dl></div><div className="visit-status-actions"><button onClick={()=>void changeStatus(selected,'CONFIRMED')}>Пришёл</button><button onClick={()=>void changeStatus(selected,'COMPLETED')}>Выполнено</button><button onClick={()=>void changeStatus(selected,'CANCELLED')}>Отменить</button><button onClick={()=>void changeStatus(selected,'NO_SHOW')}>Неявка</button></div><section><h3>Комментарий к визиту</h3><p>{typeof selected.metadata?.note==='string'&&selected.metadata.note?selected.metadata.note:'Нет комментария'}</p></section><footer><button className="primary" onClick={()=>editDraft(selected)}>Редактировать</button>{selected.phone&&<a href={`https://wa.me/${selected.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer">WhatsApp</a>}<button className="delete" onClick={()=>void remove(selected)}>Удалить визит</button></footer></aside></>}
 
-        <aside>
-          {!admin && <section className="clinic-schedule__panel clinic-schedule__notice"><MapPin size={19}/><div><strong>Режим просмотра</strong><p>Изменять филиалы, врачей и график может администратор клиники.</p></div></section>}
+    {draft && <div className="schedule-modal-overlay" onMouseDown={(e)=>{if(e.target===e.currentTarget&&!saving)setDraft(null)}}><div className="schedule-modal"><header><div><span>{draft.id?'Редактирование записи':'Новая запись'}</span><h2>{draft.patientName||'Выберите пациента'}</h2></div><button onClick={()=>setDraft(null)}>×</button></header><div className="modal-body"><label className="full"><span>Пациент</span><input value={draft.patientName} onChange={(e)=>setDraft({...draft,patientName:e.target.value,patientId:''})} list="schedule-patients" placeholder="ФИО пациента"/><datalist id="schedule-patients">{data.patients.map((p)=><option key={p.id} value={p.name}>{p.phone||''}</option>)}</datalist></label><label><span>Телефон</span><input value={draft.phone} onChange={(e)=>setDraft({...draft,phone:e.target.value})}/></label><label><span>Специалист</span><select value={draft.doctorId} onChange={(e)=>setDraft({...draft,doctorId:e.target.value})}>{data.doctors.filter((x)=>x.active).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label><span>Дата</span><input type="date" value={draft.date} onChange={(e)=>setDraft({...draft,date:e.target.value})}/></label><label><span>Время</span><input type="time" value={draft.time} step={step*60} onChange={(e)=>setDraft({...draft,time:e.target.value})}/></label><label><span>Длительность</span><select value={draft.duration} onChange={(e)=>setDraft({...draft,duration:Number(e.target.value)})}>{[15,30,45,60,90,120].map((x)=><option key={x} value={x}>{x} минут</option>)}</select></label><label className="full"><span>Комментарий</span><textarea value={draft.note} onChange={(e)=>setDraft({...draft,note:e.target.value})}/></label></div><footer><button onClick={()=>setDraft(null)}>Отмена</button><button className="primary" disabled={saving} onClick={()=>void saveDraft()}>{saving?'Сохраняем…':draft.id?'Сохранить изменения':'Создать запись'}</button></footer></div></div>}
 
-          {admin && <>
-            <section className="clinic-schedule__panel clinic-schedule__form">
-              <div className="clinic-schedule__panel-head"><div><Building2 size={18}/><strong>Филиал</strong></div></div>
-              <label><span>Название</span><input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder="Например, Абая"/></label>
-              <label><span>Адрес</span><input value={branchAddress} onChange={(e) => setBranchAddress(e.target.value)} placeholder="Адрес"/></label>
-              <button disabled={!branchName.trim() || !!busy} onClick={() => void action({ action:'save_branch', name:branchName.trim(), address:branchAddress.trim() }, 'branch').then(() => { setBranchName(''); setBranchAddress(''); })}>{busy === 'branch' ? <LoaderCircle className="spin" size={15}/> : <Plus size={15}/>} Добавить филиал</button>
-              <div className="clinic-schedule__entities">{data.branches.map((x) => <div key={x.id}><div><strong>{x.name}</strong><small>{x.address || 'Без адреса'}</small></div><button onClick={() => void action({ action:'set_active', entity:'branch', id:x.id, active:!x.active }, `branch-${x.id}`)}>{x.active ? 'Отключить' : 'Включить'}</button></div>)}</div>
-            </section>
-
-            <section className="clinic-schedule__panel clinic-schedule__form">
-              <div className="clinic-schedule__panel-head"><div><Stethoscope size={18}/><strong>Врач</strong></div></div>
-              <label><span>Филиал</span><select value={doctorBranch} onChange={(e) => setDoctorBranch(e.target.value)}><option value="">Выберите</option>{activeBranches.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-              <label><span>ФИО</span><input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder="ФИО врача"/></label>
-              <label><span>Специализация</span><input value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="Например, стоматолог"/></label>
-              <button disabled={!doctorBranch || !doctorName.trim() || !!busy} onClick={() => void action({ action:'save_doctor', branch_id:doctorBranch, name:doctorName.trim(), specialty:specialty.trim() }, 'doctor').then(() => { setDoctorName(''); setSpecialty(''); })}>{busy === 'doctor' ? <LoaderCircle className="spin" size={15}/> : <Plus size={15}/>} Добавить врача</button>
-              <div className="clinic-schedule__entities">{data.doctors.map((x) => <div key={x.id}><div><strong>{x.name}</strong><small>{x.specialty || 'Без специализации'} · {data.branches.find((b) => b.id === x.branch_id)?.name || 'Филиал'}</small></div><button onClick={() => void action({ action:'set_active', entity:'doctor', id:x.id, active:!x.active }, `doctor-${x.id}`)}>{x.active ? 'Отключить' : 'Включить'}</button></div>)}</div>
-            </section>
-
-            <section className="clinic-schedule__panel clinic-schedule__form">
-              <div className="clinic-schedule__panel-head"><div><Clock3 size={18}/><strong>Интервал работы</strong></div></div>
-              <label><span>Врач</span><select value={scheduleDoctor} onChange={(e) => setScheduleDoctor(e.target.value)}><option value="">Выберите</option>{activeDoctors.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-              <div className="clinic-schedule__row"><label><span>День</span><select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>{weekdays.map((x,i) => <option key={x} value={i}>{x}</option>)}</select></label><label><span>Слот</span><input type="number" min={5} max={240} step={5} value={slotMinutes} onChange={(e) => setSlotMinutes(Number(e.target.value))}/></label></div>
-              <div className="clinic-schedule__row"><label><span>С</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}/></label><label><span>До</span><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}/></label></div>
-              <button disabled={!scheduleDoctor || !startTime || !endTime || !!busy} onClick={() => void action({ action:'save_schedule', doctor_id:scheduleDoctor, weekday, start_time:startTime, end_time:endTime, slot_minutes:slotMinutes }, 'schedule')}>{busy === 'schedule' ? <LoaderCircle className="spin" size={15}/> : <Plus size={15}/>} Добавить интервал</button>
-              <small>Пересекающиеся интервалы одного врача отклоняются. Слоты генерируются на 21 день вперёд.</small>
-            </section>
-          </>}
-        </aside>
-      </div>
-    </>}
+    <div className="schedule-toasts">{toasts.map((t)=><div key={t.id} className={t.tone}>{t.message}</div>)}</div>
   </div>;
 }
