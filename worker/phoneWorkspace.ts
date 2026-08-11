@@ -124,6 +124,12 @@ function weekdayFor(date: string): number { return new Date(`${date}T12:00:00+05
 function localIso(date: string, hour: number, minute: number): string {
   return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+05:00`;
 }
+function overlaps(start: Date, end: Date, row: Row): boolean {
+  const rowStart = new Date(text(row.starts_at));
+  const rowEnd = new Date(text(row.ends_at));
+  if (!Number.isFinite(rowStart.getTime()) || !Number.isFinite(rowEnd.getTime())) return false;
+  return start < rowEnd && end > rowStart;
+}
 
 async function buildSlots(env: PhoneWorkspaceEnv, companyId: string, doctorId: string): Promise<Row[]> {
   const doctors = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=id,branch_id,name,specialty&limit=1`);
@@ -137,8 +143,10 @@ async function buildSlots(env: PhoneWorkspaceEnv, companyId: string, doctorId: s
   const dates = Array.from({ length: 21 }, (_, index) => isoDate(addDays(base, index)));
   const rangeStart = `${dates[0]}T00:00:00+05:00`;
   const rangeEnd = `${dates[dates.length - 1]}T23:59:59+05:00`;
-  const booked = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED)&starts_at=gte.${encodeURIComponent(rangeStart)}&starts_at=lte.${encodeURIComponent(rangeEnd)}&select=starts_at`);
-  const occupied = new Set(booked.map((row) => new Date(text(row.starts_at)).toISOString()));
+  const [appointments, blocks] = await Promise.all([
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED,ARRIVED)&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`),
+    db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`).catch(() => []),
+  ]);
   const result: Row[] = [];
 
   for (const date of dates) {
@@ -152,13 +160,11 @@ async function buildSlots(env: PhoneWorkspaceEnv, companyId: string, doctorId: s
       while (cursor + slotMinutes <= endMinutes) {
         const startsAt = localIso(date, Math.floor(cursor / 60), cursor % 60);
         const startsDate = new Date(startsAt);
-        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied.has(startsDate.toISOString())) {
-          result.push({
-            id: startsAt,
-            starts_at: startsAt,
-            ends_at: new Date(startsDate.getTime() + slotMinutes * 60_000).toISOString(),
-            slot_minutes: slotMinutes,
-          });
+        const endsDate = new Date(startsDate.getTime() + slotMinutes * 60_000);
+        const occupied = appointments.some((row) => overlaps(startsDate, endsDate, row));
+        const blocked = blocks.some((row) => overlaps(startsDate, endsDate, row));
+        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked) {
+          result.push({ id: startsAt, starts_at: startsAt, ends_at: endsDate.toISOString(), slot_minutes: slotMinutes });
         }
         cursor += slotMinutes;
         if (result.length >= 80) return result;
@@ -181,14 +187,7 @@ async function context(env: PhoneWorkspaceEnv, url: URL): Promise<Response> {
     clinicDirectory(env, companyId),
   ]);
   const active = recent.find((row) => text(row.call_direction) === 'INBOUND' && text(row.call_status) === 'PENDING') || null;
-  return json({
-    companyId,
-    activeCall: active,
-    selectedCall,
-    recentCalls: recent,
-    patient: { lead, calls, journey, appointments, tasks },
-    clinic: directory,
-  });
+  return json({ companyId, activeCall: active, selectedCall, recentCalls: recent, patient: { lead, calls, journey, appointments, tasks }, clinic: directory });
 }
 
 async function slots(env: PhoneWorkspaceEnv, url: URL): Promise<Response> {
@@ -242,31 +241,22 @@ async function createAppointment(request: Request, env: PhoneWorkspaceEnv): Prom
     status: 'BOOKED',
     source: 'Phone Workspace',
     flow_token: null,
-    metadata: {
-      service: text(body.service) || null,
-      created_from: 'imds_phone_workspace',
-      call_id: callId || null,
-      pbx_call_id: text(call?.pbx_call_id) || null,
-    },
+    metadata: { service: text(body.service) || null, created_from: 'imds_phone_workspace', call_id: callId || null, pbx_call_id: text(call?.pbx_call_id) || null },
     updated_at: now,
   };
 
   try {
     const created = await db<Row[]>(env, 'waba_clinic_appointments?select=*', {
-      method: 'POST',
-      headers: { prefer: 'return=representation' },
-      body: JSON.stringify(payload),
+      method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload),
     });
     if (callId && call) {
       await db(env, `marketing_calls?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(callId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ appointment_created: true, appointment_at: startsAt, updated_at: now }),
+        method: 'PATCH', body: JSON.stringify({ appointment_created: true, appointment_at: startsAt, updated_at: now }),
       });
     }
     if (leadId) {
       await db(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(leadId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ appointment_at: startsAt, updated_at: now }),
+        method: 'PATCH', body: JSON.stringify({ appointment_at: startsAt, updated_at: now }),
       });
     }
     return json({
@@ -277,9 +267,8 @@ async function createAppointment(request: Request, env: PhoneWorkspaceEnv): Prom
     }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) {
-      return json({ error: 'Это время только что заняли. Выберите другой слот.' }, 409);
-    }
+    if (message.includes('В выбранном времени специалист недоступен')) return json({ error: 'Это время больше недоступно. Выберите другой слот.' }, 409);
+    if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) return json({ error: 'Это время только что заняли. Выберите другой слот.' }, 409);
     throw error;
   }
 }
