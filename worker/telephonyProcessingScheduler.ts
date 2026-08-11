@@ -1,4 +1,5 @@
 import { processMarketingCallTranscription, type CallTranscriptionEnv, type TelephonySettings } from './callTranscription';
+import { materializeCallFollowUpTasks } from './callFollowUpTasks';
 import { hydrateIntegrationEnv } from './credentials';
 import type { Env } from './integrations';
 
@@ -76,7 +77,8 @@ export async function runScheduledTelephonyProcessing(env: TelephonyProcessingSc
           console.error('Scheduled call transcription failed', { companyId, callId, error: error instanceof Error ? error.message : String(error) });
         }
       }
-      results.push({ companyId, ok: true, scanned: calls.length, eligible: candidates.length, completed, failed });
+      const followUps = await materializeCallFollowUpTasks(runtime, companyId);
+      results.push({ companyId, ok: true, scanned: calls.length, eligible: candidates.length, completed, failed, followUps });
     } catch (error) {
       results.push({ companyId, ok: false, error: error instanceof Error ? error.message : String(error) });
     }
