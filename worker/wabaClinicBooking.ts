@@ -34,62 +34,43 @@ function option(id: string, title: string, description?: string): Row {
   return { id, title, ...(description ? { description } : {}) };
 }
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date.getTime());
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
-function dateLabel(date: string): string {
-  return new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', weekday: 'short', day: '2-digit', month: 'short' })
-    .format(new Date(`${date}T12:00:00+05:00`));
-}
-
-function timeLabel(iso: string): string {
-  return new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-    .format(new Date(iso));
-}
-
+function isoDate(date: Date): string { return date.toISOString().slice(0, 10); }
+function addDays(date: Date, days: number): Date { const next = new Date(date.getTime()); next.setUTCDate(next.getUTCDate() + days); return next; }
+function dateLabel(date: string): string { return new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', weekday: 'short', day: '2-digit', month: 'short' }).format(new Date(`${date}T12:00:00+05:00`)); }
+function timeLabel(iso: string): string { return new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); }
 function timeParts(value: string): { hour: number; minute: number } {
   const [hour, minute] = value.split(':').map((part) => Number(part));
   return { hour: Number.isFinite(hour) ? hour : 0, minute: Number.isFinite(minute) ? minute : 0 };
 }
-
-function localIso(date: string, hour: number, minute: number): string {
-  return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+05:00`;
-}
-
-function weekdayFor(date: string): number {
-  return new Date(`${date}T12:00:00+05:00`).getUTCDay();
-}
-
+function localIso(date: string, hour: number, minute: number): string { return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+05:00`; }
+function weekdayFor(date: string): number { return new Date(`${date}T12:00:00+05:00`).getUTCDay(); }
 function overlaps(start: Date, end: Date, row: Row): boolean {
   const rowStart = new Date(text(row.starts_at));
   const rowEnd = new Date(text(row.ends_at));
   if (!Number.isFinite(rowStart.getTime()) || !Number.isFinite(rowEnd.getTime())) return false;
   return start < rowEnd && end > rowStart;
 }
+function overlapsScheduleBreak(startMinute: number, endMinute: number, schedule: Row): boolean {
+  const rawStart = text(schedule.break_start);
+  const rawEnd = text(schedule.break_end);
+  if (!rawStart || !rawEnd) return false;
+  const breakStart = timeParts(rawStart);
+  const breakEnd = timeParts(rawEnd);
+  const breakStartMinute = breakStart.hour * 60 + breakStart.minute;
+  const breakEndMinute = breakEnd.hour * 60 + breakEnd.minute;
+  return startMinute < breakEndMinute && endMinute > breakStartMinute;
+}
 
 async function branches(env: WabaClinicBookingEnv, companyId: string): Promise<Row[]> {
-  return db<Row[]>(env,
-    `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&active=eq.true&select=id,name,address&order=sort_order.asc,name.asc`,
-  );
+  return db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&active=eq.true&select=id,name,address&order=sort_order.asc,name.asc`);
 }
 
 async function doctors(env: WabaClinicBookingEnv, companyId: string, branchId: string): Promise<Row[]> {
-  return db<Row[]>(env,
-    `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&branch_id=eq.${encodeURIComponent(branchId)}&active=eq.true&select=id,name,specialty&order=sort_order.asc,name.asc`,
-  );
+  return db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&branch_id=eq.${encodeURIComponent(branchId)}&active=eq.true&select=id,name,specialty&order=sort_order.asc,name.asc`);
 }
 
 async function buildSlots(env: WabaClinicBookingEnv, companyId: string, doctorId: string): Promise<Row[]> {
-  const schedules = await db<Row[]>(env,
-    `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,slot_minutes&order=weekday.asc,start_time.asc`,
-  );
+  const schedules = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&active=eq.true&select=weekday,start_time,end_time,break_start,break_end,slot_minutes&order=weekday.asc,start_time.asc`);
   if (!schedules.length) return [];
 
   const now = new Date();
@@ -99,12 +80,8 @@ async function buildSlots(env: WabaClinicBookingEnv, companyId: string, doctorId
   const rangeStart = `${dates[0]}T00:00:00+05:00`;
   const rangeEnd = `${dates[dates.length - 1]}T23:59:59+05:00`;
   const [appointments, blocks] = await Promise.all([
-    db<Row[]>(env,
-      `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED,ARRIVED)&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`,
-    ),
-    db<Row[]>(env,
-      `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`,
-    ).catch(() => []),
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&status=in.(BOOKED,CONFIRMED,ARRIVED)&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`),
+    db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&doctor_id=eq.${encodeURIComponent(doctorId)}&starts_at=lt.${encodeURIComponent(rangeEnd)}&ends_at=gt.${encodeURIComponent(rangeStart)}&select=starts_at,ends_at`).catch(() => []),
   ]);
   const output: Row[] = [];
 
@@ -117,14 +94,16 @@ async function buildSlots(env: WabaClinicBookingEnv, companyId: string, doctorId
       let cursor = start.hour * 60 + start.minute;
       const endMinutes = end.hour * 60 + end.minute;
       while (cursor + slotMinutes <= endMinutes) {
+        const slotEndMinute = cursor + slotMinutes;
         const startsAt = localIso(date, Math.floor(cursor / 60), cursor % 60);
         const startsDate = new Date(startsAt);
         const endsDate = new Date(startsDate.getTime() + slotMinutes * 60 * 1000);
         const occupied = appointments.some((row) => overlaps(startsDate, endsDate, row));
         const blocked = blocks.some((row) => overlaps(startsDate, endsDate, row));
-        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked) {
+        const onBreak = overlapsScheduleBreak(cursor, slotEndMinute, schedule);
+        if (startsDate.getTime() > now.getTime() + 15 * 60 * 1000 && !occupied && !blocked && !onBreak) {
           output.push(option(startsAt, timeLabel(startsAt), `${dateLabel(date)} · ${slotMinutes} мин`));
-          (output[output.length - 1] as Row).ends_at = endsDate.toISOString();
+          output[output.length - 1].ends_at = endsDate.toISOString();
         }
         cursor += slotMinutes;
         if (output.length >= 60) return output;
@@ -147,15 +126,8 @@ export async function handleClinicBookingExchange(env: WabaClinicBookingEnv, com
 
   if (action === 'init') {
     const rows = await branches(env, companyId);
-    return {
-      screen: 'APPOINTMENT',
-      data: {
-        branches: rows.map((row) => option(text(row.id), text(row.name), text(row.address) || undefined)),
-        has_branches: rows.length > 0,
-      },
-    };
+    return { screen: 'APPOINTMENT', data: { branches: rows.map((row) => option(text(row.id), text(row.name), text(row.address) || undefined)), has_branches: rows.length > 0 } };
   }
-
   if (action !== 'data_exchange') return null;
 
   if (screen === 'APPOINTMENT') {
@@ -163,58 +135,31 @@ export async function handleClinicBookingExchange(env: WabaClinicBookingEnv, com
     const phone = text(data.phone);
     const service = text(data.service);
     const branchId = text(data.branch_id);
-    if (!name || !phone || !service || !branchId) {
-      return { screen: 'APPOINTMENT', data: { error_message: 'Заполните имя, телефон, услугу и филиал.' } };
-    }
+    if (!name || !phone || !service || !branchId) return { screen: 'APPOINTMENT', data: { error_message: 'Заполните имя, телефон, услугу и филиал.' } };
     const rows = await doctors(env, companyId, branchId);
-    return {
-      screen: 'DOCTOR',
-      data: {
-        ...carry(data, ['name', 'phone', 'service', 'branch_id']),
-        doctors: rows.map((row) => option(text(row.id), text(row.name), text(row.specialty) || undefined)),
-        has_doctors: rows.length > 0,
-      },
-    };
+    return { screen: 'DOCTOR', data: { ...carry(data, ['name', 'phone', 'service', 'branch_id']), doctors: rows.map((row) => option(text(row.id), text(row.name), text(row.specialty) || undefined)), has_doctors: rows.length > 0 } };
   }
 
   if (screen === 'DOCTOR') {
     const doctorId = text(data.doctor_id);
     if (!doctorId) return { screen: 'DOCTOR', data: { ...data, error_message: 'Выберите врача.' } };
     const slots = await buildSlots(env, companyId, doctorId);
-    return {
-      screen: 'SLOT',
-      data: {
-        ...carry(data, ['name', 'phone', 'service', 'branch_id', 'doctor_id']),
-        slots,
-        has_slots: slots.length > 0,
-      },
-    };
+    return { screen: 'SLOT', data: { ...carry(data, ['name', 'phone', 'service', 'branch_id', 'doctor_id']), slots, has_slots: slots.length > 0 } };
   }
-
   return null;
 }
 
-async function appointmentDisplayNames(
-  env: WabaClinicBookingEnv,
-  companyId: string,
-  branchId: string,
-  doctorId: string,
-): Promise<{ branchName: string; doctorName: string }> {
+async function appointmentDisplayNames(env: WabaClinicBookingEnv, companyId: string, branchId: string, doctorId: string): Promise<{ branchName: string; doctorName: string }> {
   const [branchRows, doctorRows] = await Promise.all([
     db<Row[]>(env, `waba_clinic_branches?id=eq.${encodeURIComponent(branchId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,name&limit=1`),
     db<Row[]>(env, `waba_clinic_doctors?id=eq.${encodeURIComponent(doctorId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,name&limit=1`),
   ]);
-  return {
-    branchName: text(branchRows[0]?.name) || 'Филиал',
-    doctorName: text(doctorRows[0]?.name) || 'Врач',
-  };
+  return { branchName: text(branchRows[0]?.name) || 'Филиал', doctorName: text(doctorRows[0]?.name) || 'Врач' };
 }
 
 async function existingAppointmentByFlowToken(env: WabaClinicBookingEnv, companyId: string, flowToken: string): Promise<Row | null> {
   if (!flowToken) return null;
-  const rows = await db<Row[]>(env,
-    `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&flow_token=eq.${encodeURIComponent(flowToken)}&select=id,branch_id,doctor_id,starts_at,ends_at,status&limit=1`,
-  );
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&flow_token=eq.${encodeURIComponent(flowToken)}&source=neq.MIS&select=id,branch_id,doctor_id,starts_at,ends_at,status&limit=1`);
   return rows[0] || null;
 }
 
@@ -229,12 +174,7 @@ export async function createClinicAppointment(
   const existing = await existingAppointmentByFlowToken(env, companyId, flowToken);
   if (existing) {
     const names = await appointmentDisplayNames(env, companyId, text(existing.branch_id), text(existing.doctor_id));
-    return {
-      appointmentId: text(existing.id),
-      startsAt: text(existing.starts_at),
-      endsAt: text(existing.ends_at),
-      ...names,
-    };
+    return { appointmentId: text(existing.id), startsAt: text(existing.starts_at), endsAt: text(existing.ends_at), ...names };
   }
 
   const branchId = text(data.branch_id);
@@ -269,85 +209,44 @@ export async function createClinicAppointment(
     updated_at: new Date().toISOString(),
   };
   try {
-    const rows = await db<Row[]>(env, 'waba_clinic_appointments?select=id,starts_at,ends_at', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    return {
-      appointmentId: text(rows[0]?.id),
-      startsAt: text(rows[0]?.starts_at) || startsAt,
-      endsAt: text(rows[0]?.ends_at) || endsAt,
-      branchName: text(branch.name),
-      doctorName: text(doctor.name),
-    };
+    const rows = await db<Row[]>(env, 'waba_clinic_appointments?select=id,starts_at,ends_at', { method: 'POST', body: JSON.stringify(payload) });
+    return { appointmentId: text(rows[0]?.id), startsAt: text(rows[0]?.starts_at) || startsAt, endsAt: text(rows[0]?.ends_at) || endsAt, branchName: text(branch.name), doctorName: text(doctor.name) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('waba_clinic_appointments_flow_token_uidx')) {
       const retry = await existingAppointmentByFlowToken(env, companyId, flowToken);
       if (retry) {
         const names = await appointmentDisplayNames(env, companyId, text(retry.branch_id), text(retry.doctor_id));
-        return {
-          appointmentId: text(retry.id),
-          startsAt: text(retry.starts_at),
-          endsAt: text(retry.ends_at),
-          ...names,
-        };
+        return { appointmentId: text(retry.id), startsAt: text(retry.starts_at), endsAt: text(retry.ends_at), ...names };
       }
     }
-    if (message.includes('В выбранном времени специалист недоступен')) {
-      throw new Error('Это время больше недоступно. Вернитесь и выберите другой слот.');
-    }
-    if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) {
-      throw new Error('Это время только что заняли. Вернитесь и выберите другой слот.');
-    }
+    if (message.includes('В выбранном времени специалист недоступен')) throw new Error('Это время больше недоступно. Вернитесь и выберите другой слот.');
+    if (message.includes('waba_clinic_appointments_doctor_slot_uidx') || message.includes('duplicate key')) throw new Error('Это время только что заняли. Вернитесь и выберите другой слот.');
     throw error;
   }
 }
 
 const APPOINTMENT_STATUSES = new Set(['BOOKED', 'CONFIRMED', 'ARRIVED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
 
-async function setAppointmentStatus(
-  request: Request,
-  env: WabaClinicBookingEnv,
-  companyId: string,
-  id: string,
-  nextStatus: string,
-): Promise<Response> {
+async function setAppointmentStatus(request: Request, env: WabaClinicBookingEnv, companyId: string, id: string, nextStatus: string): Promise<Response> {
   if (!id || !APPOINTMENT_STATUSES.has(nextStatus)) return json({ error: 'Некорректный статус записи' }, 400);
-  const rows = await db<Row[]>(env,
-    `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone&limit=1`,
-  );
+  const rows = await db<Row[]>(env, `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,source,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone&limit=1`);
   const current = rows[0];
   if (!current) return json({ error: 'Запись не найдена' }, 404);
+  if (text(current.source).toUpperCase() === 'MIS' || record(current.metadata).external_busy === true) return json({ error: 'Запись управляется в МИС и недоступна для изменения в Marketing' }, 409);
 
   const previousStatus = text(current.status).toUpperCase() || 'BOOKED';
   const metadata = record(current.metadata);
   const priorHistory = Array.isArray(metadata.status_history) ? metadata.status_history : [];
   const changedAt = new Date().toISOString();
   const changedBy = text(request.headers.get('x-amanat-auth-user')) || null;
-  const nextMetadata = {
-    ...metadata,
-    status_history: [
-      ...priorHistory,
-      { from: previousStatus, to: nextStatus, at: changedAt, by: changedBy },
-    ].slice(-50),
-  };
-  const updated = await db<Row[]>(env,
-    `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ status: nextStatus, metadata: nextMetadata, updated_at: changedAt }),
-    },
-  );
+  const nextMetadata = { ...metadata, status_history: [...priorHistory, { from: previousStatus, to: nextStatus, at: changedAt, by: changedBy }].slice(-50) };
+  const updated = await db<Row[]>(env, `waba_clinic_appointments?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id,status,metadata,lead_id,conversation_id,starts_at,ends_at,branch_id,doctor_id,patient_name,phone`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, metadata: nextMetadata, updated_at: changedAt }) });
 
   const leadId = text(current.lead_id);
   if (leadId && (nextStatus === 'BOOKED' || nextStatus === 'CONFIRMED')) {
-    await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(leadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, {
-      method: 'PATCH',
-      body: JSON.stringify({ stage: 'Запись', updated_at: changedAt }),
-    }).catch((error) => console.error('Unable to sync lead stage from appointment status', error));
+    await db<Row[]>(env, `marketing_leads?id=eq.${encodeURIComponent(leadId)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ stage: 'Запись', updated_at: changedAt }) }).catch((error) => console.error('Unable to sync lead stage from appointment status', error));
   }
-
   return json({ ok: true, item: updated[0] || null });
 }
 
@@ -359,7 +258,7 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
     const branchRows = await db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const doctorRows = await db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`);
     const scheduleRows = await db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=weekday.asc,start_time.asc`);
-    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED,ARRIVED)&select=id,branch_id,doctor_id,lead_id,conversation_id,starts_at,ends_at,patient_name,phone,status,metadata,created_at,updated_at&order=starts_at.asc&limit=100`);
+    const upcoming = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&source=neq.MIS&starts_at=gte.${encodeURIComponent(new Date().toISOString())}&status=in.(BOOKED,CONFIRMED,ARRIVED)&select=id,branch_id,doctor_id,lead_id,conversation_id,starts_at,ends_at,patient_name,phone,status,source,metadata,created_at,updated_at&order=starts_at.asc&limit=100`);
     return json({ branches: branchRows, doctors: doctorRows, schedules: scheduleRows, upcoming });
   }
 
@@ -370,9 +269,7 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
       const id = text(body.id);
       const payload = { company_id: companyId, name: text(body.name), address: text(body.address) || null, active: body.active !== false, sort_order: Number(body.sort_order) || 0, updated_at: new Date().toISOString() };
       if (!payload.name) return json({ error: 'Укажите название филиала' }, 400);
-      const rows = id
-        ? await db<Row[]>(env, `waba_clinic_branches?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : await db<Row[]>(env, 'waba_clinic_branches?select=*', { method: 'POST', body: JSON.stringify(payload) });
+      const rows = id ? await db<Row[]>(env, `waba_clinic_branches?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) }) : await db<Row[]>(env, 'waba_clinic_branches?select=*', { method: 'POST', body: JSON.stringify(payload) });
       return json({ ok: true, item: rows[0] || null });
     }
     if (action === 'save_doctor') {
@@ -380,19 +277,15 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
       const branchId = text(body.branch_id);
       const payload = { company_id: companyId, branch_id: branchId, name: text(body.name), specialty: text(body.specialty) || null, active: body.active !== false, sort_order: Number(body.sort_order) || 0, updated_at: new Date().toISOString() };
       if (!payload.name || !branchId) return json({ error: 'Укажите врача и филиал' }, 400);
-      const rows = id
-        ? await db<Row[]>(env, `waba_clinic_doctors?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : await db<Row[]>(env, 'waba_clinic_doctors?select=*', { method: 'POST', body: JSON.stringify(payload) });
+      const rows = id ? await db<Row[]>(env, `waba_clinic_doctors?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) }) : await db<Row[]>(env, 'waba_clinic_doctors?select=*', { method: 'POST', body: JSON.stringify(payload) });
       return json({ ok: true, item: rows[0] || null });
     }
     if (action === 'save_schedule') {
       const id = text(body.id);
       const doctorId = text(body.doctor_id);
-      const payload = { company_id: companyId, doctor_id: doctorId, weekday: Number(body.weekday), start_time: text(body.start_time), end_time: text(body.end_time), slot_minutes: Number(body.slot_minutes) || 30, active: body.active !== false, updated_at: new Date().toISOString() };
+      const payload = { company_id: companyId, doctor_id: doctorId, weekday: Number(body.weekday), start_time: text(body.start_time), end_time: text(body.end_time), break_start: text(body.break_start) || null, break_end: text(body.break_end) || null, slot_minutes: Number(body.slot_minutes) || 30, active: body.active !== false, updated_at: new Date().toISOString() };
       if (!doctorId || !payload.start_time || !payload.end_time || payload.weekday < 0 || payload.weekday > 6) return json({ error: 'Заполните врача, день и время расписания' }, 400);
-      const rows = id
-        ? await db<Row[]>(env, `waba_clinic_schedules?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : await db<Row[]>(env, 'waba_clinic_schedules?select=*', { method: 'POST', body: JSON.stringify(payload) });
+      const rows = id ? await db<Row[]>(env, `waba_clinic_schedules?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=*`, { method: 'PATCH', body: JSON.stringify(payload) }) : await db<Row[]>(env, 'waba_clinic_schedules?select=*', { method: 'POST', body: JSON.stringify(payload) });
       return json({ ok: true, item: rows[0] || null });
     }
     if (action === 'set_active') {
@@ -403,9 +296,7 @@ export async function handleClinicBookingAdminRequest(request: Request, env: Wab
       await db<Row[]>(env, `${table}?id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(companyId)}&select=id`, { method: 'PATCH', body: JSON.stringify({ active: Boolean(body.active), updated_at: new Date().toISOString() }) });
       return json({ ok: true });
     }
-    if (action === 'set_appointment_status') {
-      return setAppointmentStatus(request, env, companyId, text(body.id), text(body.status).toUpperCase());
-    }
+    if (action === 'set_appointment_status') return setAppointmentStatus(request, env, companyId, text(body.id), text(body.status).toUpperCase());
     return json({ error: 'Неизвестное действие' }, 400);
   }
 
