@@ -95,9 +95,7 @@ export default function GlobalSearch() {
       id: `campaign:${row.row_key}`,
       title: row.campaign_name || row.creative_name || 'Рекламная кампания',
       meta: [row.platform, row.adset_name, row.creative_name].filter(Boolean).join(' · '),
-      route: row.campaign_id
-        ? `/advertising?campaign=${encodeURIComponent(row.campaign_id)}`
-        : `/advertising?q=${encodeURIComponent(row.campaign_name || row.creative_name || '')}`,
+      route: '/advertising',
       kind: 'campaign',
     }));
 
@@ -135,6 +133,6 @@ export default function GlobalSearch() {
         </button>;
       })}
       {results.length > 0 && <footer>Enter — открыть первый результат · Esc — закрыть</footer>}
-    </div>}
+    </div>
   </div>;
 }
