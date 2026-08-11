@@ -57,9 +57,9 @@ export default function DashboardCsvExport() {
     }
   };
 
-  return <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+  return <div className="dashboard-csv-export">
     {error && <span className="note">{error}</span>}
-    <button type="button" onClick={handleExport} disabled={exporting} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+    <button className="button dashboard-csv-export__button" type="button" onClick={handleExport} disabled={exporting}>
       <Download size={16}/>
       {exporting ? 'Экспорт...' : 'Экспорт CSV'}
     </button>
