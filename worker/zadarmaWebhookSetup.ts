@@ -49,11 +49,20 @@ function notificationFlag(remote: Row, key: string): boolean {
   return text(notifications[key]).toLowerCase() === 'true';
 }
 
+function requiredNotifications(remote: Row) {
+  return {
+    notify_start: notificationFlag(remote, 'notify_start'),
+    notify_end: notificationFlag(remote, 'notify_end'),
+    notify_out_start: notificationFlag(remote, 'notify_out_start'),
+    notify_out_end: notificationFlag(remote, 'notify_out_end'),
+  };
+}
+
 async function localHealth(env: Env, id: string): Promise<{ settings: Row | null; callback: Row | null; call: Row | null }> {
   const [settingsRows, callbackRows, callRows] = await Promise.all([
     db<Row[]>(env, `telephony_settings?company_id=eq.${encodeURIComponent(id)}&select=*&limit=1`),
     db<Row[]>(env, `telephony_callback_requests?company_id=eq.${encodeURIComponent(id)}&select=id,status,pbx_call_id,requested_at,matched_at,completed_at,last_error&order=requested_at.desc&limit=1`),
-    db<Row[]>(env, `marketing_calls?company_id=eq.${encodeURIComponent(id)}&source=eq.ZADARMA&select=id,call_status,pbx_call_id,recording_external_id,transcription_status,started_at,updated_at&order=started_at.desc&limit=1`),
+    db<Row[]>(env, `marketing_calls?company_id=eq.${encodeURIComponent(id)}&source=eq.ZADARMA&select=id,call_status,call_direction,client_phone,called_did,pbx_call_id,recording_external_id,transcription_status,started_at,updated_at&order=started_at.desc&limit=1`),
   ]);
   return { settings: settingsRows[0] || null, callback: callbackRows[0] || null, call: callRows[0] || null };
 }
@@ -73,12 +82,11 @@ async function readRemote(request: Request, env: Env): Promise<Response> {
   try {
     const remote = await zadarmaRequest(env, '/v1/pbx/callinfo/');
     const configuredUrl = text(remote.url);
-    const outStart = notificationFlag(remote, 'notify_out_start');
-    const outEnd = notificationFlag(remote, 'notify_out_end');
-    const healthy = configuredUrl === expectedUrl && outStart && outEnd;
+    const required = requiredNotifications(remote);
+    const healthy = configuredUrl === expectedUrl && Object.values(required).every(Boolean);
     await saveCheck(env, id, {
       webhook_last_checked_at: checkedAt,
-      webhook_last_error: healthy ? null : 'Zadarma webhook URL или обязательные outgoing notifications не совпадают с IMDS',
+      webhook_last_error: healthy ? null : 'Zadarma webhook URL или обязательные inbound/outbound notifications не совпадают с IMDS',
       webhook_configured_at: healthy ? checkedAt : null,
     });
     const local = await localHealth(env, id);
@@ -88,7 +96,7 @@ async function readRemote(request: Request, env: Env): Promise<Response> {
       expectedUrl,
       configuredUrl,
       notifications: remote.notifications || {},
-      required: { notify_out_start: true, notify_out_end: true },
+      required: { notify_start: true, notify_end: true, notify_out_start: true, notify_out_end: true },
       checkedAt,
       local,
     });
@@ -107,16 +115,17 @@ async function setup(request: Request, env: Env): Promise<Response> {
   try {
     await zadarmaRequest(env, '/v1/pbx/callinfo/url/', { url: webhookUrl }, 'POST');
     await zadarmaRequest(env, '/v1/pbx/callinfo/notifications/', {
+      notify_start: 'true',
+      notify_end: 'true',
       notify_out_start: 'true',
       notify_out_end: 'true',
     }, 'POST');
 
     const remote = await zadarmaRequest(env, '/v1/pbx/callinfo/');
     const configuredUrl = text(remote.url);
-    const outStart = notificationFlag(remote, 'notify_out_start');
-    const outEnd = notificationFlag(remote, 'notify_out_end');
-    if (configuredUrl !== webhookUrl || !outStart || !outEnd) {
-      throw new Error('Zadarma приняла запрос, но повторная проверка webhook settings не подтвердила нужную конфигурацию');
+    const required = requiredNotifications(remote);
+    if (configuredUrl !== webhookUrl || !Object.values(required).every(Boolean)) {
+      throw new Error('Zadarma приняла запрос, но повторная проверка webhook settings не подтвердила inbound/outbound конфигурацию');
     }
 
     await saveCheck(env, id, {
@@ -131,6 +140,7 @@ async function setup(request: Request, env: Env): Promise<Response> {
       expectedUrl: webhookUrl,
       configuredUrl,
       notifications: remote.notifications || {},
+      required: { notify_start: true, notify_end: true, notify_out_start: true, notify_out_end: true },
       checkedAt,
       local,
     });
