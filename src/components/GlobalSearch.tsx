@@ -89,8 +89,7 @@ export default function GlobalSearch() {
 
     const campaigns = ads.filter((row) => [
       row.campaign_name, row.adset_name, row.creative_name, row.platform, row.source,
-      row.campaign_id, row.adset_id, row.ad_id, row.utm_source, row.utm_medium,
-      row.utm_campaign, row.utm_content,
+      row.campaign_id, row.adset_id, row.ad_id,
     ].some((value) => normalize(value).includes(needle))).slice(0, 5).map<Result>((row) => ({
       id: `campaign:${row.row_key}`,
       title: row.campaign_name || row.creative_name || 'Рекламная кампания',
