@@ -11,7 +11,7 @@ const specs = [
     theme: 'dark',
     filename: 'imds-bg-dark.jpg',
     files: null,
-    expectedBytes: 580_669,
+    expectedBytes: 21_036,
     format: 'jpeg',
   },
 ];
