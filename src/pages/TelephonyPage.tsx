@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { History, PhoneCall } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Calls from './Calls';
@@ -25,6 +26,11 @@ export default function TelephonyPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: TelephonyTab = searchParams.get('tab') === 'calls' ? 'calls' : 'workspace';
 
+  useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>('.marketing-shell > main');
+    if (scroller) scroller.scrollTop = 0;
+  }, [activeTab]);
+
   const selectTab = (tab: TelephonyTab) => {
     const next = new URLSearchParams(searchParams);
     next.set('tab', tab);
@@ -32,27 +38,28 @@ export default function TelephonyPage() {
   };
 
   return <div className="telephony-module">
-    <header className="telephony-module__header">
-      <div>
-        <span>КОММУНИКАЦИИ</span>
-        <h1>Телефония</h1>
-        <p>Единый модуль для текущих звонков, истории, записей разговоров, AI-контроля и исходящих вызовов.</p>
-      </div>
-      <div className="telephony-module__status"><PhoneCall size={18}/><span>Единый модуль</span></div>
-    </header>
+    <div className="telephony-module__chrome">
+      <header className="telephony-module__header">
+        <div>
+          <span>КОММУНИКАЦИИ</span>
+          <h1>Телефония</h1>
+          <p>Текущие звонки, история, записи разговоров, AI-контроль и исходящие вызовы.</p>
+        </div>
+      </header>
 
-    <nav className="telephony-module__tabs" aria-label="Разделы телефонии">
-      {tabs.map(({ id, label, description, icon: Icon }) => <button
-        key={id}
-        type="button"
-        className={activeTab === id ? 'active' : ''}
-        onClick={() => selectTab(id)}
-        aria-current={activeTab === id ? 'page' : undefined}
-      >
-        <Icon size={17}/>
-        <span><strong>{label}</strong><small>{description}</small></span>
-      </button>)}
-    </nav>
+      <nav className="telephony-module__tabs" aria-label="Разделы телефонии">
+        {tabs.map(({ id, label, description, icon: Icon }) => <button
+          key={id}
+          type="button"
+          className={activeTab === id ? 'active' : ''}
+          onClick={() => selectTab(id)}
+          aria-current={activeTab === id ? 'page' : undefined}
+        >
+          <Icon size={17}/>
+          <span><strong>{label}</strong><small>{description}</small></span>
+        </button>)}
+      </nav>
+    </div>
 
     <section className="telephony-module__content">
       {activeTab === 'workspace' ? <PhoneWorkspacePage/> : <Calls/>}
