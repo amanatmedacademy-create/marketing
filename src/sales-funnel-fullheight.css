@@ -5,23 +5,46 @@
 
 .funnel-v2-kanban-shell{
   display:flex;
+  min-width:0;
   min-height:0;
+  max-width:100%;
   flex-direction:column;
 }
 
 .funnel-v2-kanban-scroll{
+  width:100%;
   height:clamp(680px,calc(100dvh - 300px),980px);
+  min-width:0;
   min-height:0;
   flex:1 1 auto;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  overscroll-behavior-x:contain;
 }
 
-.funnel-v2-board,
-.funnel-v2-column{
+.funnel-v2-board{
+  width:max(100%,max-content);
+  min-width:100%;
   min-height:100%;
+}
+
+.funnel-v2-column{
+  width:auto!important;
+  min-width:230px!important;
+  min-height:100%;
+}
+
+@media(max-width:1400px){
+  .funnel-v2-column{
+    min-width:220px!important;
+  }
 }
 
 @media(max-width:900px){
   .funnel-v2-kanban-scroll{
     height:clamp(560px,calc(100dvh - 230px),820px);
+  }
+  .funnel-v2-column{
+    min-width:260px!important;
   }
 }
