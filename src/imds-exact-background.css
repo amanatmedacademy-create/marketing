@@ -1,7 +1,7 @@
 /* Final IMDS background layer. Keep this stylesheet loaded last. */
 :root,
 :root[data-theme='light']{
-  --imds-app-bg:url('/imds-bg-light.jpg');
+  --imds-app-bg:url('/imds-bg-light.jpg?v=20260811-2');
   --imds-app-fallback:#eef9fb;
   --imds-glass:rgba(255,255,255,.82);
   --imds-glass-soft:rgba(255,255,255,.70);
@@ -9,7 +9,7 @@
 }
 
 :root[data-theme='dark']{
-  --imds-app-bg:url('/imds-bg-dark.jpg');
+  --imds-app-bg:url('/imds-bg-dark.jpg?v=20260811-1');
   --imds-app-fallback:#031923;
   --imds-glass:rgba(5,25,36,.82);
   --imds-glass-soft:rgba(5,25,36,.70);
