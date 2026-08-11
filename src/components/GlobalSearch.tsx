@@ -133,6 +133,6 @@ export default function GlobalSearch() {
         </button>;
       })}
       {results.length > 0 && <footer>Enter — открыть первый результат · Esc — закрыть</footer>}
-    </div>
+    </div>}
   </div>;
 }
