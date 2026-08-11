@@ -1,0 +1,44 @@
+/* IMDS TECH chart normalization. Loaded last after all dashboard modules. */
+
+/* Shared chart typography and grids */
+.recharts-wrapper text,.recharts-text{fill:var(--imds-muted)!important}
+.recharts-cartesian-grid line,.recharts-cartesian-grid-horizontal line,.recharts-cartesian-grid-vertical line{stroke:var(--imds-chart-grid)!important}
+.recharts-tooltip-wrapper .recharts-default-tooltip{background:var(--imds-glass-strong)!important;border:1px solid var(--imds-border)!important;border-radius:12px!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow-soft)!important}
+.recharts-tooltip-label,.recharts-tooltip-item{color:var(--imds-text-soft)!important}
+
+/* V36: remove old purple/pink/orange chart palette. */
+.v36-dashboard .recharts-line-curve[stroke="#2563eb"],
+.v36-dashboard .recharts-line-curve[stroke="#0ea5e9"],
+.v36-dashboard .recharts-line-curve[stroke="#8b5cf6"]{stroke:var(--imds-primary)!important}
+.v36-dashboard .recharts-line-curve[stroke="#22c55e"]{stroke:var(--imds-success)!important}
+.v36-dashboard .recharts-bar-rectangle path[fill="#1e3a5f"]{fill:var(--imds-blue)!important;opacity:.48}
+
+/* Pie / channel palette: brand hierarchy, no legacy violet/pink. */
+.v36-dashboard .recharts-pie-sector:nth-child(7n+1) path{fill:var(--imds-primary)!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n+2) path{fill:var(--imds-blue)!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n+3) path{fill:var(--imds-success)!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n+4) path{fill:var(--imds-warning)!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n+5) path{fill:color-mix(in srgb,var(--imds-primary) 62%,var(--imds-blue))!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n+6) path{fill:color-mix(in srgb,var(--imds-blue) 65%,var(--imds-muted))!important}
+.v36-dashboard .recharts-pie-sector:nth-child(7n) path{fill:var(--imds-muted)!important}
+
+/* Dashboard charts use the same semantic order. */
+.imds-dashboard .recharts-line-curve,.imds-dashboard .recharts-area-curve{filter:none!important}
+.imds-dashboard .recharts-bar-rectangle:nth-child(odd) path{filter:none!important}
+
+/* Heatmaps stay semantic but on-brand. */
+.v36-heat-grid .heat-high{background:rgba(29,157,115,.13)!important;border-color:rgba(29,157,115,.18)!important}
+.v36-heat-grid .heat-mid{background:rgba(17,184,165,.12)!important;border-color:rgba(17,184,165,.18)!important}
+.v36-heat-grid .heat-low{background:rgba(207,148,45,.11)!important;border-color:rgba(207,148,45,.18)!important}
+.v36-heat-grid .heat-bad{background:rgba(214,96,104,.10)!important;border-color:rgba(214,96,104,.18)!important}
+
+/* Hardcoded violet KPI tones are normalized to teal. */
+.v36-kpi.tone-purple>i,.v36-kpi.tone-violet>i,.v36-kpi.tone-cyan>i{background:var(--imds-primary)!important}
+.v36-kpi.tone-blue>i{background:var(--imds-blue)!important}
+.v36-kpi.tone-green>i{background:var(--imds-success)!important}
+.v36-kpi.tone-amber>i{background:var(--imds-warning)!important}
+.v36-kpi.tone-red>i{background:var(--imds-danger)!important}
+
+/* General old color utility cleanup for SVG controls/icons. */
+.marketing-content svg[stroke="#7c3aed"],.marketing-content svg[stroke="#8b5cf6"],.marketing-content svg[stroke="#ec4899"]{stroke:var(--imds-primary)!important}
+.marketing-content svg[fill="#7c3aed"],.marketing-content svg[fill="#8b5cf6"],.marketing-content svg[fill="#ec4899"]{fill:var(--imds-primary)!important}
