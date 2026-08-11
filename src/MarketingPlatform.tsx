@@ -17,8 +17,7 @@ import MarketingDashboardSummary from './components/MarketingDashboardSummary';
 import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
-import Calls from './pages/Calls';
-import PhoneWorkspacePage from './pages/PhoneWorkspacePage';
+import TelephonyPage from './pages/TelephonyPage';
 import ClinicSchedulePage from './pages/ClinicSchedulePage';
 import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
@@ -47,9 +46,8 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
-    { to: '/phone', label: 'Phone Workspace', icon: PhoneCall, moduleId: 'communications.calls' },
+    { to: '/telephony', label: 'Телефония', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/schedule', label: 'Clinic Schedule', icon: CalendarDays, moduleId: 'communications.calls' },
-    { to: '/calls', label: 'Звонки', icon: PhoneCall, moduleId: 'communications.calls' },
     { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
   ]},
@@ -117,9 +115,10 @@ function Shell() {
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
-        <Route path="/phone" element={guard('communications.calls', <PhoneWorkspacePage/>)} />
+        <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
+        <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
-        <Route path="/calls" element={guard('communications.calls', <Calls/>)} />
+        <Route path="/calls" element={<Navigate to="/telephony?tab=calls" replace/>} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
