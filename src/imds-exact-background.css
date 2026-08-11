@@ -9,7 +9,7 @@
 }
 
 :root[data-theme='dark']{
-  --imds-app-bg:url('/imds-bg-dark.jpg?v=20260811-1');
+  --imds-app-bg:url('https://kysdtmgijkffwtzugonv.supabase.co/storage/v1/object/public/marketing-assets/backgrounds/imds-bg-dark.jpg?v=20260811-2');
   --imds-app-fallback:#031923;
   --imds-glass:rgba(5,25,36,.82);
   --imds-glass-soft:rgba(5,25,36,.70);
