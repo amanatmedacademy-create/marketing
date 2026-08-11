@@ -23,6 +23,7 @@ import './imds-chart-normalization.css';
 import './imds-exact-background.css';
 import './imds-color-legacy-bridge.css';
 import './imds-color-system-final.css';
+import './imds-light-reference.css';
 
 type ThemeMode = 'light' | 'dark';
 
