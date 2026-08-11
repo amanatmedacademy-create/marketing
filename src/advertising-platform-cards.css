@@ -1,6 +1,4 @@
-.integration-catalog-grid {
-  align-items: stretch;
-}
+.integration-catalog-grid { align-items: stretch; }
 
 .integration-catalog-card {
   display: flex;
@@ -9,8 +7,11 @@
   gap: 12px;
   overflow: hidden;
   position: relative;
-  border-color: color-mix(in srgb, var(--platform-accent, #334155) 26%, #1e2d4a);
-  background: linear-gradient(155deg, color-mix(in srgb, var(--platform-accent, #111827) 8%, #0d1730), #091321 64%);
+  border: 1px solid var(--imds-border);
+  background: var(--imds-glass);
+  box-shadow: var(--imds-shadow-soft);
+  backdrop-filter: blur(18px) saturate(110%);
+  color: var(--imds-text);
 }
 
 .integration-catalog-card::before {
@@ -18,84 +19,62 @@
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
-  background: var(--platform-accent, #64748b);
+  background: var(--imds-primary);
 }
 
 .integration-catalog-card:hover {
-  border-color: color-mix(in srgb, var(--platform-accent, #64748b) 48%, #1e2d4a);
-  box-shadow: 0 18px 42px color-mix(in srgb, var(--platform-accent, #000) 12%, transparent);
+  border-color: rgba(17,184,165,.34);
+  box-shadow: var(--imds-shadow);
 }
 
 .integration-card-top { min-height: 50px; }
 .integration-catalog-card .integration-card-logo {
   display: grid; width: 48px; height: 48px; flex: 0 0 48px; place-items: center;
   overflow: hidden; padding: 10px; box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--platform-accent, #334155) 28%, #243755);
-  border-radius: 14px; background: color-mix(in srgb, var(--platform-accent, #334155) 13%, #101b31); color: #fff;
+  border: 1px solid rgba(17,184,165,.18);
+  border-radius: 14px;
+  background: linear-gradient(145deg,var(--imds-primary),var(--imds-primary-strong));
+  color: #fff;
 }
 .integration-catalog-card .integration-card-logo img { display:block; width:100%; height:100%; object-fit:contain; }
-.integration-catalog-card > strong, .integration-platform-heading > strong { min-height:24px; font-size:1rem; line-height:1.45; }
-.integration-catalog-card > p { min-height:66px; margin:0; color:#8ea0b9; font-size:.74rem; line-height:1.55; }
+.integration-catalog-card > strong, .integration-platform-heading > strong { min-height:24px; font-size:1rem; line-height:1.45; color:var(--imds-text); }
+.integration-catalog-card > p { min-height:66px; margin:0; color:var(--imds-muted); font-size:.74rem; line-height:1.55; }
 .integration-card-tags { min-height:56px; align-content:flex-start; }
 .integration-catalog-card .integration-card-tags span {
-  border-color: color-mix(in srgb, var(--platform-accent, #334155) 22%, #243755);
-  background: color-mix(in srgb, var(--platform-accent, #0a1426) 7%, #0a1426);
+  border-color: var(--imds-border);
+  background: var(--imds-glass-soft);
+  color: var(--imds-text-soft);
 }
-.integration-connect-method { display:grid; gap:3px; min-height:45px; padding:9px 11px; box-sizing:border-box; border:1px solid color-mix(in srgb, var(--platform-accent, #334155) 24%, #253652); border-radius:10px; background:color-mix(in srgb, var(--platform-accent, #0b172b) 6%, #0b172b); }
-.integration-connect-method span { color:#71839f; font-size:.57rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
-.integration-connect-method strong { overflow:hidden; color:#c7d4e7; font-size:.68rem; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
+.integration-connect-method {
+  display:grid; gap:3px; min-height:45px; padding:9px 11px; box-sizing:border-box;
+  border:1px solid var(--imds-border); border-radius:10px; background:var(--imds-glass-soft);
+}
+.integration-connect-method span { color:var(--imds-muted); font-size:.57rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+.integration-connect-method strong { overflow:hidden; color:var(--imds-text-soft); font-size:.68rem; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
 .integration-catalog-card > button { width:100%; min-height:42px; margin-top:auto; }
 .integration-platform-heading { display:flex; min-height:24px; align-items:center; justify-content:space-between; gap:10px; }
-.integration-platform-heading > span { padding:4px 7px; border:1px solid color-mix(in srgb, var(--platform-accent, #64748b) 38%, transparent); border-radius:999px; background:color-mix(in srgb, var(--platform-accent, #64748b) 12%, transparent); color:color-mix(in srgb, var(--platform-accent, #94a3b8) 72%, white); font-size:.58rem; font-weight:800; white-space:nowrap; }
+.integration-platform-heading > span {
+  padding:4px 7px;
+  border:1px solid rgba(17,184,165,.24);
+  border-radius:999px;
+  background:var(--imds-primary-soft);
+  color:var(--imds-primary-strong);
+  font-size:.58rem;
+  font-weight:800;
+  white-space:nowrap;
+}
 .integration-state-planned > button { border-style:dashed; opacity:.72; cursor:not-allowed; }
 .integration-state-planned > button:hover { transform:none; }
-.integration-tone-meta { --platform-accent:#0866ff; }
-.integration-tone-tiktok { --platform-accent:#ff3158; }
-.integration-tone-google { --platform-accent:#4285f4; }
-.integration-tone-yandex { --platform-accent:#ff0000; }
-.integration-tone-telegram { --platform-accent:#26a5e4; }
-.integration-tone-twogis { --platform-accent:#5dc62f; }
-.integration-tone-vk { --platform-accent:#0077ff; }
-.integration-tone-bitrix { --platform-accent:#2fc6f6; }
-.integration-tone-n8n { --platform-accent:#ea4b71; }
-.integration-tone-kommo { --platform-accent:#5f4dee; }
-.integration-tone-onec { --platform-accent:#e31e24; }
-.integration-tone-retailcrm { --platform-accent:#22b573; }
-.integration-tone-megaplan { --platform-accent:#ff7a00; }
-.integration-tone-planfix { --platform-accent:#2f80ed; }
-.integration-tone-creatio { --platform-accent:#7c3aed; }
-.integration-tone-elma { --platform-accent:#e64046; }
-.integration-tone-hubspot { --platform-accent:#ff7a59; }
-.integration-tone-salesforce { --platform-accent:#00a1e0; }
-.integration-tone-zadarma { --platform-accent:#ff8a00; }
-.integration-tone-asterisk { --platform-accent:#f68f1e; }
-.integration-tone-freepbx { --platform-accent:#ef7d00; }
-.integration-tone-onlinepbx { --platform-accent:#6c63ff; }
-.integration-tone-uis { --platform-accent:#00a8e8; }
-.integration-tone-novofon { --platform-accent:#32b67a; }
-.integration-tone-sipuni { --platform-accent:#f15a24; }
-.integration-tone-mango { --platform-accent:#f28c00; }
-.integration-tone-binotel { --platform-accent:#6c3cff; }
-.integration-tone-telphin { --platform-accent:#eb5b25; }
-.integration-tone-voximplant { --platform-accent:#662d91; }
-.integration-tone-infobip { --platform-accent:#ff5a00; }
-.integration-tone-kazakhtelecom { --platform-accent:#00a0df; }
-.integration-tone-beeline { --platform-accent:#ffc800; }
-.integration-tone-kcell { --platform-accent:#7b2cbf; }
-.integration-tone-whatsapp { --platform-accent:#25d366; }
-.integration-tone-wazzup { --platform-accent:#21c063; }
-.integration-tone-chat2desk { --platform-accent:#5b6cff; }
-.integration-tone-sendpulse { --platform-accent:#00a9f4; }
-.integration-tone-albato { --platform-accent:#ff6b35; }
-.integration-tone-apix { --platform-accent:#7b61ff; }
-.integration-tone-make { --platform-accent:#6d00cc; }
-.integration-tone-sheets { --platform-accent:#34a853; }
-.integration-tone-webhooks { --platform-accent:#2088ff; }
+
+/* Service brand colors are intentionally not used as card surfaces. */
+.integration-tone-meta,.integration-tone-tiktok,.integration-tone-google,.integration-tone-yandex,.integration-tone-telegram,.integration-tone-twogis,.integration-tone-vk,.integration-tone-bitrix,.integration-tone-n8n,.integration-tone-kommo,.integration-tone-onec,.integration-tone-retailcrm,.integration-tone-megaplan,.integration-tone-planfix,.integration-tone-creatio,.integration-tone-elma,.integration-tone-hubspot,.integration-tone-salesforce,.integration-tone-zadarma,.integration-tone-asterisk,.integration-tone-freepbx,.integration-tone-onlinepbx,.integration-tone-uis,.integration-tone-novofon,.integration-tone-sipuni,.integration-tone-mango,.integration-tone-binotel,.integration-tone-telphin,.integration-tone-voximplant,.integration-tone-infobip,.integration-tone-kazakhtelecom,.integration-tone-beeline,.integration-tone-kcell,.integration-tone-whatsapp,.integration-tone-wazzup,.integration-tone-chat2desk,.integration-tone-sendpulse,.integration-tone-albato,.integration-tone-apix,.integration-tone-make,.integration-tone-sheets,.integration-tone-webhooks { --platform-accent:var(--imds-primary); }
+
 .integration-tone-yandex .integration-card-logo,
 .integration-tone-twogis .integration-card-logo,
 .integration-tone-bitrix .integration-card-logo,
 .integration-tone-beeline .integration-card-logo,
-.integration-tone-sheets .integration-card-logo { background:#fff; }
+.integration-tone-sheets .integration-card-logo { background:var(--imds-glass-strong); color:var(--imds-primary); }
+
 @media (max-width:760px) {
   .integration-catalog-card { min-height:310px; }
   .integration-platform-heading { align-items:flex-start; flex-direction:column; }
