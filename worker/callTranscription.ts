@@ -137,7 +137,9 @@ async function resolveRecordingUrl(env: CallTranscriptionEnv, call: Row): Promis
   const pbxCallId = text(call.pbx_call_id);
   const externalCallId = text(call.recording_external_id);
   if (pbxCallId || externalCallId) {
-    const params = pbxCallId ? { pbx_call_id: pbxCallId, lifetime: '600' } : { call_id: externalCallId, lifetime: '600' };
+    const params: Record<string, string> = pbxCallId
+      ? { pbx_call_id: pbxCallId, lifetime: '600' }
+      : { call_id: externalCallId, lifetime: '600' };
     const result = await zadarmaRequest(env, '/v1/pbx/record/request/', params);
     const link = recordingLink(result);
     if (link) return link;
