@@ -1,6 +1,5 @@
 import {
   handleIntegrationRequest,
-  runAllSyncs,
   runScheduledSync,
   type Env,
   type WorkerExecutionContext,
@@ -19,6 +18,7 @@ import { handleGoogleIntegrationRequest } from './googleIntegrations';
 import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 import { handleTenantDataApi } from './tenantDataApi';
+import { runTenantSyncs } from './tenantSync';
 import { handleGrowthEngine } from './growthEngine';
 import { handlePhoneWorkspace } from './phoneWorkspace';
 import { zadarmaRequest } from './zadarmaTelephony';
@@ -100,7 +100,7 @@ async function handleFrontendIntegrationAction(request: Request, env: Env, url: 
     const payload = (await request.json().catch(() => ({}))) as JsonRecord;
     const source = typeof payload.source === 'string' ? payload.source : 'all';
     const days = Math.min(Math.max(Number(payload.days || 90), 1), 365);
-    return json({ ok: true, results: await runAllSyncs(env, { source, days }) }, 200, corsHeaders(request, env));
+    return json({ ok: true, results: await runTenantSyncs(env, { source, days }) }, 200, corsHeaders(request, env));
   }
   if (url.pathname.startsWith('/api/integrations/test/') && request.method === 'POST') {
     const provider = url.pathname.split('/').pop() as IntegrationProvider;
@@ -121,7 +121,7 @@ async function handleFrontendIntegrationAction(request: Request, env: Env, url: 
       }
     }
     try {
-      const results = await runAllSyncs(env, { source: provider, days: 1 });
+      const results = await runTenantSyncs(env, { source: provider, days: 1 });
       const failed = results.some((result) => result.skipped || result.reason);
       if (failed) throw new Error(results.map((result) => result.reason).filter(Boolean).join('; ') || 'Проверка не выполнена');
       await updateCredentialVerification(env, provider, true);
