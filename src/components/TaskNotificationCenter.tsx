@@ -1,0 +1,12 @@
+import { useEffect,useRef,useState } from 'react';
+import { Bell,CheckCheck,Clock3,ListChecks,TriangleAlert,X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { taskNotificationsApi,type TaskNotification } from '../services/taskNotifications';
+import '../task-notifications.css';
+
+export default function TaskNotificationCenter(){const navigate=useNavigate();const [items,setItems]=useState<TaskNotification[]>([]);const [unread,setUnread]=useState(0);const [open,setOpen]=useState(false);const timer=useRef<number|undefined>(undefined);
+const load=async()=>{try{const result=await taskNotificationsApi.list();setItems(result.notifications);setUnread(result.unread);}catch{}}
+useEffect(()=>{void load();timer.current=window.setInterval(()=>void load(),60000);return()=>{if(timer.current)window.clearInterval(timer.current);};},[]);
+const openTask=async(item:TaskNotification)=>{if(!item.readAt){await taskNotificationsApi.read(item.id).catch(()=>undefined);setUnread(v=>Math.max(0,v-1));setItems(list=>list.map(n=>n.id===item.id?{...n,readAt:new Date().toISOString()}:n));}setOpen(false);navigate('/tasks');};
+const markAll=async()=>{await taskNotificationsApi.readAll();setUnread(0);setItems(list=>list.map(n=>({...n,readAt:n.readAt||new Date().toISOString()})));};
+return <div className="task-notify-wrap"><button className="task-notify-trigger" type="button" aria-label="Уведомления" onClick={()=>setOpen(v=>!v)}><Bell size={18}/>{unread>0&&<b>{unread>99?'99+':unread}</b>}</button>{open&&<><button className="task-notify-backdrop" aria-label="Закрыть уведомления" onClick={()=>setOpen(false)}/><section className="task-notify-panel"><header><div><strong>Уведомления</strong><small>{unread?`${unread} непрочитанных`:'Новых нет'}</small></div><div>{unread>0&&<button title="Прочитать все" onClick={()=>void markAll()}><CheckCheck size={17}/></button>}<button onClick={()=>setOpen(false)}><X size={18}/></button></div></header><div className="task-notify-list">{items.length===0?<div className="task-notify-empty"><Bell size={22}/><span>Уведомлений пока нет</span></div>:items.map(item=><button key={item.id} className={`task-notify-item${item.readAt?'':' unread'}`} onClick={()=>void openTask(item)}><span className={`task-notify-icon ${item.kind}`}>{item.kind==='overdue'?<TriangleAlert size={17}/>:item.kind==='due_soon'?<Clock3 size={17}/>:<ListChecks size={17}/>}</span><div><strong>{item.title}</strong><p>{item.message}</p><small>{new Date(item.createdAt).toLocaleString('ru-RU')}</small></div></button>)}</div></section></>}</div>}
