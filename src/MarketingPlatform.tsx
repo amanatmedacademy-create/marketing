@@ -118,7 +118,7 @@ function Shell() {
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
         <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
-        <Route path="/calls" element={<Navigate to="/telephony?tab=calls" replace/>} />
+        <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
         <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
