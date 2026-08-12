@@ -1,23 +1,37 @@
+export interface TelephonyLine {
+  id: string;
+  name: string;
+  provider: string;
+  extension?: string | null;
+  number?: string | null;
+  mode?: string;
+  configured?: boolean;
+}
+
 export interface TelephonyStatus {
-  provider: 'zadarma';
+  provider: string;
+  providerLabel?: string;
   configured: boolean;
   extension: string | null;
-  mode: 'callback';
-  credentialScope?: 'clinic' | 'default-clinic-fallback' | 'unconfigured';
+  mode: string;
+  credentialScope?: 'clinic' | 'default-clinic-fallback' | 'unconfigured' | string;
   capabilities: string[];
+  lines?: TelephonyLine[];
 }
 
 export interface TelephonyCallResponse {
   ok: boolean;
-  provider: 'zadarma';
-  mode: 'callback';
-  extension: string;
+  provider: string;
+  mode: string;
+  extension?: string;
   phone: string;
+  marketingCallId?: string;
+  correlationRequestId?: string;
   result?: unknown;
 }
 
 export interface TelephonyWebRtcKeyResponse {
-  provider: 'zadarma';
+  provider: string;
   sip: string;
   key: string | null;
 }
@@ -51,16 +65,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const telephonyApi = {
   status: () => request<TelephonyStatus>('/status'),
-  startCall: (phone: string) => request<TelephonyCallResponse>('/calls', {
+  startCall: (phone: string, lineId?: string) => request<TelephonyCallResponse>('/calls', {
     method: 'POST',
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone, ...(lineId ? { lineId } : {}) }),
   }),
   transcribe: (callId: string) => request<TelephonyTranscriptionResponse>(`/calls/${encodeURIComponent(callId)}/transcribe`, {
     method: 'POST',
     body: '{}',
   }),
   webRtcKey: () => request<TelephonyWebRtcKeyResponse>('/webrtc-key'),
-  test: () => request<{ ok: boolean; provider: 'zadarma'; balance?: unknown }>('/test', {
+  test: () => request<{ ok: boolean; provider: string; balance?: unknown }>('/test', {
     method: 'POST',
     body: '{}',
   }),
