@@ -27,6 +27,7 @@ import './imds-light-reference.css';
 import './imds-deal-workspace-theme.css';
 import './imds-global-theme-coverage.css';
 import './crm-friendly.css';
+import './crm-context.css';
 import './imds-mobile.css';
 import './call-center-mobile.css';
 
