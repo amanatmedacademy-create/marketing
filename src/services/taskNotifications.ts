@@ -1,0 +1,4 @@
+export type TaskNotificationKind='assigned'|'due_soon'|'overdue';
+export interface TaskNotification{id:string;taskId:string;kind:TaskNotificationKind;title:string;message:string;readAt?:string|null;createdAt:string;}
+async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(`/api/task-notifications${path}`,{...init,headers:{'content-type':'application/json',...init?.headers}});const body=await response.text();if(!response.ok)throw new Error(body||`Notifications API ${response.status}`);return(body?JSON.parse(body):null) as T;}
+export const taskNotificationsApi={list:()=>request<{notifications:TaskNotification[];unread:number}>(''),read:(id:string)=>request<{ok:boolean}>(`/${encodeURIComponent(id)}/read`,{method:'PATCH'}),readAll:()=>request<{ok:boolean}>('/read-all',{method:'PATCH'})};
