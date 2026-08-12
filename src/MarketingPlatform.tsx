@@ -29,7 +29,7 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './page
 import JourneyAutomationPage from './pages/JourneyAutomationPage';
 import { MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
-import TasksPage from './pages/TasksPage';
+import ContextualTasksPage from './pages/ContextualTasksPage';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -121,7 +121,7 @@ function Shell() {
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <DashboardRoute/>)} />
         <Route path="/goals" element={<Navigate to="/" replace/>} />
-        <Route path="/tasks" element={guard('work.tasks', <TasksPage/>)} />
+        <Route path="/tasks" element={guard('work.tasks', <ContextualTasksPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/crm" element={<Navigate to={crmHome} replace/>} />
         <Route path="/leads" element={guard('crm.leads', crm(<LeadsPage/>))} />
