@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
@@ -85,6 +85,7 @@ function DashboardRoute() {
 
 function Shell() {
   const { user } = useAuth();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -95,13 +96,14 @@ function Shell() {
   const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
   const crmHome = canView('crm.leads') ? '/leads' : canView('crm.pipeline') ? '/pipeline' : firstRoute;
   const crm = (element: ReactNode) => <CrmWorkspace canView={canView}>{element}</CrmWorkspace>;
+  const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
       <div className="marketing-brand"><ImdsBrand compact /></div>
       <div className="marketing-nav-groups">{visibleGroups.map(group => <section className="marketing-nav-group" key={group.label}>
         <div className="marketing-nav-label">{group.label}</div>
-        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive || (to === '/crm' && isCrmRoute) ? 'active' : undefined} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
       </section>)}</div>
     </aside>
     {open && <button className="marketing-mobile-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setOpen(false)} />}
