@@ -72,6 +72,21 @@ export default function TelephonyDialer() {
   };
 
   useEffect(() => { void loadStatus(); }, []);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ phone?: string }>).detail;
+      const next = detail?.phone || '';
+      if (!next) return;
+      const normalized = normalizePhone(next);
+      setPhone(normalized ? formatPhone(normalized) : editablePhone(next));
+      setMessage('');
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLInputElement>('.telephony-dialer__number input')?.focus();
+      });
+    };
+    window.addEventListener('imds:telephony-dial', handler);
+    return () => window.removeEventListener('imds:telephony-dial', handler);
+  }, []);
 
   const lines = useMemo(() => fallbackLines(status), [status]);
   const currentLine = lines.find((line) => line.id === selectedLine) || lines[0] || null;
