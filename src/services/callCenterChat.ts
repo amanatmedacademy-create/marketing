@@ -114,7 +114,28 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const fetchChatWorkspace = () => request<ChatWorkspace>('/workspace');
+function phoneDigits(value?: string): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+function prioritizeCrmThread(workspace: ChatWorkspace): ChatWorkspace {
+  if (typeof window === 'undefined') return workspace;
+  const params = new URLSearchParams(window.location.search);
+  const leadId = params.get('lead_id') || '';
+  const phone = phoneDigits(params.get('phone') || '');
+  if (!leadId && !phone) return workspace;
+  const index = workspace.threads.findIndex((thread) =>
+    (leadId && (thread.leadId === leadId || thread.contact?.id === leadId))
+    || (phone && [thread.phone, thread.contact?.phone].some((value) => phoneDigits(value) === phone))
+  );
+  if (index <= 0) return workspace;
+  const threads = [...workspace.threads];
+  const [match] = threads.splice(index, 1);
+  threads.unshift(match);
+  return { ...workspace, threads };
+}
+
+export const fetchChatWorkspace = async () => prioritizeCrmThread(await request<ChatWorkspace>('/workspace'));
 
 export async function fetchChatMessagePage(threadId: string, options: { before?: string; limit?: number } = {}): Promise<ChatMessagePage> {
   const params = new URLSearchParams();
