@@ -7,6 +7,7 @@ import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
 import { handleTaskNotifications, notifyAssignedTask, runTaskNotificationScan } from './taskNotifications';
+import { handleTaskQuickActions } from './taskQuickActions';
 import { handleTaskSuite, runTaskAutomationScan } from './taskSuite';
 import { handleTasks } from './tasks';
 
@@ -99,6 +100,10 @@ export default {
         if (url.pathname.startsWith('/api/tasks')) {
           if (url.pathname.startsWith('/api/tasks/notifications')) {
             const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
+            if (response) return response;
+          }
+          if (url.pathname === '/api/tasks/suite/postpone') {
+            const response = await handleTaskQuickActions(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
           }
           if (url.pathname.startsWith('/api/tasks/suite')) {
