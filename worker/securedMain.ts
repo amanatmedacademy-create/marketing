@@ -1,13 +1,15 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
+import { resolveCompanyId } from './companyContext';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
+import { handleTaskNotifications, notifyAssignedTask, runTaskNotificationScan } from './taskNotifications';
 import { handleTasks } from './tasks';
 
-type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string };
+type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
 function secureEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
@@ -51,8 +53,26 @@ export default {
         const denied = await authorizeApplicationRequest(request, env, user);
         if (denied) return denied;
         if (url.pathname.startsWith('/api/tasks')) {
-          const response = await handleTasks(trustedRequest(request, user.role, user.id), env as unknown as Env, url);
-          if (response) return response;
+          const trusted = trustedRequest(request, user.role, user.id);
+          if (url.pathname.startsWith('/api/tasks/notifications')) {
+            const response = await handleTaskNotifications(trusted, env as unknown as Env, url);
+            if (response) return response;
+          }
+          const response = await handleTasks(trusted, env as unknown as Env, url);
+          if (response) {
+            if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
+              const body = await response.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null;
+              const task = body?.task;
+              if (task?.id && task.title) {
+                const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
+                const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
+                const notify = notifyAssignedTask(env as unknown as Env, { id: task.id, title: task.title, dueAt: task.dueAt }, companyId)
+                  .catch((error) => console.error('Task assigned notification failed', error));
+                if (ctx) ctx.waitUntil(notify); else await notify;
+              }
+            }
+            return response;
+          }
         }
       }
     }
@@ -75,6 +95,11 @@ export default {
       runScheduledTelephonyProcessing(env as unknown as TelephonyProcessingSchedulerEnv)
         .then((result) => console.log('Scheduled telephony processing completed', result))
         .catch((error) => console.error('Scheduled telephony processing failed', error)),
+    );
+    ctx.waitUntil(
+      runTaskNotificationScan(env as unknown as Env)
+        .then((result) => console.log('Scheduled task notifications completed', result))
+        .catch((error) => console.error('Scheduled task notifications failed', error)),
     );
   },
 };

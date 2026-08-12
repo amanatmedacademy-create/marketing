@@ -1,5 +1,6 @@
 import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import TaskNotificationCenter from './TaskNotificationCenter';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -29,17 +30,20 @@ export default function ThemeToggle() {
   const toggle = () => setTheme((current) => current === 'light' ? 'dark' : 'light');
   const nextLabel = theme === 'light' ? 'Включить тёмную тему' : 'Включить светлую тему';
 
-  return <button
-    className="imds-theme-toggle"
-    type="button"
-    role="switch"
-    aria-checked={theme === 'dark'}
-    aria-label={nextLabel}
-    title={nextLabel}
-    onClick={toggle}
-  >
-    <Sun size={15} className="imds-theme-toggle__sun" />
-    <span className="imds-theme-toggle__track"><span className="imds-theme-toggle__thumb" /></span>
-    <Moon size={15} className="imds-theme-toggle__moon" />
-  </button>;
+  return <>
+    <TaskNotificationCenter />
+    <button
+      className="imds-theme-toggle"
+      type="button"
+      role="switch"
+      aria-checked={theme === 'dark'}
+      aria-label={nextLabel}
+      title={nextLabel}
+      onClick={toggle}
+    >
+      <Sun size={15} className="imds-theme-toggle__sun" />
+      <span className="imds-theme-toggle__track"><span className="imds-theme-toggle__thumb" /></span>
+      <Moon size={15} className="imds-theme-toggle__moon" />
+    </button>
+  </>;
 }
