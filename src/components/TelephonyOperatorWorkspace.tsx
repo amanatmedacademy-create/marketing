@@ -7,15 +7,16 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
-  ExternalLink,
+  Ellipsis,
   History,
   LoaderCircle,
-  MapPin,
   MessageCircle,
   Phone,
   PhoneCall,
+  Play,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Stethoscope,
   UserRound,
@@ -41,15 +42,15 @@ type PhoneContext = {
   };
   clinic: { branches: Branch[]; doctors: Doctor[] };
 };
-type QueueFilter = 'all' | 'live' | 'missed' | 'followup';
 type TimelineKind = 'call' | 'journey' | 'appointment' | 'task';
 type TimelineItem = { id: string; kind: TimelineKind; at: string; row: Row };
 type CallTab = 'summary' | 'transcript' | 'quality';
+type PatientTab = 'history' | 'profile' | 'notes' | 'files' | 'tasks';
+type AttributionKind = 'PAID' | 'ORGANIC SEARCH' | 'ORGANIC SOCIAL' | 'DIRECT' | 'REFERRAL' | 'OFFLINE' | 'UNKNOWN';
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const numberValue = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
-const bool = (value: unknown) => value === true;
-const dateTime = (value: unknown) => text(value) ? new Date(text(value)).toLocaleString('ru-RU') : '—';
+const dateTime = (value: unknown) => text(value) ? new Date(text(value)).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 const timeOnly = (value: unknown) => text(value) ? new Date(text(value)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '—';
 const dateOnly = (value: unknown) => text(value) ? new Date(text(value)).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }) : '—';
 const duration = (value: unknown) => {
@@ -93,7 +94,11 @@ function isMissed(call: Row): boolean {
   return text(call.call_status) === 'CANCELLED' || numberValue(call.duration_seconds) === 0 || text(call.call_status) === 'PENDING';
 }
 
-function attribution(sourceValue: unknown, campaignValue: unknown, adValue: unknown) {
+function hasAction(call: Row): boolean {
+  return Boolean(text(call.next_action)) && !isFreshPending(call) && !isMissed(call);
+}
+
+function attribution(sourceValue: unknown, campaignValue: unknown, adValue: unknown): { kind: AttributionKind; label: string } {
   const source = text(sourceValue);
   const normalized = source.toLowerCase();
   const hasPaidIds = Boolean(text(campaignValue) || text(adValue));
@@ -103,20 +108,13 @@ function attribution(sourceValue: unknown, campaignValue: unknown, adValue: unkn
   if (/(referral|recommend|рекоменд)/i.test(normalized)) return { kind: 'REFERRAL', label: source || 'Рекомендация' };
   if (/(offline|наруж|визит|вывес)/i.test(normalized)) return { kind: 'OFFLINE', label: source || 'Офлайн' };
   if (/(direct|phone|звон)/i.test(normalized)) return { kind: 'DIRECT', label: source || 'Прямое обращение' };
-  return { kind: source ? 'SOURCE' : 'UNKNOWN', label: source || 'Источник не определён' };
+  return { kind: 'UNKNOWN', label: source || 'Источник не определён' };
 }
 
-function queueState(call: Row) {
-  if (isFreshPending(call)) return { label: 'LIVE', className: 'is-live' };
-  if (isMissed(call)) return { label: 'ПРОПУЩЕН', className: 'is-missed' };
-  if (text(call.next_action)) return { label: 'FOLLOW-UP', className: 'is-followup' };
-  return { label: text(call.call_direction) === 'INBOUND' ? 'ВХ' : 'ИСХ', className: '' };
-}
-
-function defaultFollowUpInput(): string {
-  const next = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  next.setMinutes(0, 0, 0);
-  return new Date(next.getTime() - next.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+function tomorrowDate(): string {
+  const next = new Date();
+  next.setDate(next.getDate() + 1);
+  return new Date(next.getTime() - next.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -129,20 +127,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function RecordingPlayer({ call }: { call: Row }) {
+  const [open, setOpen] = useState(false);
   const [src, setSrc] = useState('');
   const [message, setMessage] = useState('');
   const hasRecording = Boolean(text(call.recording_url) || text(call.pbx_call_id) || text(call.recording_external_id));
 
   useEffect(() => {
-    if (!hasRecording || text(call.call_status) !== 'COMPLETED') {
+    if (!open || !hasRecording || text(call.call_status) !== 'COMPLETED') {
       setSrc('');
       setMessage('');
       return;
     }
     const controller = new AbortController();
     let objectUrl = '';
-    setSrc('');
-    setMessage('Загружаем защищённую запись…');
+    setMessage('Загружаем запись…');
     fetch(`/api/telephony/calls/${encodeURIComponent(text(call.id))}/recording`, { signal: controller.signal, cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
@@ -161,37 +159,36 @@ function RecordingPlayer({ call }: { call: Row }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [call.id, call.call_status, call.recording_url, call.pbx_call_id, call.recording_external_id, hasRecording]);
+  }, [open, call.id, call.call_status, call.recording_url, call.pbx_call_id, call.recording_external_id, hasRecording]);
 
   if (!hasRecording || text(call.call_status) !== 'COMPLETED') return null;
-  if (src) return <audio className="telephony-call-card__audio" controls preload="metadata" src={src}/>;
-  return message ? <div className="telephony-inline-state">{message}</div> : null;
+  return <div className="telephony-recording">
+    <button type="button" onClick={() => setOpen((value) => !value)}><Play size={13}/>{open ? 'Скрыть запись' : 'Запись'}</button>
+    {open && src && <audio controls preload="metadata" src={src}/>} 
+    {open && !src && message && <small>{message}</small>}
+  </div>;
 }
 
-function QualityGrid({ call }: { call: Row }) {
+function QualityPanel({ call }: { call: Row }) {
   const rows: Array<[string, unknown]> = [
     ['Выявлена потребность', call.detected_pain],
-    ['Заданы вопросы', call.asked_questions],
-    ['Презентована ценность', call.presented_value],
-    ['Отработано возражение', call.handled_objection],
-    ['Предложено время', call.offered_specific_time],
-    ['Подтверждена запись', call.confirmed_appointment],
+    ['Работа с возражениями', call.handled_objection],
+    ['Презентация ценности', call.presented_value],
     ['Назван следующий шаг', call.stated_next_step],
-    ['Запланирован follow-up', call.follow_up_planned],
+    ['Закрытие на запись', call.confirmed_appointment],
   ];
-  return <div className="telephony-quality-grid">{rows.map(([label, value]) => <div key={label}><span>{label}</span><strong className={value === true ? 'yes' : value === false ? 'no' : ''}>{value == null ? '—' : bool(value) ? 'Да' : 'Нет'}</strong></div>)}</div>;
+  const available = rows.filter(([, value]) => value === true || value === false);
+  const hasScore = call.quality_score != null && Number.isFinite(Number(call.quality_score));
+  if (!hasScore && !available.length) return <div className="telephony-empty compact">Оценка качества для этого звонка отсутствует.</div>;
+  return <div className="telephony-quality-panel">
+    {hasScore && <div className="telephony-quality-panel__score"><span>Оценка качества</span><strong>{Math.round(numberValue(call.quality_score))}<small>/100</small></strong><i><b style={{ width: `${Math.max(0, Math.min(100, numberValue(call.quality_score)))}%` }}/></i></div>}
+    <div className="telephony-quality-panel__checks">
+      {available.map(([label, value]) => <div key={label} className={value === true ? 'yes' : 'no'}><span>{value === true ? '✓' : '×'}</span>{label}</div>)}
+    </div>
+  </div>;
 }
 
-function CallTimelineCard({
-  call,
-  expanded,
-  tab,
-  busy,
-  onToggle,
-  onTab,
-  onAnalyze,
-  onTranscribe,
-}: {
+function CallTimelineCard({ call, expanded, tab, busy, onToggle, onTab, onAnalyze, onTranscribe }: {
   call: Row;
   expanded: boolean;
   tab: CallTab;
@@ -201,48 +198,72 @@ function CallTimelineCard({
   onAnalyze: () => void;
   onTranscribe: () => void;
 }) {
-  const result = text(call.call_result) || text(call.summary) || (isMissed(call) ? 'Пропущенный звонок' : 'Без результата');
-  const score = call.quality_score == null ? '' : `${Math.round(numberValue(call.quality_score))}/100`;
-  const violations = strings(call.script_violations);
+  const result = text(call.call_result) || (isMissed(call) ? 'Пропущенный звонок' : '');
+  const hasSummaryFacts = Boolean(text(call.summary) || text(call.request_reason) || text(call.patient_pain) || strings(call.objections).length || text(call.next_action));
   return <article className={`telephony-timeline__item telephony-timeline__item--call ${expanded ? 'is-expanded' : ''}`}>
-    <button className="telephony-timeline__call-head" type="button" onClick={onToggle}>
-      <span className="telephony-timeline__icon"><PhoneCall size={16}/></span>
-      <div><strong>{text(call.call_direction) === 'INBOUND' ? 'Входящий звонок' : 'Исходящий звонок'} · {duration(call.duration_seconds)}</strong><small>{dateTime(call.started_at)} · {result}</small></div>
-      {score && <b>{score}</b>}
-      {expanded ? <ChevronUp size={17}/> : <ChevronDown size={17}/>} 
-    </button>
-    {expanded && <div className="telephony-call-card">
-      <div className="telephony-call-card__facts">
-        <span><small>Оператор</small><strong>{text(call.operator_name) || 'Не назначен'}</strong></span>
-        <span><small>Результат</small><strong>{text(call.call_result) || '—'}</strong></span>
-        <span><small>Следующий шаг</small><strong>{text(call.next_action) || '—'}</strong></span>
-      </div>
-      <RecordingPlayer call={call}/>
-      <div className="telephony-call-card__tabs">
-        <button type="button" className={tab === 'summary' ? 'active' : ''} onClick={() => onTab('summary')}>Резюме</button>
-        <button type="button" className={tab === 'transcript' ? 'active' : ''} onClick={() => onTab('transcript')}>Транскрипт</button>
-        <button type="button" className={tab === 'quality' ? 'active' : ''} onClick={() => onTab('quality')}>Качество</button>
-      </div>
-      {tab === 'summary' && <div className="telephony-call-card__body">
-        <p>{text(call.summary) || 'AI-резюме пока отсутствует.'}</p>
-        <dl>
-          <div><dt>Причина обращения</dt><dd>{text(call.request_reason) || '—'}</dd></div>
-          <div><dt>Потребность</dt><dd>{text(call.patient_pain) || '—'}</dd></div>
-          <div><dt>Возражения</dt><dd>{strings(call.objections).join(', ') || '—'}</dd></div>
-          <div><dt>Причина потери</dt><dd>{text(call.loss_reason) || '—'}</dd></div>
-        </dl>
+    <div className="telephony-timeline__time">{timeOnly(call.started_at)}</div>
+    <div className="telephony-timeline__card">
+      <button className="telephony-timeline__call-head" type="button" onClick={onToggle}>
+        <span className="telephony-timeline__icon"><PhoneCall size={15}/></span>
+        <div><strong>{text(call.call_direction) === 'INBOUND' ? 'Входящий звонок' : 'Исходящий звонок'} · {duration(call.duration_seconds)}</strong>{result && <small>Результат: {result}</small>}</div>
+        {call.quality_score != null && <b>{Math.round(numberValue(call.quality_score))}/100</b>}
+        {expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>} 
+      </button>
+      {expanded && <div className="telephony-call-card">
+        <RecordingPlayer call={call}/>
+        <div className="telephony-call-card__tabs">
+          <button type="button" className={tab === 'summary' ? 'active' : ''} onClick={() => onTab('summary')}>AI-резюме</button>
+          <button type="button" className={tab === 'transcript' ? 'active' : ''} onClick={() => onTab('transcript')}>Транскрипт</button>
+          <button type="button" className={tab === 'quality' ? 'active' : ''} onClick={() => onTab('quality')}>Качество</button>
+        </div>
+        {tab === 'summary' && <div className="telephony-call-card__summary-grid">
+          <div className="telephony-call-card__body">
+            {hasSummaryFacts ? <>
+              {text(call.summary) && <p>{text(call.summary)}</p>}
+              <dl>
+                {text(call.request_reason) && <div><dt>Причина обращения</dt><dd>{text(call.request_reason)}</dd></div>}
+                {text(call.patient_pain) && <div><dt>Потребность</dt><dd>{text(call.patient_pain)}</dd></div>}
+                {strings(call.objections).length > 0 && <div><dt>Возражения</dt><dd>{strings(call.objections).join(', ')}</dd></div>}
+                {text(call.next_action) && <div><dt>Следующий шаг</dt><dd>{text(call.next_action)}</dd></div>}
+              </dl>
+            </> : <div className="telephony-empty compact">AI-резюме пока отсутствует.</div>}
+          </div>
+          <QualityPanel call={call}/>
+        </div>}
+        {tab === 'transcript' && <div className="telephony-call-card__body telephony-call-card__transcript"><p>{text(call.transcript) || (text(call.transcription_status) === 'processing' ? 'Расшифровка выполняется…' : 'Расшифровка отсутствует.')}</p></div>}
+        {tab === 'quality' && <QualityPanel call={call}/>} 
+        <div className="telephony-call-card__actions">
+          <button type="button" onClick={onTranscribe} disabled={busy !== '' || text(call.call_status) !== 'COMPLETED'}><Stethoscope size={14}/>{busy === `transcribe:${text(call.id)}` ? 'Обработка…' : 'Текст + AI'}</button>
+          <button type="button" onClick={onAnalyze} disabled={busy !== '' || !text(call.transcript)}><BrainCircuit size={14}/>{busy === `analyze:${text(call.id)}` ? 'Анализ…' : 'Анализ разговора'}</button>
+        </div>
       </div>}
-      {tab === 'transcript' && <div className="telephony-call-card__body telephony-call-card__transcript"><p>{text(call.transcript) || (text(call.transcription_status) === 'processing' ? 'Расшифровка выполняется…' : 'Расшифровка отсутствует.')}</p></div>}
-      {tab === 'quality' && <div className="telephony-call-card__body">
-        <QualityGrid call={call}/>
-        <div className="telephony-call-card__violations"><strong>Нарушения</strong><p>{violations.length ? violations.join(' · ') : 'Нарушений не зафиксировано.'}</p></div>
-      </div>}
-      <div className="telephony-call-card__actions">
-        <button type="button" onClick={onTranscribe} disabled={busy !== '' || text(call.call_status) !== 'COMPLETED'}><Stethoscope size={15}/>{busy === `transcribe:${text(call.id)}` ? 'Расшифровка…' : 'Текст + AI'}</button>
-        <button type="button" onClick={onAnalyze} disabled={busy !== '' || !text(call.transcript)}><BrainCircuit size={15}/>{busy === `analyze:${text(call.id)}` ? 'Анализ…' : 'AI анализ'}</button>
-      </div>
-    </div>}
+    </div>
   </article>;
+}
+
+function QueueGroup({ title, count, tone, calls, selectedId, onChoose }: {
+  title: string;
+  count: number;
+  tone?: 'live' | 'missed' | 'action';
+  calls: Row[];
+  selectedId: string;
+  onChoose: (id: string) => void;
+}) {
+  if (!count) return null;
+  return <section className={`telephony-queue-group ${tone ? `is-${tone}` : ''}`}>
+    <header><span>{title}</span><b>{count}</b></header>
+    <div>
+      {calls.map((call) => {
+        const id = text(call.id);
+        const action = text(call.next_action);
+        return <button key={id} type="button" className={id === selectedId ? 'active' : ''} onClick={() => onChoose(id)}>
+          <span className="telephony-queue__phone"><Phone size={14}/></span>
+          <div><strong>{text(call.client_name) || formatPhone(call.client_phone)}</strong><small>{formatPhone(call.client_phone)}</small></div>
+          <em>{tone === 'live' ? duration(call.duration_seconds) : tone === 'action' && action ? action : timeOnly(call.started_at)}</em>
+        </button>;
+      })}
+    </div>
+  </section>;
 }
 
 export default function TelephonyOperatorWorkspace() {
@@ -251,19 +272,22 @@ export default function TelephonyOperatorWorkspace() {
   const [data, setData] = useState<PhoneContext | null>(null);
   const [selectedCallId, setSelectedCallId] = useState('');
   const [query, setQuery] = useState('');
-  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
   const [expandedCallId, setExpandedCallId] = useState('');
   const [callTab, setCallTab] = useState<CallTab>('summary');
+  const [patientTab, setPatientTab] = useState<PatientTab>('history');
   const [branchId, setBranchId] = useState('');
   const [doctorId, setDoctorId] = useState('');
   const [service, setService] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotId, setSlotId] = useState('');
-  const [followUpAt, setFollowUpAt] = useState(defaultFollowUpInput());
-  const [followUpReason, setFollowUpReason] = useState('');
+  const [followUpAction, setFollowUpAction] = useState('Перезвонить');
+  const [followUpDate, setFollowUpDate] = useState(tomorrowDate());
+  const [followUpTime, setFollowUpTime] = useState('11:00');
   const [followUpCreated, setFollowUpCreated] = useState('');
 
   const load = useCallback(async (callId?: string, silent = false) => {
@@ -278,7 +302,7 @@ export default function TelephonyOperatorWorkspace() {
         setSelectedCallId(resolvedId);
         setExpandedCallId((current) => current || resolvedId);
       }
-      setMessage('');
+      if (!silent) setMessage('');
     } catch (error) {
       if (!silent) setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -292,56 +316,62 @@ export default function TelephonyOperatorWorkspace() {
     return () => window.clearInterval(timer);
   }, [load, selectedCallId]);
 
+  useEffect(() => {
+    const active = isFreshPending(data?.activeCall) ? data?.activeCall : null;
+    window.dispatchEvent(new CustomEvent('imds:telephony-active-call', { detail: active ? {
+      active: true,
+      id: text(active.id),
+      name: text(active.client_name) || 'Пациент',
+      phone: text(active.client_phone),
+      startedAt: text(active.started_at),
+    } : { active: false } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('imds:telephony-active-call', { detail: { active: false } }));
+    };
+  }, [data?.activeCall]);
+
   const selected = data?.selectedCall || null;
   const lead = data?.patient.lead || null;
   const patientName = text(lead?.name) || text(selected?.client_name) || 'Неизвестный пациент';
   const patientPhone = text(lead?.phone) || text(selected?.client_phone);
   const selectedAttribution = attribution(lead?.source || selected?.source, lead?.campaign_id || selected?.campaign_id, lead?.ad_id || selected?.ad_id);
-  const activeId = isFreshPending(data?.activeCall) ? text(data?.activeCall?.id) : '';
+  const responsible = text(selected?.operator_name) || text(lead?.assigned_to) || text(lead?.owner_name);
 
-  const filteredCalls = useMemo(() => (data?.recentCalls || []).filter((call) => {
-    const haystack = [call.client_name, call.client_phone, call.operator_name, call.call_result, call.source, call.next_action].map(text).join(' ').toLowerCase();
-    if (!haystack.includes(query.trim().toLowerCase())) return false;
-    if (queueFilter === 'live') return isFreshPending(call);
-    if (queueFilter === 'missed') return isMissed(call);
-    if (queueFilter === 'followup') return Boolean(text(call.next_action)) || isMissed(call);
-    return true;
-  }), [data?.recentCalls, query, queueFilter]);
-
-  const queueCounts = useMemo(() => {
-    const calls = data?.recentCalls || [];
-    return {
-      all: calls.length,
-      live: calls.filter(isFreshPending).length,
-      missed: calls.filter(isMissed).length,
-      followup: calls.filter((call) => Boolean(text(call.next_action)) || isMissed(call)).length,
-    };
-  }, [data?.recentCalls]);
+  const visibleCalls = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (data?.recentCalls || []).filter((call) => !needle || [call.client_name, call.client_phone, call.operator_name, call.call_result, call.source, call.next_action].map(text).join(' ').toLowerCase().includes(needle));
+  }, [data?.recentCalls, query]);
+  const liveCalls = useMemo(() => visibleCalls.filter(isFreshPending), [visibleCalls]);
+  const missedCalls = useMemo(() => visibleCalls.filter(isMissed), [visibleCalls]);
+  const actionCalls = useMemo(() => visibleCalls.filter(hasAction), [visibleCalls]);
+  const recentCalls = useMemo(() => visibleCalls.filter((call) => !isFreshPending(call) && !isMissed(call) && !hasAction(call)).slice(0, showAllRecent ? 20 : 5), [visibleCalls, showAllRecent]);
 
   const doctors = useMemo(() => (data?.clinic.doctors || []).filter((doctor) => !branchId || doctor.branch_id === branchId), [data?.clinic.doctors, branchId]);
-
   const timeline = useMemo<TimelineItem[]>(() => {
     if (!data) return [];
-    const directCalls = data.patient.calls.map((row) => ({ id: `call:${text(row.id)}`, kind: 'call' as const, at: text(row.started_at) || text(row.created_at), row }));
+    const calls = data.patient.calls.map((row) => ({ id: `call:${text(row.id)}`, kind: 'call' as const, at: text(row.started_at) || text(row.created_at), row }));
     const appointments = data.patient.appointments.map((row) => ({ id: `appointment:${text(row.id)}`, kind: 'appointment' as const, at: text(row.created_at) || text(row.starts_at), row }));
     const tasks = data.patient.tasks.map((row) => ({ id: `task:${text(row.id)}`, kind: 'task' as const, at: text(row.created_at) || text(row.due_at), row }));
     const journey = data.patient.journey
       .filter((row) => !['call', 'appointment_booked'].includes(text(row.event_type)))
       .map((row) => ({ id: `journey:${text(row.id)}`, kind: 'journey' as const, at: text(row.occurred_at) || text(row.created_at), row }));
-    return [...directCalls, ...appointments, ...tasks, ...journey]
+    return [...calls, ...appointments, ...tasks, ...journey]
       .filter((item) => Boolean(item.at))
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 50);
+      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+      .slice(-50);
   }, [data]);
 
   useEffect(() => {
     setBranchId('');
     setDoctorId('');
+    setService('');
     setSlots([]);
     setSlotId('');
-    setFollowUpAt(defaultFollowUpInput());
-    setFollowUpReason(text(selected?.next_action));
+    setFollowUpAction(text(selected?.next_action) || 'Перезвонить');
+    setFollowUpDate(tomorrowDate());
+    setFollowUpTime('11:00');
     setFollowUpCreated('');
+    setPatientTab('history');
   }, [selectedCallId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const chooseCall = async (id: string) => {
@@ -421,7 +451,7 @@ export default function TelephonyOperatorWorkspace() {
           phone: patientPhone,
         }),
       });
-      setMessage('Пациент записан. Timeline обновлена.');
+      setMessage('Пациент записан.');
       setSlots((items) => items.filter((slot) => slot.starts_at !== slotId));
       setSlotId('');
       await load(text(selected?.id), true);
@@ -431,35 +461,36 @@ export default function TelephonyOperatorWorkspace() {
   };
 
   const createFollowUp = async () => {
-    if (!followUpAt || !patientPhone) return;
+    if (!followUpDate || !followUpTime || !patientPhone) return;
+    const due = new Date(`${followUpDate}T${followUpTime}:00`);
+    if (!Number.isFinite(due.getTime())) return;
     setBusy('followup');
     setMessage('');
     try {
-      const title = `Перезвонить: ${patientName}`;
+      const title = `${followUpAction || 'Перезвонить'}: ${patientName}`;
       const description = [
         'Follow-up из IMDS Telephony',
         `Пациент: ${patientName}`,
         `Телефон: ${formatPhone(patientPhone)}`,
         text(selected?.id) ? `Звонок: ${text(selected?.id)}` : '',
-        followUpReason.trim() ? `Причина: ${followUpReason.trim()}` : '',
       ].filter(Boolean).join('\n');
       await tasksApi.create({
         title,
         description,
         priority: 'medium',
-        dueAt: new Date(followUpAt).toISOString(),
+        dueAt: due.toISOString(),
         assignmentMode: 'shared',
         targets: [{ targetType: 'user', targetValue: user.id, targetLabel: user.name || user.email || 'Текущий оператор' }],
       });
-      setFollowUpCreated(`Создано на ${new Date(followUpAt).toLocaleString('ru-RU')}`);
-      setMessage('Follow-up создан в модуле «Задачи».');
+      setFollowUpCreated(`Создано · ${due.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`);
+      await load(text(selected?.id), true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally { setBusy(''); }
   };
 
   const noDirectory = !(data?.clinic.branches || []).length || !(data?.clinic.doctors || []).length;
-  const selectedIsLive = isFreshPending(selected) && text(selected?.id) === activeId;
+  const tabs: Array<[PatientTab, string]> = [['history', 'История'], ['profile', 'Профиль'], ['notes', 'Заметки'], ['files', 'Файлы'], ['tasks', 'Задачи']];
 
   return <div className="telephony-operator">
     {message && <div className="telephony-operator__message">{message}</div>}
@@ -468,56 +499,50 @@ export default function TelephonyOperatorWorkspace() {
     {!loading && data && <div className="telephony-operator__grid">
       <aside className="telephony-queue">
         <header className="telephony-panel-head">
-          <div><PhoneCall size={17}/><strong>Очередь</strong></div>
-          <button type="button" onClick={() => void load(selectedCallId || undefined)} title="Обновить"><RefreshCw size={15}/></button>
+          <div><PhoneCall size={16}/><strong>Очередь</strong></div>
+          <div className="telephony-panel-head__actions">
+            <button type="button" className={searchOpen ? 'active' : ''} onClick={() => setSearchOpen((value) => !value)} title="Поиск и фильтр"><SlidersHorizontal size={15}/></button>
+            <button type="button" onClick={() => void load(selectedCallId || undefined)} title="Обновить"><RefreshCw size={15}/></button>
+          </div>
         </header>
-        <label className="telephony-search"><Search size={15}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пациент или номер"/></label>
-        <div className="telephony-queue__filters">
-          {([
-            ['all', 'Все'],
-            ['live', 'Live'],
-            ['missed', 'Пропущ.'],
-            ['followup', 'Действие'],
-          ] as Array<[QueueFilter, string]>).map(([id, label]) => <button key={id} type="button" className={queueFilter === id ? 'active' : ''} onClick={() => setQueueFilter(id)}>{label}<span>{queueCounts[id]}</span></button>)}
+        {searchOpen && <label className="telephony-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пациент или номер"/></label>}
+        <div className="telephony-queue__groups">
+          <QueueGroup title="LIVE" count={liveCalls.length} tone="live" calls={liveCalls} selectedId={text(selected?.id)} onChoose={(id) => void chooseCall(id)}/>
+          <QueueGroup title="ПРОПУЩЕННЫЕ" count={missedCalls.length} tone="missed" calls={missedCalls} selectedId={text(selected?.id)} onChoose={(id) => void chooseCall(id)}/>
+          <QueueGroup title="ТРЕБУЮТ ДЕЙСТВИЯ" count={actionCalls.length} tone="action" calls={actionCalls} selectedId={text(selected?.id)} onChoose={(id) => void chooseCall(id)}/>
+          <QueueGroup title="ПОСЛЕДНИЕ" count={recentCalls.length} calls={recentCalls} selectedId={text(selected?.id)} onChoose={(id) => void chooseCall(id)}/>
+          {!visibleCalls.length && <div className="telephony-empty">Нет звонков по текущему поиску.</div>}
         </div>
-        <div className="telephony-queue__list">
-          {filteredCalls.map((call) => {
-            const state = queueState(call);
-            const callId = text(call.id);
-            return <button key={callId} type="button" className={`${callId === text(selected?.id) ? 'active' : ''} ${state.className}`} onClick={() => void chooseCall(callId)}>
-              <span className="telephony-queue__phone"><Phone size={14}/></span>
-              <div><strong>{text(call.client_name) || formatPhone(call.client_phone)}</strong><small>{formatPhone(call.client_phone)} · {timeOnly(call.started_at)}</small></div>
-              <em>{state.label}</em>
-            </button>;
-          })}
-          {!filteredCalls.length && <div className="telephony-empty">Нет звонков по фильтру.</div>}
-        </div>
+        <button type="button" className="telephony-queue__all" onClick={() => setShowAllRecent((value) => !value)}><Phone size={14}/>{showAllRecent ? 'Свернуть' : 'Все звонки'}</button>
       </aside>
 
       <main className="telephony-patient">
-        <header className={`telephony-patient__hero ${selectedIsLive ? 'is-live' : ''}`}>
-          <div className="telephony-patient__avatar"><UserRound size={24}/></div>
+        <header className="telephony-patient__hero">
+          <div className="telephony-patient__avatar"><UserRound size={23}/></div>
           <div className="telephony-patient__identity">
-            <span>{selectedIsLive ? 'АКТИВНЫЙ ЗВОНОК' : 'ПАЦИЕНТ'}</span>
-            <h2>{patientName}</h2>
+            <div><h2>{patientName}</h2><span>ПАЦИЕНТ</span></div>
             <p>{formatPhone(patientPhone)}</p>
           </div>
           <div className="telephony-patient__actions">
-            <button type="button" onClick={sendToDialer} disabled={!patientPhone}><PhoneCall size={15}/> Набрать</button>
-            <button type="button" onClick={() => navigate('/chat')} disabled={!patientPhone}><MessageCircle size={15}/> WhatsApp</button>
-            {lead && <button type="button" onClick={() => navigate(`/customers?lead_id=${encodeURIComponent(text(lead.id))}`)}><ExternalLink size={15}/> 360°</button>}
+            <button type="button" onClick={sendToDialer} disabled={!patientPhone}><PhoneCall size={14}/>Позвонить</button>
+            <button type="button" onClick={() => navigate('/chat')} disabled={!patientPhone}><MessageCircle size={14}/>WhatsApp</button>
+            <button type="button" onClick={() => lead && navigate(`/customers?lead_id=${encodeURIComponent(text(lead.id))}`)} disabled={!lead} title="Карточка клиента"><Ellipsis size={16}/></button>
           </div>
         </header>
 
-        <section className="telephony-attribution">
+        <section className="telephony-patient__meta">
           <div><span>Источник</span><strong>{selectedAttribution.label}</strong><small>{selectedAttribution.kind}</small></div>
-          {text(lead?.campaign_id || selected?.campaign_id) && <div><span>Кампания</span><strong>{text(lead?.campaign_id || selected?.campaign_id)}</strong></div>}
-          {text(lead?.ad_id || selected?.ad_id) && <div><span>Объявление</span><strong>{text(lead?.ad_id || selected?.ad_id)}</strong></div>}
-          {lead?.first_response_seconds != null && <div><span>Первый ответ</span><strong>{numberValue(lead.first_response_seconds)} сек</strong></div>}
+          {responsible && <div><span>Ответственный</span><strong>{responsible}</strong></div>}
+          {selectedAttribution.kind === 'PAID' && text(lead?.campaign_id || selected?.campaign_id) && <div><span>Кампания</span><strong>{text(lead?.campaign_id || selected?.campaign_id)}</strong></div>}
+          {selectedAttribution.kind === 'PAID' && text(lead?.ad_id || selected?.ad_id) && <div><span>Объявление</span><strong>{text(lead?.ad_id || selected?.ad_id)}</strong></div>}
         </section>
 
-        <section className="telephony-timeline">
-          <header><div><History size={17}/><strong>История взаимодействий</strong></div><span>{timeline.length}</span></header>
+        <nav className="telephony-patient__tabs" aria-label="Пациент">
+          {tabs.map(([id, label]) => <button key={id} type="button" className={patientTab === id ? 'active' : ''} onClick={() => setPatientTab(id)}>{label}</button>)}
+        </nav>
+
+        {patientTab === 'history' && <section className="telephony-timeline">
+          <div className="telephony-timeline__day"><span/>Сегодня<span/></div>
           <div className="telephony-timeline__list">
             {timeline.map((item) => {
               if (item.kind === 'call') {
@@ -535,59 +560,73 @@ export default function TelephonyOperatorWorkspace() {
                 />;
               }
               if (item.kind === 'appointment') return <article key={item.id} className="telephony-timeline__item">
-                <span className="telephony-timeline__icon"><CalendarPlus size={16}/></span>
-                <div><strong>Запись в клинику</strong><small>{dateTime(item.row.starts_at)} · {text(item.row.service) || text(item.row.doctor_name) || 'Приём'}</small></div>
+                <div className="telephony-timeline__time">{timeOnly(item.at)}</div><div className="telephony-timeline__card simple"><span className="telephony-timeline__icon appointment"><CalendarPlus size={15}/></span><div><strong>Запись</strong><small>{dateTime(item.row.starts_at)}{text(item.row.service) ? ` · ${text(item.row.service)}` : ''}{text(item.row.doctor_name) ? ` · ${text(item.row.doctor_name)}` : ''}</small></div></div>
               </article>;
               if (item.kind === 'task') return <article key={item.id} className="telephony-timeline__item">
-                <span className="telephony-timeline__icon"><CheckCircle2 size={16}/></span>
-                <div><strong>{text(item.row.title) || 'Follow-up'}</strong><small>{dateTime(item.row.due_at || item.row.created_at)} · {text(item.row.status) || 'Задача'}</small></div>
+                <div className="telephony-timeline__time">{timeOnly(item.at)}</div><div className="telephony-timeline__card simple"><span className="telephony-timeline__icon task"><CheckCircle2 size={15}/></span><div><strong>{text(item.row.title) || 'Задача'}</strong><small>{dateTime(item.row.due_at || item.row.created_at)}{text(item.row.status) ? ` · ${text(item.row.status)}` : ''}</small></div></div>
               </article>;
+              const channel = text(item.row.channel) || text(item.row.source) || 'IMDS';
+              const body = text(item.row.message_text) || text(item.row.content) || text(item.row.description);
               return <article key={item.id} className="telephony-timeline__item">
-                <span className="telephony-timeline__icon"><MessageCircle size={16}/></span>
-                <div><strong>{eventLabel(item.row.event_type)}</strong><small>{dateTime(item.row.occurred_at)} · {text(item.row.channel) || text(item.row.source) || 'IMDS'}</small></div>
+                <div className="telephony-timeline__time">{timeOnly(item.at)}</div><div className="telephony-timeline__card simple"><span className="telephony-timeline__icon message"><MessageCircle size={15}/></span><div><strong>{channel.toLowerCase().includes('whatsapp') ? 'WhatsApp' : eventLabel(item.row.event_type)}</strong><small>{eventLabel(item.row.event_type)}{body ? ` · ${body}` : ` · ${channel}`}</small></div></div>
               </article>;
             })}
             {!timeline.length && <div className="telephony-empty">История взаимодействий пока пуста.</div>}
           </div>
-        </section>
+        </section>}
+
+        {patientTab === 'profile' && <section className="telephony-patient-panel">
+          <div><span>Имя</span><strong>{patientName}</strong></div>
+          <div><span>Телефон</span><strong>{formatPhone(patientPhone)}</strong></div>
+          {text(lead?.stage) && <div><span>Этап</span><strong>{text(lead?.stage)}</strong></div>}
+          {text(lead?.source || selected?.source) && <div><span>Источник</span><strong>{selectedAttribution.label}</strong></div>}
+        </section>}
+        {patientTab === 'notes' && <div className="telephony-empty telephony-tab-empty">Заметки не возвращаются текущим Phone Workspace API.</div>}
+        {patientTab === 'files' && <div className="telephony-empty telephony-tab-empty">Файлы не возвращаются текущим Phone Workspace API.</div>}
+        {patientTab === 'tasks' && <section className="telephony-patient-panel telephony-patient-panel--tasks">
+          {data.patient.tasks.map((task) => <div key={text(task.id)}><span>{dateTime(task.due_at || task.created_at)}</span><strong>{text(task.title) || 'Задача'}</strong></div>)}
+          {!data.patient.tasks.length && <div className="telephony-empty compact">Задач по пациенту нет.</div>}
+        </section>}
       </main>
 
       <aside className="telephony-assist">
         <section className="telephony-assist__card telephony-assist__ai">
-          <header><div><BrainCircuit size={18}/><strong>IMDS Call AI</strong></div>{selected?.ai_confidence != null && <span>{Math.round(numberValue(selected.ai_confidence))}%</span>}</header>
-          <div className="telephony-assist__summary"><Sparkles size={16}/><p>{text(selected?.summary) || (text(selected?.transcript) ? 'Транскрипт готов. Запустите AI-анализ.' : 'После разговора здесь появятся выводы и следующий лучший шаг.')}</p></div>
+          <header><div><BrainCircuit size={17}/><strong>IMDS Call AI</strong></div>{selected?.ai_confidence != null && <span>{Math.round(numberValue(selected.ai_confidence))}%</span>}</header>
+          {text(selected?.summary) && <div className="telephony-assist__summary"><Sparkles size={15}/><p>{text(selected?.summary)}</p></div>}
           <dl>
-            <div><dt>Причина</dt><dd>{text(selected?.request_reason) || '—'}</dd></div>
-            <div><dt>Потребность</dt><dd>{text(selected?.patient_pain) || '—'}</dd></div>
-            <div><dt>Возражения</dt><dd>{strings(selected?.objections).join(', ') || '—'}</dd></div>
-            <div><dt>Следующий шаг</dt><dd>{text(selected?.next_action) || '—'}</dd></div>
+            <div><dt>Причина обращения</dt><dd>{text(selected?.request_reason) || 'Нет данных'}</dd></div>
+            <div><dt>Потребность</dt><dd>{text(selected?.patient_pain) || 'Нет данных'}</dd></div>
+            <div><dt>Возражения</dt><dd>{strings(selected?.objections).join(', ') || 'Нет данных'}</dd></div>
+            <div><dt>Следующий лучший шаг</dt><dd>{text(selected?.next_action) || 'Нет данных'}</dd></div>
           </dl>
           <div className="telephony-assist__actions">
-            <button type="button" onClick={() => void runTranscribe(text(selected?.id))} disabled={busy !== '' || text(selected?.call_status) !== 'COMPLETED'}><Stethoscope size={15}/> Текст + AI</button>
-            <button type="button" onClick={() => void runAnalyze(text(selected?.id))} disabled={busy !== '' || !text(selected?.transcript)}><BrainCircuit size={15}/> Анализ</button>
+            <button type="button" onClick={() => void runTranscribe(text(selected?.id))} disabled={busy !== '' || text(selected?.call_status) !== 'COMPLETED'}><Stethoscope size={14}/>Текст + AI</button>
+            <button type="button" onClick={() => void runAnalyze(text(selected?.id))} disabled={busy !== '' || !text(selected?.transcript)}><BrainCircuit size={14}/>Анализ разговора</button>
           </div>
         </section>
 
         <section className="telephony-assist__card telephony-booking">
-          <header><div><CalendarPlus size={18}/><strong>Быстрая запись</strong></div></header>
-          {noDirectory ? <div className="telephony-booking__setup"><MapPin size={18}/><div><strong>Расписание не настроено</strong><p>Добавьте филиалы, врачей и расписание — IMDS не создаёт фиктивные слоты.</p></div></div> : <>
-            <label><span>Филиал</span><select value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Выберите филиал</option>{data.clinic.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
-            <label><span>Врач</span><select value={doctorId} onChange={(event) => void loadSlots(event.target.value)} disabled={!branchId}><option value="">Выберите врача</option>{doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}{doctor.specialty ? ` · ${doctor.specialty}` : ''}</option>)}</select></label>
-            <label><span>Услуга / причина</span><input value={service} onChange={(event) => setService(event.target.value)} placeholder={text(selected?.request_reason) || 'Например: консультация'}/></label>
-            <label><span>Свободное время</span><select value={slotId} onChange={(event) => setSlotId(event.target.value)} disabled={!doctorId || busy === 'slots'}><option value="">{busy === 'slots' ? 'Ищем слоты…' : 'Выберите время'}</option>{slots.map((slot) => <option key={slot.id} value={slot.starts_at}>{dateOnly(slot.starts_at)} · {timeOnly(slot.starts_at)} · {slot.slot_minutes} мин</option>)}</select></label>
-            <button className="telephony-booking__submit" type="button" onClick={() => void createAppointment()} disabled={!slotId || busy !== ''}>{busy === 'appointment' ? <LoaderCircle className="spin" size={16}/> : <CheckCircle2 size={16}/>} Записать</button>
+          <header><div><CalendarPlus size={17}/><strong>Быстрая запись</strong></div></header>
+          {noDirectory ? <div className="telephony-booking__setup"><strong>Расписание не настроено</strong><p>Нет доступных филиалов или врачей. Фиктивные слоты не создаются.</p></div> : <>
+            <div className="telephony-booking__row two">
+              <label><span>Филиал</span><select value={branchId} onChange={(event) => { setBranchId(event.target.value); setDoctorId(''); setSlots([]); setSlotId(''); }}><option value="">Выберите</option>{data.clinic.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+              <label><span>Врач</span><select value={doctorId} onChange={(event) => void loadSlots(event.target.value)} disabled={!branchId}><option value="">Выберите</option>{doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select></label>
+            </div>
+            <label><span>Услуга</span><input value={service} onChange={(event) => setService(event.target.value)} placeholder={text(selected?.request_reason) || 'Услуга'}/></label>
+            <label><span>Дата и время</span><select value={slotId} onChange={(event) => setSlotId(event.target.value)} disabled={!doctorId || busy === 'slots'}><option value="">{busy === 'slots' ? 'Ищем слоты…' : slots.length ? 'Выберите время' : 'Нет выбранного времени'}</option>{slots.map((slot) => <option key={slot.id} value={slot.starts_at}>{dateOnly(slot.starts_at)} · {timeOnly(slot.starts_at)} · {slot.slot_minutes} мин</option>)}</select></label>
+            <button className="telephony-booking__submit" type="button" onClick={() => void createAppointment()} disabled={!slotId || busy !== ''}>{busy === 'appointment' ? <LoaderCircle className="spin" size={15}/> : <CheckCircle2 size={15}/>}Записать пациента</button>
           </>}
         </section>
 
         <section className="telephony-assist__card telephony-followup">
-          <header><div><Clock3 size={18}/><strong>Follow-up</strong></div><span>{data.patient.tasks.length}</span></header>
-          <label><span>Когда</span><input type="datetime-local" value={followUpAt} onChange={(event) => setFollowUpAt(event.target.value)}/></label>
-          <label><span>Что сделать</span><input value={followUpReason} onChange={(event) => setFollowUpReason(event.target.value)} placeholder="Перезвонить, уточнить решение…"/></label>
-          <button type="button" onClick={() => void createFollowUp()} disabled={!followUpAt || !patientPhone || busy !== ''}>{busy === 'followup' ? <LoaderCircle className="spin" size={16}/> : <CheckCircle2 size={16}/>} Создать задачу</button>
-          {followUpCreated && <div className="telephony-followup__success">{followUpCreated}</div>}
-          <div className="telephony-followup__existing">
-            {data.patient.tasks.slice(0, 3).map((task) => <div key={text(task.id)}><strong>{text(task.title) || 'Задача'}</strong><small>{dateTime(task.due_at || task.created_at)}</small></div>)}
+          <header><div><Clock3 size={17}/><strong>Follow-up</strong></div></header>
+          <label><span>Что сделать</span><select value={followUpAction} onChange={(event) => setFollowUpAction(event.target.value)}><option>Перезвонить</option><option>Уточнить решение</option><option>Отправить информацию</option></select></label>
+          <div className="telephony-booking__row two">
+            <label><span>Когда</span><input type="date" value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)}/></label>
+            <label><span>Время</span><input type="time" value={followUpTime} onChange={(event) => setFollowUpTime(event.target.value)}/></label>
           </div>
+          <button type="button" onClick={() => void createFollowUp()} disabled={!followUpDate || !followUpTime || !patientPhone || busy !== ''}>{busy === 'followup' ? <LoaderCircle className="spin" size={15}/> : <CheckCircle2 size={15}/>}Создать задачу</button>
+          {followUpCreated && <div className="telephony-followup__success">{followUpCreated}</div>}
         </section>
       </aside>
     </div>}
