@@ -38,7 +38,9 @@ export const tasksApi={
   list:(scope='all',workflow='')=>request<{tasks:WorkTask[]}>(`?scope=${encodeURIComponent(scope)}${workflow?`&workflow=${encodeURIComponent(workflow)}`:''}`),
   get:(id:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(id)}`),
   create:(payload:Record<string,unknown>)=>request<{task:WorkTask}>('',{method:'POST',body:JSON.stringify(payload)}),
-  update:(id:string,payload:Record<string,unknown>)=>request<{task:WorkTask}>(`/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)}),
+  update:(id:string,payload:Record<string,unknown>)=>Object.keys(payload).length===1&&Object.prototype.hasOwnProperty.call(payload,'dueAt')
+    ? request<{task:WorkTask}>('/suite/postpone',{method:'POST',body:JSON.stringify({taskId:id,dueAt:payload.dueAt})}).then(async result=>result.task?{task:result.task}:request<{task:WorkTask}>(`/${encodeURIComponent(id)}`))
+    : request<{task:WorkTask}>(`/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)}),
   updateExecution:(taskId:string,status:TaskStatus,resultCode?:string,resultNote?:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/execution`,{method:'PATCH',body:JSON.stringify({status,resultCode,resultNote})}),
   comment:(taskId:string,body:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/comments`,{method:'POST',body:JSON.stringify({body})}),
   addChecklist:(taskId:string,title:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/checklist`,{method:'POST',body:JSON.stringify({title})}),
