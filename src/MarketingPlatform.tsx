@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
@@ -28,6 +28,7 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './page
 import JourneyAutomationPage from './pages/JourneyAutomationPage';
 import { MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
+import TasksPage from './pages/TasksPage';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
@@ -38,6 +39,9 @@ type NavGroup = { label: string; items: NavItem[] };
 const navigation: NavGroup[] = [
   { label: 'ОБЗОР', items: [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, moduleId: 'dashboard' },
+  ]},
+  { label: 'РАБОТА', items: [
+    { to: '/tasks', label: 'Задачи', icon: ListChecks, moduleId: 'work.tasks' },
   ]},
   { label: 'CRM', items: [
     { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
@@ -113,6 +117,7 @@ function Shell() {
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <DashboardRoute/>)} />
         <Route path="/goals" element={<Navigate to="/" replace/>} />
+        <Route path="/tasks" element={guard('work.tasks', <TasksPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
         <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
         <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
