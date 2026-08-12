@@ -141,6 +141,9 @@ export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
+    // Preserve an untouched body stream before audit/pre-route handlers inspect the incoming request.
+    // Request bodies are single-use in Cloudflare Workers; trusted-header reconstruction must use this copy.
+    const forwardingSource = request.clone();
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
 
@@ -160,7 +163,7 @@ export default {
         const legacyAdmin = isIntegrationAdminPath(url.pathname) && hasLegacyAdminKey(request, env);
         const verified = verifiedIdentity(request);
         if (legacyAdmin) {
-          forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
+          forwardedRequest = withTrustedIdentity(forwardingSource, 'administrator', 'legacy-admin-key');
         } else if (verified) {
           if (isIntegrationAdminPath(url.pathname) && verified.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
           const requestedCompany = (request.headers.get(COMPANY_HEADER) || '').trim();
@@ -170,7 +173,7 @@ export default {
           } catch (error) {
             return authError(409, error instanceof Error ? error.message : 'Выберите клинику для продолжения');
           }
-          forwardedRequest = withTrustedIdentity(request, verified.role, verified.userId);
+          forwardedRequest = withTrustedIdentity(forwardingSource, verified.role, verified.userId);
         } else {
           const user = await authenticateRequest(request, env);
           if (!user) return authError();
@@ -184,11 +187,11 @@ export default {
           } catch (error) {
             return authError(409, error instanceof Error ? error.message : 'Выберите клинику для продолжения');
           }
-          forwardedRequest = withTrustedIdentity(request, user.role, user.id);
+          forwardedRequest = withTrustedIdentity(forwardingSource, user.role, user.id);
         }
       }
 
-      if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
+      if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(forwardingSource);
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
       const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
       if (webhookGuard) return webhookGuard;
