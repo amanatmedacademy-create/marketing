@@ -1,10 +1,11 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
-import type { WorkerExecutionContext, WorkerScheduledController } from './integrations';
+import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
+import { handleTasks } from './tasks';
 
 type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string };
 
@@ -32,6 +33,15 @@ function bypassPermissionBoundary(pathname: string): boolean {
     || pathname.startsWith('/api/telephony/zadarma/webhook/');
 }
 
+function trustedRequest(request: Request, role: string, userId: string): Request {
+  const headers = new Headers(request.headers);
+  headers.delete('x-amanat-auth-role');
+  headers.delete('x-amanat-auth-user');
+  headers.set('x-amanat-auth-role', role);
+  headers.set('x-amanat-auth-user', userId);
+  return new Request(request, { headers });
+}
+
 export default {
   async fetch(request: Request, env: SecuredEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -40,6 +50,10 @@ export default {
       if (user && user.status === 'active') {
         const denied = await authorizeApplicationRequest(request, env, user);
         if (denied) return denied;
+        if (url.pathname.startsWith('/api/tasks')) {
+          const response = await handleTasks(trustedRequest(request, user.role, user.id), env as unknown as Env, url);
+          if (response) return response;
+        }
       }
     }
     return app.fetch(request, env, ctx);
