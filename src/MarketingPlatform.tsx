@@ -130,7 +130,7 @@ function Shell() {
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
         <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
-        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>))} />
+        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>))} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
@@ -154,6 +154,7 @@ function Shell() {
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
       </Routes>{user.role === 'administrator' && <DataInspectorAutoLayer/>}</div>
     </main>
+    <DealWorkspaceHost/>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
@@ -162,4 +163,6 @@ function AccessDenied() {
   return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>Обратитесь к администратору, чтобы изменить должность или персональные права.</p></div>;
 }
 
-export default function MarketingPlatform() { return <BrowserRouter><Shell/></BrowserRouter>; }
+export default function MarketingPlatform() {
+  return <BrowserRouter><DealWorkspaceProvider><Shell/></DealWorkspaceProvider></BrowserRouter>;
+}
