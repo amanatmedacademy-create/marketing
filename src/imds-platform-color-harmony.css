@@ -1,0 +1,139 @@
+/* Final platform color harmony layer.
+   Keeps semantic status colors, but replaces legacy navy/blue surfaces with shared IMDS tokens. */
+
+/* ===== SALES FUNNEL V2 ===== */
+.funnel-v2-page{
+  --f-bg:var(--imds-bg)!important;
+  --f-panel:var(--imds-glass)!important;
+  --f-panel2:var(--imds-glass-strong)!important;
+  --f-border:var(--imds-border)!important;
+  --f-text:var(--imds-text)!important;
+  --f-muted:var(--imds-muted)!important;
+  color:var(--imds-text)!important;
+}
+.funnel-v2-page .button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.funnel-v2-page .button:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important}
+.funnel-v2-page .button-primary{border-color:var(--imds-primary)!important;background:var(--imds-primary)!important;color:#fff!important}
+.funnel-v2-heading span,.funnel-v2-state button,.funnel-v2-event b{color:var(--imds-primary)!important}
+.funnel-v2-state,.funnel-v2-kpis article,.funnel-v2-filters,.funnel-v2-empty-panel,.funnel-v2-bottom>article{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text)!important}
+.funnel-v2-kpis article>svg{background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.funnel-v2-kpis article.warning>svg{background:var(--imds-warning-a10)!important;color:var(--imds-warning)!important}
+.funnel-v2-filters input,.funnel-v2-filters select,.funnel-v2-filters button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}
+.funnel-v2-kanban-shell{border-color:var(--imds-border)!important;background:var(--imds-bg)!important}
+.funnel-v2-pipeline-bar,.funnel-v2-stage-strip,.funnel-v2-column>header{background:var(--imds-glass-strong)!important;border-color:var(--imds-border)!important}
+.funnel-v2-pipeline-tabs button,.funnel-v2-stage-strip b{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.funnel-v2-pipeline-tabs button.active{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.funnel-v2-pipeline-tabs i{background:var(--imds-primary)!important;color:#fff!important}
+.funnel-v2-stage-strip svg{color:var(--imds-muted)!important}
+.funnel-v2-kanban-scroll{background:var(--imds-bg)!important}
+.funnel-v2-column{border-color:var(--imds-border)!important;background:var(--imds-surface-2)!important}
+.funnel-v2-column.drag-active{border-color:var(--imds-primary)!important}
+.funnel-v2-deal{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow-soft)!important}
+.funnel-v2-deal>header>span{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+.funnel-v2-deal>header small,.funnel-v2-deal-meta,.funnel-v2-deal-owners small,.funnel-v2-next-action time{color:var(--imds-muted)!important}
+.funnel-v2-deal>header i,.funnel-v2-deal-owners>span,.funnel-v2-next-action{background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.funnel-v2-deal>p{color:var(--imds-text-soft)!important}
+.funnel-v2-deal-amount{background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+.funnel-v2-next-action.overdue,.funnel-v2-lost{background:var(--imds-danger-a10)!important;color:var(--imds-danger)!important}
+.funnel-v2-deal>footer{border-color:var(--imds-border)!important}
+.funnel-v2-deal>footer button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.funnel-v2-modal-layer{background:color-mix(in srgb,var(--imds-bg) 72%,transparent)!important}
+.funnel-v2-modal{border-color:var(--imds-border)!important;background:var(--imds-surface)!important;color:var(--imds-text)!important;box-shadow:var(--imds-shadow)!important}
+.funnel-v2-modal>header,.funnel-v2-modal>footer,.funnel-v2-bottom>article>header,.funnel-v2-stage-row,.funnel-v2-event{border-color:var(--imds-border)!important}
+.funnel-v2-modal>header small{color:var(--imds-primary)!important}
+.funnel-v2-modal>header button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text-soft)!important}
+.funnel-v2-modal-body label>span{color:var(--imds-muted)!important}
+.funnel-v2-modal-body input,.funnel-v2-modal-body select,.funnel-v2-modal-body textarea{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}
+.funnel-v2-modal-error,.danger-button{border-color:color-mix(in srgb,var(--imds-danger) 38%,var(--imds-border))!important;background:var(--imds-danger-a10)!important;color:var(--imds-danger)!important}
+
+/* ===== UNIFIED INBOX / CALL CENTER ===== */
+.callcenter-root{
+  --border:var(--imds-border)!important;
+  --border2:var(--imds-border-strong)!important;
+  --surface:var(--imds-surface)!important;
+  --surface2:var(--imds-surface-2)!important;
+  --surface3:var(--imds-glass-soft)!important;
+  --control:var(--imds-glass-soft)!important;
+  --text:var(--imds-text)!important;
+  --text2:var(--imds-text-soft)!important;
+  --text3:var(--imds-muted)!important;
+  --muted:var(--imds-muted)!important;
+}
+.callcenter-heading>div:first-child span,.inbox-header-stats b,.inbox-crm-mobile-head button{color:var(--imds-primary)!important}
+.callcenter-root .button{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-text)!important}
+.callcenter-root .button-primary,.inbox-send-button{border-color:var(--imds-primary)!important;background:var(--imds-primary)!important;color:#fff!important}
+.inbox-unread-pill{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.inbox-workspace{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;box-shadow:var(--imds-shadow-soft)!important}
+.inbox-left,.inbox-right{background:var(--imds-surface-2)!important}
+.inbox-center{background:var(--imds-bg)!important}
+.inbox-contact-bar,.inbox-compose,.inbox-workspace-header{background:var(--imds-glass)!important;border-color:var(--imds-border)!important}
+.inbox-search,.inbox-status-filter select,.inbox-contact-actions select,.inbox-input-row textarea,.inbox-quick-replies button,.inbox-icon-button,.inbox-attachment,.inbox-attachment-draft{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+.inbox-channel-tabs button,.inbox-contact-actions button{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+.inbox-channel-tabs button:hover,.inbox-quick-replies button:hover,.inbox-icon-button:hover{border-color:var(--imds-primary)!important;color:var(--imds-primary)!important}
+.inbox-channel-tabs button.active{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.inbox-thread{border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+.inbox-thread:hover{background:var(--imds-row-hover)!important}
+.inbox-thread.active{background:var(--imds-primary-soft)!important;box-shadow:inset 3px 0 0 var(--imds-primary)!important}
+.inbox-channel-badge{background:var(--imds-surface-3)!important;color:var(--imds-text-soft)!important}
+.inbox-thread-meta b{background:var(--imds-primary)!important;color:#fff!important}
+.inbox-contact-avatar,.inbox-crm-avatar{background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;color:#fff!important}
+.inbox-date-divider span{border-color:var(--imds-border)!important;background:var(--imds-glass-soft)!important;color:var(--imds-muted)!important}
+.inbox-message{border-color:var(--imds-border)!important;background:var(--imds-glass)!important;color:var(--imds-text-soft)!important}
+.inbox-message.outbound{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important}
+.inbox-message header strong{color:var(--imds-primary)!important}
+.inbox-message.inbound header strong{color:var(--imds-muted)!important}
+.inbox-template-menu{border-color:var(--imds-border)!important;background:var(--imds-glass-strong)!important;box-shadow:var(--imds-shadow)!important}
+.inbox-template-menu button{color:var(--imds-text-soft)!important}
+.inbox-template-menu button:hover{background:var(--imds-row-hover)!important;color:var(--imds-text)!important}
+.inbox-input-row textarea:focus{outline:0!important;border-color:var(--imds-primary)!important;box-shadow:0 0 0 3px var(--imds-primary-a10)!important}
+.inbox-ai-button{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+
+/* ===== CLINIC SCHEDULE ===== */
+.mis-schedule-page{
+  --ls-bg:var(--imds-bg)!important;
+  --ls-white:var(--imds-surface)!important;
+  --ls-accent:var(--imds-primary)!important;
+  --ls-accent2:var(--imds-primary-strong)!important;
+  --ls-border:var(--imds-border)!important;
+  --ls-border2:var(--imds-border-strong)!important;
+  --ls-text:var(--imds-text)!important;
+  --ls-text2:var(--imds-text-soft)!important;
+  --ls-text3:var(--imds-muted)!important;
+  background:var(--imds-bg)!important;
+  color:var(--imds-text)!important;
+}
+.mis-schedule-topbar,.mini-calendar,.doctor-list,.mis-schedule-stage,.mis-schedule-scroll,.staff-header,.time-header,.time-column,.staff-column,.column-slot,.visit-drawer,.schedule-modal,.schedule-hover-tooltip,.mobile-appointment-list>button,.mobile-empty{background:var(--imds-surface)!important;color:var(--imds-text)!important;border-color:var(--imds-border)!important}
+.mis-schedule-sidebar{background:var(--imds-bg)!important;border-color:var(--imds-border)!important}
+.mis-topbar-nav>button,.mis-topbar-controls .search input,.mis-topbar-controls>select,.mis-topbar-controls .scale button,.mini-calendar>header button,.visit-status-actions button,.visit-drawer>footer button,.visit-drawer>footer a,.visit-contact-row a,.visit-contact-row span,.visit-history-list button,.schedule-modal-tabs button,.mis-schedule-mobile>header button,.mobile-date-nav button,.mis-schedule-mobile>select{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text-soft)!important}
+.mis-topbar-nav>button.today,.mis-topbar-controls .scale button.active,.mini-calendar .days button.selected,.mobile-add,.visit-drawer>footer .primary{background:var(--imds-primary)!important;border-color:var(--imds-primary)!important;color:#fff!important}
+.mis-schedule-topbar>.sync{border-color:var(--imds-primary-a18)!important;background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.mis-topbar-stats>div,.doctor-list>button b,.doctor-list>div>button>b{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important;color:var(--imds-text)!important}
+.mini-calendar .days button:hover,.doctor-list>button.active,.doctor-list>button:hover,.doctor-list>div>button.active,.doctor-list>div>button:hover{background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important;border-color:var(--imds-primary-a18)!important}
+.mini-calendar .days button.today{background:var(--imds-surface-3)!important;color:var(--imds-primary)!important;box-shadow:inset 0 0 0 1px var(--imds-primary-a18)!important}
+.doctor-list>header span,.visit-history-list time,.mobile-appointment-list time{color:var(--imds-primary)!important}
+.doctor-list>header strong{background:var(--imds-primary-soft)!important;color:var(--imds-primary)!important}
+.schedule-loading{border-color:var(--imds-border)!important;background:var(--imds-glass-strong)!important;color:var(--imds-muted)!important;box-shadow:var(--imds-shadow-soft)!important}
+.column-slot:hover{background:var(--imds-row-hover)!important}
+.mis-schedule-scroll.step-15 .column-slot:before,.mis-schedule-scroll.step-30 .column-slot:before,.mis-schedule-scroll.step-15 .time-slot:before,.mis-schedule-scroll.step-30 .time-slot:before{border-color:var(--imds-border)!important}
+.appointment{border-left-color:var(--imds-primary)!important;background:var(--imds-primary-soft)!important;box-shadow:var(--imds-shadow-soft)!important}
+.appt-head{background:color-mix(in srgb,var(--imds-primary-strong) 82%,var(--imds-surface))!important}
+.appointment.status-confirmed{border-left-color:var(--imds-blue)!important;background:color-mix(in srgb,var(--imds-blue) 12%,var(--imds-surface))!important}
+.appointment.status-arrived,.appointment.status-completed{border-left-color:var(--imds-success)!important;background:var(--imds-success-a10)!important}
+.appointment.status-arrived .appt-head{background:color-mix(in srgb,var(--imds-success) 78%,var(--imds-surface))!important}
+.appointment.status-cancelled,.appointment.status-no_show{border-left-color:var(--imds-danger)!important;background:var(--imds-danger-a10)!important}
+.appointment.external-busy,.mobile-appointment-list>button.external-busy{border-color:var(--imds-border)!important;background:var(--imds-surface-3)!important;color:var(--imds-muted)!important}
+.appointment.external-busy .appt-head{background:var(--imds-muted)!important}
+.drawer-overlay{background:color-mix(in srgb,var(--imds-bg) 60%,transparent)!important}
+.visit-drawer{box-shadow:var(--imds-shadow)!important}
+.visit-drawer>section{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important}
+.visit-drawer>section h3,.visit-drawer p,.visit-summary dt,.visit-history-list small,.schedule-hover-tooltip header small,.schedule-hover-tooltip footer,.schedule-hover-tooltip p,.mobile-appointment-list small,.mobile-appointment-list em{color:var(--imds-muted)!important}
+.visit-drawer>section p,.mobile-appointment-list strong{color:var(--imds-text)!important}
+.visit-drawer>footer .next{border-color:var(--imds-success-a10)!important;background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+.schedule-modal-tabs{background:var(--imds-surface-3)!important}
+.schedule-modal-tabs button.active{background:var(--imds-glass-strong)!important;color:var(--imds-primary)!important;box-shadow:var(--imds-shadow-soft)!important}
+.schedule-hover-tooltip{box-shadow:var(--imds-shadow)!important}
+.schedule-hover-tooltip footer{background:var(--imds-glass-soft)!important;border-color:var(--imds-border)!important}
+
+@media(max-width:768px){
+  .mis-schedule-page{background:var(--imds-bg)!important}
+}
