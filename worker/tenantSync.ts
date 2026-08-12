@@ -82,6 +82,12 @@ interface DailyMetricAccumulator {
   revenue: number;
 }
 
+interface TikTokAdStatus {
+  status: string;
+  operationStatus: string | null;
+  secondaryStatus: string | null;
+}
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -416,6 +422,59 @@ async function updateAdSpendDailyMetrics(
   await upsertRows(env, 'marketing_daily_metrics', rows, 'company_id,date,source,platform');
 }
 
+async function fetchTikTokAdStatuses(
+  env: TenantSyncEnv,
+  apiBase: string,
+  advertiserId: string,
+  adIds: string[],
+): Promise<Map<string, TikTokAdStatus>> {
+  const result = new Map<string, TikTokAdStatus>();
+  const uniqueAdIds = Array.from(new Set(adIds.filter(Boolean)));
+  if (!uniqueAdIds.length) return result;
+  if (!env.TIKTOK_ACCESS_TOKEN) throw new Error('TIKTOK_ACCESS_TOKEN is missing');
+
+  for (let offset = 0; offset < uniqueAdIds.length; offset += 100) {
+    const chunk = uniqueAdIds.slice(offset, offset + 100);
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const params = new URLSearchParams({
+        advertiser_id: advertiserId,
+        filtering: JSON.stringify({ ad_ids: chunk }),
+        fields: JSON.stringify(['ad_id', 'ad_name', 'operation_status', 'secondary_status']),
+        page: String(page),
+        page_size: '100',
+      });
+      const response = await fetch(`${apiBase}/ad/get/?${params}`, {
+        headers: { 'Access-Token': env.TIKTOK_ACCESS_TOKEN },
+      });
+      const payload = await response.json() as JsonRecord;
+      if (!response.ok || number(payload.code) !== 0) {
+        throw new Error(`TikTok ad status: ${response.status} ${JSON.stringify(payload)}`);
+      }
+      const data = record(payload.data);
+      const list = Array.isArray(data.list) ? data.list.map(record) : [];
+      for (const ad of list) {
+        const adId = text(ad.ad_id);
+        if (!adId) continue;
+        const operationStatus = text(ad.operation_status);
+        const secondaryStatus = text(ad.secondary_status);
+        const status = secondaryStatus || operationStatus;
+        if (!status) continue;
+        result.set(adId, { status, operationStatus, secondaryStatus });
+      }
+      totalPages = Math.max(1, number(record(data.page_info).total_page) || 1);
+      page += 1;
+    } while (page <= totalPages && page <= 100);
+  }
+
+  const missing = uniqueAdIds.filter((adId) => !result.has(adId));
+  if (missing.length) {
+    throw new Error(`TikTok ad status missing for ${missing.length} ads`);
+  }
+  return result;
+}
+
 async function syncTikTok(
   env: TenantSyncEnv,
   companyId: string,
@@ -428,6 +487,7 @@ async function syncTikTok(
   const apiBase = (env.TIKTOK_API_BASE || 'https://business-api.tiktok.com/open_api/v1.3').replace(/\/$/, '');
   const rows: JsonRecord[] = [];
   for (const advertiserId of advertiserIds) {
+    const advertiserRows: JsonRecord[] = [];
     let page = 1;
     let totalPages = 1;
     do {
@@ -459,7 +519,7 @@ async function syncTikTok(
         const metrics = record(item.metrics);
         const adId = text(dimensions.ad_id) || crypto.randomUUID();
         const date = (text(dimensions.stat_time_day) || window.to).slice(0, 10);
-        rows.push({
+        advertiserRows.push({
           company_id: companyId,
           external_id: `tiktok:${advertiserId}:${adId}`,
           report_date: date,
@@ -494,6 +554,24 @@ async function syncTikTok(
       totalPages = Math.max(1, number(record(data.page_info).total_page) || 1);
       page += 1;
     } while (page <= totalPages && page <= 100);
+
+    const adIds = advertiserRows.map((row) => text(row.ad_id)).filter((value): value is string => Boolean(value));
+    const statuses = await fetchTikTokAdStatuses(env, apiBase, advertiserId, adIds);
+    for (const row of advertiserRows) {
+      const adId = text(row.ad_id);
+      if (!adId) throw new Error('TikTok report row is missing ad_id');
+      const adStatus = statuses.get(adId);
+      if (!adStatus) throw new Error(`TikTok ad status missing for ad ${adId}`);
+      row.status = adStatus.status;
+      row.metadata = {
+        ...record(row.metadata),
+        tiktok_status: {
+          operation_status: adStatus.operationStatus,
+          secondary_status: adStatus.secondaryStatus,
+        },
+      };
+    }
+    rows.push(...advertiserRows);
   }
   const written = await upsertRows(env, 'marketing_ads', rows, 'company_id,external_id,report_date');
   await updateAdSpendDailyMetrics(env, companyId, rows, 'TikTok');
