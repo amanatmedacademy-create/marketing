@@ -1,3 +1,5 @@
+import { authFetch } from './auth';
+
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type TaskTargetType = 'all' | 'position' | 'job_title' | 'user';
@@ -16,13 +18,19 @@ export interface WorkTask {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/tasks${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
-  const text = await response.text();
+  const response = await authFetch(`/api/tasks${path}`, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } });
+  const body = await response.text();
+  const contentType = response.headers.get('content-type') || '';
   if (!response.ok) {
-    try { const parsed = JSON.parse(text) as { error?: string }; throw new Error(parsed.error || text || `Tasks API ${response.status}`); }
-    catch (error) { if (error instanceof Error) throw error; throw new Error(text || `Tasks API ${response.status}`); }
+    if (contentType.includes('application/json')) {
+      try { const parsed = JSON.parse(body) as { error?: string }; throw new Error(parsed.error || `Tasks API ${response.status}`); }
+      catch (error) { if (error instanceof Error) throw error; }
+    }
+    throw new Error(body || `Tasks API ${response.status}`);
   }
-  return (text ? JSON.parse(text) : null) as T;
+  if (!body) return null as T;
+  if (!contentType.includes('application/json')) throw new Error(`Tasks API returned ${contentType || 'non-JSON response'}`);
+  return JSON.parse(body) as T;
 }
 
 export const tasksApi = {
