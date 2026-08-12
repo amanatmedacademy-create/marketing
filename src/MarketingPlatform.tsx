@@ -19,7 +19,7 @@ import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import TelephonyPage from './pages/TelephonyPage';
-import ClinicSchedulePage from './pages/ClinicSchedulePage';
+import ContextualSchedulePage from './pages/ContextualSchedulePage';
 import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
@@ -129,7 +129,7 @@ function Shell() {
         <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
-        <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
+        <Route path="/schedule" element={guard('communications.calls', <ContextualSchedulePage/>)} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>))} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
