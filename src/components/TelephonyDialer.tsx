@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Delete, PhoneCall, RefreshCw, Settings2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { telephonyApi, type TelephonyLine, type TelephonyStatus } from '../services/telephony';
 
 const keypad = [
@@ -48,6 +49,7 @@ function fallbackLines(status: TelephonyStatus | null): TelephonyLine[] {
 }
 
 export default function TelephonyDialer() {
+  const [params] = useSearchParams();
   const [status, setStatus] = useState<TelephonyStatus | null>(null);
   const [selectedLine, setSelectedLine] = useState('');
   const [phone, setPhone] = useState('');
@@ -72,6 +74,14 @@ export default function TelephonyDialer() {
   };
 
   useEffect(() => { void loadStatus(); }, []);
+  useEffect(() => {
+    const contextualPhone = params.get('phone') || '';
+    if (!contextualPhone) return;
+    const normalized = normalizePhone(contextualPhone);
+    setPhone(normalized ? formatPhone(normalized) : editablePhone(contextualPhone));
+    setMessage('Номер подставлен из CRM-сделки.');
+    window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.telephony-dialer__number input')?.focus());
+  }, [params]);
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ phone?: string }>).detail;

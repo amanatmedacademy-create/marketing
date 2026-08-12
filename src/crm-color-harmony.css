@@ -1,0 +1,344 @@
+/* Final CRM color harmony layer. Uses only IMDS theme tokens so CRM follows the same light/dark palette as the shell. */
+
+.deal-workspace-layer--friendly .deal-workspace-backdrop{
+  background:color-mix(in srgb,var(--imds-bg) 68%,transparent)!important;
+  backdrop-filter:blur(4px)!important;
+  -webkit-backdrop-filter:blur(4px)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-panel{
+  background:var(--imds-bg)!important;
+  color:var(--imds-text)!important;
+  box-shadow:-18px 0 48px color-mix(in srgb,#000 24%,transparent)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-header{
+  background:var(--imds-topbar)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(110%)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-close,
+.deal-workspace-layer--friendly .deal-workspace-header-actions>a,
+.deal-workspace-layer--friendly .deal-workspace-header-actions>button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:none!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-close:hover,
+.deal-workspace-layer--friendly .deal-workspace-header-actions>a:hover,
+.deal-workspace-layer--friendly .deal-workspace-header-actions>button:hover{
+  background:var(--imds-surface-3)!important;
+  border-color:var(--imds-border-strong)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-identity>span{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+  color:#fff!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-identity small,
+.deal-workspace-layer--friendly .deal-workspace-identity p{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-identity h1{
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-header-actions .workspace-save{
+  background:var(--imds-primary)!important;
+  border-color:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-header-actions .workspace-save:hover{
+  background:var(--imds-primary-strong)!important;
+  border-color:var(--imds-primary-strong)!important;
+  color:#fff!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-quick-actions{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-quick-actions a{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:none!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-quick-actions a:hover{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-quick-actions a svg{
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  border-top-color:var(--stage-color)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:none!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button:hover{
+  background:var(--imds-surface-3)!important;
+  border-color:var(--imds-border-strong)!important;
+  border-top-color:var(--stage-color)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button>span{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button small,
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button>svg{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-stage-ribbon button.active{
+  background:color-mix(in srgb,var(--stage-color) 14%,var(--imds-surface))!important;
+  border-color:var(--stage-color)!important;
+  color:var(--imds-text)!important;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--stage-color) 24%,transparent)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-body{
+  background:var(--imds-bg)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-details{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-summary>div,
+.deal-workspace-layer--friendly .deal-workspace-field-section,
+.deal-workspace-layer--friendly .deal-workspace-relations,
+.deal-workspace-layer--friendly .deal-workspace-more{
+  background:var(--imds-glass)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-field-section>header,
+.deal-workspace-layer--friendly .deal-workspace-relations>header,
+.deal-workspace-layer--friendly .deal-workspace-relations>div,
+.deal-workspace-layer--friendly .deal-workspace-more[open] summary{
+  border-color:var(--imds-border)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-summary small,
+.deal-workspace-layer--friendly .deal-workspace-summary span,
+.deal-workspace-layer--friendly .deal-workspace-field-section>header small,
+.deal-workspace-layer--friendly .deal-workspace-fields label>span,
+.deal-workspace-layer--friendly .deal-workspace-relations>div span,
+.deal-workspace-layer--friendly .deal-workspace-more summary{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-summary strong,
+.deal-workspace-layer--friendly .deal-workspace-field-section>header,
+.deal-workspace-layer--friendly .deal-workspace-relations>header,
+.deal-workspace-layer--friendly .deal-workspace-relations>div strong{
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-field-section header svg,
+.deal-workspace-layer--friendly .deal-workspace-relations header svg{
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-fields input,
+.deal-workspace-layer--friendly .deal-workspace-fields select,
+.deal-workspace-layer--friendly .deal-workspace-fields textarea{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-fields input:focus,
+.deal-workspace-layer--friendly .deal-workspace-fields select:focus,
+.deal-workspace-layer--friendly .deal-workspace-fields textarea:focus{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px var(--imds-primary-a10)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-feed{
+  background:linear-gradient(135deg,var(--imds-bg),var(--imds-surface-2))!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-tabs{
+  background:linear-gradient(180deg,var(--imds-surface-2) 74%,color-mix(in srgb,var(--imds-surface-2) 0%,transparent))!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-tabs button{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-tabs button:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-tabs button.active{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-composer{
+  background:var(--imds-glass)!important;
+  border-color:var(--imds-border)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+.deal-workspace-layer--friendly .composer-modes,
+.deal-workspace-layer--friendly .deal-workspace-composer footer{
+  border-color:var(--imds-border)!important;
+}
+
+.deal-workspace-layer--friendly .composer-modes button,
+.deal-workspace-layer--friendly .composer-modes a,
+.deal-workspace-layer--friendly .deal-workspace-composer footer>span{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .composer-modes button:hover,
+.deal-workspace-layer--friendly .composer-modes a:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .composer-modes .active{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-composer textarea{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-composer textarea::placeholder{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-composer footer button{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-composer footer button:hover{
+  background:var(--imds-primary-strong)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-icon{
+  background:var(--imds-primary-soft)!important;
+  border-color:var(--imds-primary-a18)!important;
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-card,
+.deal-workspace-layer--friendly .deal-workspace-links article{
+  background:var(--imds-glass)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-card>header span,
+.deal-workspace-layer--friendly .timeline-card>header time,
+.deal-workspace-layer--friendly .deal-workspace-links span,
+.deal-workspace-layer--friendly .deal-workspace-empty{
+  color:var(--imds-muted)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-card p{
+  color:var(--imds-text-soft)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-recording,
+.deal-workspace-layer--friendly .deal-workspace-links article>svg,
+.deal-workspace-layer--friendly .deal-workspace-links a{
+  color:var(--imds-primary)!important;
+}
+
+.deal-workspace-layer--friendly .timeline-card footer button{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-empty strong{
+  color:var(--imds-text)!important;
+}
+
+.deal-workspace-layer--friendly .deal-workspace-error{
+  background:var(--imds-danger-a10)!important;
+  border-color:color-mix(in srgb,var(--imds-danger) 34%,transparent)!important;
+  color:var(--imds-danger)!important;
+}
+
+.deal-workspace-layer--friendly .skeleton-line,
+.deal-workspace-layer--friendly .skeleton-stages span,
+.deal-workspace-layer--friendly .skeleton-grid aside span,
+.deal-workspace-layer--friendly .skeleton-grid main article{
+  background:linear-gradient(90deg,var(--imds-surface-2),var(--imds-surface-3),var(--imds-surface-2))!important;
+  background-size:200% 100%!important;
+}
+
+.crm-workspace__tabs,
+.crm-context-bar{
+  background:var(--imds-glass-strong)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+.crm-context-bar__icon{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary)!important;
+}
+
+.crm-context-bar__copy small,
+.crm-context-bar__copy span,
+.crm-context-bar__field>span,
+.crm-context-bar__hint{
+  color:var(--imds-muted)!important;
+}
+
+.crm-context-bar__copy strong{
+  color:var(--imds-text)!important;
+}
+
+.crm-context-bar__field input{
+  background:var(--imds-glass-soft)!important;
+  border-color:var(--imds-border)!important;
+  color:var(--imds-text)!important;
+}
+
+.crm-context-bar__field input:focus{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px var(--imds-primary-a10)!important;
+}

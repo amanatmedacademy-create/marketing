@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
+import CrmWorkspace from './components/CrmWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
 import DealWorkspaceHost from './components/DealWorkspace';
@@ -18,7 +19,7 @@ import UserWorkspaceModal from './components/UserWorkspaceModal';
 import { SalesFunnelPage } from './pages/SalesFunnelPage';
 import { AuditPage } from './pages/AuditPage';
 import TelephonyPage from './pages/TelephonyPage';
-import ClinicSchedulePage from './pages/ClinicSchedulePage';
+import ContextualSchedulePage from './pages/ContextualSchedulePage';
 import MarketingOS from './pages/MarketingOS';
 import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
@@ -28,12 +29,12 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './page
 import JourneyAutomationPage from './pages/JourneyAutomationPage';
 import { MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
-import TasksPage from './pages/TasksPage';
+import ContextualTasksPage from './pages/ContextualTasksPage';
 import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; end?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navigation: NavGroup[] = [
@@ -44,9 +45,7 @@ const navigation: NavGroup[] = [
     { to: '/tasks', label: 'Задачи', icon: ListChecks, moduleId: 'work.tasks' },
   ]},
   { label: 'CRM', items: [
-    { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
-    { to: '/customers', label: 'Клиенты 360°', icon: UserRoundSearch, moduleId: 'crm.leads' },
-    { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
+    { to: '/crm', label: 'CRM', icon: UsersRound, moduleId: ['crm.leads', 'crm.pipeline'] },
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
@@ -86,20 +85,25 @@ function DashboardRoute() {
 
 function Shell() {
   const { user } = useAuth();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
-  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canView(item.moduleId)) })).filter(group => group.items.length > 0);
+  const canViewItem = (moduleId: NavItem['moduleId']) => Array.isArray(moduleId) ? moduleId.some((id) => canView(id)) : canView(moduleId as string);
+  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canViewItem(item.moduleId)) })).filter(group => group.items.length > 0);
   const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
   const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
+  const crmHome = canView('crm.leads') ? '/leads' : canView('crm.pipeline') ? '/pipeline' : firstRoute;
+  const crm = (element: ReactNode) => <CrmWorkspace canView={canView}>{element}</CrmWorkspace>;
+  const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
       <div className="marketing-brand"><ImdsBrand compact /></div>
       <div className="marketing-nav-groups">{visibleGroups.map(group => <section className="marketing-nav-group" key={group.label}>
         <div className="marketing-nav-label">{group.label}</div>
-        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive || (to === '/crm' && isCrmRoute) ? 'active' : undefined} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
       </section>)}</div>
     </aside>
     {open && <button className="marketing-mobile-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setOpen(false)} />}
@@ -117,15 +121,16 @@ function Shell() {
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <DashboardRoute/>)} />
         <Route path="/goals" element={<Navigate to="/" replace/>} />
-        <Route path="/tasks" element={guard('work.tasks', <TasksPage/>)} />
+        <Route path="/tasks" element={guard('work.tasks', <ContextualTasksPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
-        <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
-        <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
+        <Route path="/crm" element={<Navigate to={crmHome} replace/>} />
+        <Route path="/leads" element={guard('crm.leads', crm(<LeadsPage/>))} />
+        <Route path="/customers" element={guard('crm.leads', crm(<Customer360Page/>))} />
         <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
-        <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
-        <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
+        <Route path="/schedule" element={guard('communications.calls', <ContextualSchedulePage/>)} />
+        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>))} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
@@ -149,6 +154,7 @@ function Shell() {
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
       </Routes>{user.role === 'administrator' && <DataInspectorAutoLayer/>}</div>
     </main>
+    <DealWorkspaceHost/>
     {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
@@ -157,4 +163,6 @@ function AccessDenied() {
   return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>Обратитесь к администратору, чтобы изменить должность или персональные права.</p></div>;
 }
 
-export default function MarketingPlatform() { return <BrowserRouter><Shell/></BrowserRouter>; }
+export default function MarketingPlatform() {
+  return <BrowserRouter><DealWorkspaceProvider><Shell/></DealWorkspaceProvider></BrowserRouter>;
+}

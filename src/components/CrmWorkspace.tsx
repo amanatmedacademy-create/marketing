@@ -1,0 +1,29 @@
+import type { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
+import { UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+
+type CrmWorkspaceProps = {
+  canView: (moduleId: string) => boolean;
+  children: ReactNode;
+};
+
+const tabs = [
+  { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
+  { to: '/customers', label: 'Клиенты', icon: UserRoundSearch, moduleId: 'crm.leads' },
+  { to: '/pipeline', label: 'Сделки', icon: Workflow, moduleId: 'crm.pipeline' },
+] as const;
+
+export default function CrmWorkspace({ canView, children }: CrmWorkspaceProps) {
+  const visibleTabs = tabs.filter((tab) => canView(tab.moduleId));
+
+  return <section className="crm-workspace">
+    <nav className="crm-workspace__tabs" aria-label="CRM разделы">
+      {visibleTabs.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}>
+        <Icon size={17}/>
+        <span>{label}</span>
+      </NavLink>)}
+    </nav>
+
+    <div className="crm-workspace__content">{children}</div>
+  </section>;
+}
