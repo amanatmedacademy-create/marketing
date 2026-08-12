@@ -31,6 +31,8 @@ import './crm-context.css';
 import './imds-mobile.css';
 import './call-center-mobile.css';
 import './crm-color-harmony.css';
+import './imds-platform-color-harmony.css';
+import './source-status-harmony.css';
 
 type ThemeMode = 'light' | 'dark';
 
