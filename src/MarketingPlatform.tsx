@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
+import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AdsManagerPage from './components/AdsManagerPage';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
+import CrmWorkspace from './components/CrmWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
 import DataInspectorAutoLayer from './components/DataInspectorAutoLayer';
 import DealWorkspaceHost from './components/DealWorkspace';
@@ -33,7 +34,7 @@ import { useAuth } from './components/AuthGate';
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; end?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navigation: NavGroup[] = [
@@ -44,9 +45,7 @@ const navigation: NavGroup[] = [
     { to: '/tasks', label: 'Задачи', icon: ListChecks, moduleId: 'work.tasks' },
   ]},
   { label: 'CRM', items: [
-    { to: '/leads', label: 'Лиды', icon: UsersRound, moduleId: 'crm.leads' },
-    { to: '/customers', label: 'Клиенты 360°', icon: UserRoundSearch, moduleId: 'crm.leads' },
-    { to: '/pipeline', label: 'Воронка продаж', icon: Workflow, moduleId: 'crm.pipeline' },
+    { to: '/crm', label: 'CRM', icon: UsersRound, moduleId: ['crm.leads', 'crm.pipeline'] },
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
     { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
@@ -90,9 +89,12 @@ function Shell() {
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
-  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canView(item.moduleId)) })).filter(group => group.items.length > 0);
+  const canViewItem = (moduleId: NavItem['moduleId']) => Array.isArray(moduleId) ? moduleId.some((id) => canView(id)) : canView(moduleId as string);
+  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canViewItem(item.moduleId)) })).filter(group => group.items.length > 0);
   const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
   const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
+  const crmHome = canView('crm.leads') ? '/leads' : canView('crm.pipeline') ? '/pipeline' : firstRoute;
+  const crm = (element: ReactNode) => <CrmWorkspace canView={canView}>{element}</CrmWorkspace>;
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
@@ -119,13 +121,14 @@ function Shell() {
         <Route path="/goals" element={<Navigate to="/" replace/>} />
         <Route path="/tasks" element={guard('work.tasks', <TasksPage/>)} />
         <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
-        <Route path="/leads" element={guard('crm.leads', <LeadsPage/>)} />
-        <Route path="/customers" element={guard('crm.leads', <Customer360Page/>)} />
+        <Route path="/crm" element={<Navigate to={crmHome} replace/>} />
+        <Route path="/leads" element={guard('crm.leads', crm(<LeadsPage/>))} />
+        <Route path="/customers" element={guard('crm.leads', crm(<Customer360Page/>))} />
         <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
         <Route path="/schedule" element={guard('communications.calls', <ClinicSchedulePage/>)} />
-        <Route path="/pipeline/*" element={guard('crm.pipeline', <DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>)} />
+        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<DealWorkspaceProvider><SalesFunnelPage/><DealWorkspaceHost/></DealWorkspaceProvider>))} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
         <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
