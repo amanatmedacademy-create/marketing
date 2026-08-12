@@ -43,6 +43,7 @@ function requestedCompanyId(request:Request):string{return text(request.headers.
 async function scopedEnv(request:Request,env:AuthEnv,user:AuthenticatedUser):Promise<AuthEnv>{
   const requested=requestedCompanyId(request);
   if(requested)return{...env,CURRENT_COMPANY_ID:await resolveCompanyId({...env,CURRENT_COMPANY_ID:requested},user.id)};
+  if(env.CURRENT_COMPANY_ID)return env;
   const companies=await listUserCompanies(env,user.id);
   if(companies.length===1)return{...env,CURRENT_COMPANY_ID:companies[0].id};
   return env;
@@ -56,15 +57,15 @@ export async function authorizeApplicationRequest(request:Request,env:AuthEnv,us
   const access=await resolveUserAccess(tenantEnv,user.id,user.role);if(!hasPermission(access.permissions,rule.moduleId,rule.action))return json({error:'Недостаточно прав для этого действия',moduleId:rule.moduleId,action:rule.action},403);
   return null;
 }
-export async function handleAuthRequest(request:Request,env:AuthEnv,url:URL):Promise<Response|null>{
-  if(url.pathname.startsWith('/api/admin/users')){const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status!=='active')return json({error:'Пользователь не активен'},403);const tenantEnv=await scopedEnv(request,env,user);if(!tenantEnv.CURRENT_COMPANY_ID)return json({error:'Выберите клинику для продолжения',code:'COMPANY_REQUIRED'},409);const headers=new Headers(request.headers);headers.set('x-amanat-auth-user',user.id);headers.set('x-amanat-auth-role',user.role);return handleUserAdminRequest(new Request(request,{headers}),tenantEnv,url)}
+export async function handleAuthRequest(request:Request,env:AuthEnv,url:URL,preauthenticatedUser?:AuthenticatedUser):Promise<Response|null>{
+  if(url.pathname.startsWith('/api/admin/users')){const user=preauthenticatedUser||await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status!=='active')return json({error:'Пользователь не активен'},403);const tenantEnv=await scopedEnv(request,env,user);if(!tenantEnv.CURRENT_COMPANY_ID)return json({error:'Выберите клинику для продолжения',code:'COMPANY_REQUIRED'},409);const headers=new Headers(request.headers);headers.set('x-amanat-auth-user',user.id);headers.set('x-amanat-auth-role',user.role);return handleUserAdminRequest(new Request(request,{headers}),tenantEnv,url)}
   if(url.pathname==='/api/auth/config'&&request.method==='GET'){const settings=await readSettings(env);return json({googleEnabled:settings.googleEnabled,oauthMode:'worker',publicKeyConfigured:Boolean(publicKey(env)),diagnostic:settings.error})}
   if(url.pathname==='/api/auth/google/start'&&request.method==='GET'){const settings=await readSettings(env);if(!settings.googleEnabled)return Response.redirect(`${origin(request,env)}/?error_description=${encodeURIComponent(settings.error||'Google Provider выключен')}`,302);const authorize=new URL(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/authorize`);authorize.searchParams.set('provider','google');authorize.searchParams.set('redirect_to',`${origin(request,env)}/`);authorize.searchParams.set('scopes','openid email profile');return Response.redirect(authorize.toString(),302)}
   if(url.pathname==='/api/auth/refresh'&&request.method==='POST'){const body=await request.json().catch(()=>({})) as JsonRecord;const token=text(body.refresh_token);if(!token)return json({error:'refresh_token is required'},400);const key=authKey(env);const response=await fetch(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'},body:JSON.stringify({refresh_token:token})});return new Response(await response.text(),{status:response.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}})}
   if(url.pathname==='/api/auth/logout'&&request.method==='POST')return json({ok:true});
   if(url.pathname==='/api/auth/me'&&request.method==='GET'){
     try{
-      const user=await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status==='blocked')return json({error:'Доступ пользователя заблокирован'},403);if(user.status!=='active')return json({error:'Аккаунт ожидает подтверждения администратора'},403);
+      const user=preauthenticatedUser||await authenticateRequest(request,env);if(!user)return json({error:'Необходим вход через Google'},401);if(user.status==='blocked')return json({error:'Доступ пользователя заблокирован'},403);if(user.status!=='active')return json({error:'Аккаунт ожидает подтверждения администратора'},403);
       const companies=await listUserCompanies(env,user.id);const requested=requestedCompanyId(request);let companyId:string|null=null;
       if(requested)companyId=await resolveCompanyId({...env,CURRENT_COMPANY_ID:requested},user.id);else if(companies.length===1)companyId=companies[0].id;
       const tenantEnv=companyId?{...env,CURRENT_COMPANY_ID:companyId}:env;const access=companyId?await resolveUserAccess(tenantEnv,user.id,user.role):null;
