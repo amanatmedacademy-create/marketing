@@ -11,6 +11,10 @@ import { handleTasks } from './tasks';
 
 type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
 
+const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
+const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
+const INTERNAL_VERIFIED_HEADER = 'x-amanat-auth-verified';
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -40,12 +44,22 @@ function bypassPermissionBoundary(pathname: string): boolean {
     || pathname.startsWith('/api/telephony/zadarma/webhook/');
 }
 
+function sanitizedRequest(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete(INTERNAL_ROLE_HEADER);
+  headers.delete(INTERNAL_USER_HEADER);
+  headers.delete(INTERNAL_VERIFIED_HEADER);
+  return new Request(request, { headers });
+}
+
 function trustedRequest(request: Request, role: string, userId: string): Request {
   const headers = new Headers(request.headers);
-  headers.delete('x-amanat-auth-role');
-  headers.delete('x-amanat-auth-user');
-  headers.set('x-amanat-auth-role', role);
-  headers.set('x-amanat-auth-user', userId);
+  headers.delete(INTERNAL_ROLE_HEADER);
+  headers.delete(INTERNAL_USER_HEADER);
+  headers.delete(INTERNAL_VERIFIED_HEADER);
+  headers.set(INTERNAL_ROLE_HEADER, role);
+  headers.set(INTERNAL_USER_HEADER, userId);
+  headers.set(INTERNAL_VERIFIED_HEADER, '1');
   return new Request(request, { headers });
 }
 
@@ -72,6 +86,7 @@ export default {
   async fetch(request: Request, env: SecuredEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
+      let forwardedRequest = sanitizedRequest(request);
       if (url.pathname.startsWith('/api/') && !bypassPermissionBoundary(url.pathname) && !isLegacyAdminRequest(request, env)) {
         const user = await authenticateRequest(request, env);
         if (!user) return json({ error: 'Необходим вход через Google', code: 'AUTH_REQUIRED' }, 401);
@@ -79,13 +94,13 @@ export default {
 
         const denied = await authorizeApplicationRequest(request, env, user);
         if (denied) return denied;
+        forwardedRequest = trustedRequest(request, user.role, user.id);
         if (url.pathname.startsWith('/api/tasks')) {
-          const trusted = trustedRequest(request, user.role, user.id);
           if (url.pathname.startsWith('/api/tasks/notifications')) {
-            const response = await handleTaskNotifications(trusted, env as unknown as Env, url);
+            const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
           }
-          const response = await handleTasks(trusted, env as unknown as Env, url);
+          const response = await handleTasks(forwardedRequest, env as unknown as Env, url);
           if (response) {
             if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
               const body = await response.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null;
@@ -98,7 +113,7 @@ export default {
           }
         }
       }
-      return app.fetch(request, env, ctx);
+      return app.fetch(forwardedRequest, env, ctx);
     } catch (error) {
       console.error('Secured worker runtime error', error);
       return json({
