@@ -38,6 +38,7 @@ import type { WorkerExecutionContext, WorkerScheduledController } from './integr
 
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
+const INTERNAL_VERIFIED_HEADER = 'x-amanat-auth-verified';
 const COMPANY_HEADER = 'x-imds-company-id';
 
 type MainEnv = AuthEnv
@@ -100,10 +101,18 @@ function hasLegacyAdminKey(request: Request, env: MainEnv): boolean {
   return Boolean(env.FRONTEND_ADMIN_KEY && supplied && secureEqual(supplied, env.FRONTEND_ADMIN_KEY));
 }
 
+function verifiedIdentity(request: Request): { role: string; userId: string } | null {
+  if (request.headers.get(INTERNAL_VERIFIED_HEADER) !== '1') return null;
+  const role = (request.headers.get(INTERNAL_ROLE_HEADER) || '').trim();
+  const userId = (request.headers.get(INTERNAL_USER_HEADER) || '').trim();
+  return role && userId ? { role, userId } : null;
+}
+
 function withTrustedIdentity(request: Request, role?: string, userId?: string): Request {
   const headers = new Headers(request.headers);
   headers.delete(INTERNAL_ROLE_HEADER);
   headers.delete(INTERNAL_USER_HEADER);
+  headers.delete(INTERNAL_VERIFIED_HEADER);
   if (role) headers.set(INTERNAL_ROLE_HEADER, role);
   if (userId) headers.set(INTERNAL_USER_HEADER, userId);
   return new Request(request, { headers });
@@ -149,8 +158,19 @@ export default {
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
         const legacyAdmin = isIntegrationAdminPath(url.pathname) && hasLegacyAdminKey(request, env);
+        const verified = verifiedIdentity(request);
         if (legacyAdmin) {
           forwardedRequest = withTrustedIdentity(request, 'administrator', 'legacy-admin-key');
+        } else if (verified) {
+          if (isIntegrationAdminPath(url.pathname) && verified.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
+          const requestedCompany = (request.headers.get(COMPANY_HEADER) || '').trim();
+          try {
+            const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, verified.userId);
+            requestEnv = { ...env, CURRENT_COMPANY_ID: companyId };
+          } catch (error) {
+            return authError(409, error instanceof Error ? error.message : 'Выберите клинику для продолжения');
+          }
+          forwardedRequest = withTrustedIdentity(request, verified.role, verified.userId);
         } else {
           const user = await authenticateRequest(request, env);
           if (!user) return authError();
