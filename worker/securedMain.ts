@@ -49,40 +49,63 @@ function trustedRequest(request: Request, role: string, userId: string): Request
   return new Request(request, { headers });
 }
 
+async function scheduleAssignedNotification(
+  request: Request,
+  env: SecuredEnv,
+  ctx: WorkerExecutionContext | undefined,
+  userId: string,
+  task: { id: string; title: string; dueAt?: unknown },
+): Promise<void> {
+  try {
+    const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
+    const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, userId);
+    const notify = notifyAssignedTask(env as unknown as Env, task, companyId)
+      .catch((error) => console.error('Task assigned notification failed', error));
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(notify);
+    else await notify;
+  } catch (error) {
+    console.error('Task assigned notification scheduling failed', error);
+  }
+}
+
 export default {
   async fetch(request: Request, env: SecuredEnv, ctx?: WorkerExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/') && !bypassPermissionBoundary(url.pathname) && !isLegacyAdminRequest(request, env)) {
-      const user = await authenticateRequest(request, env);
-      if (!user) return json({ error: 'Необходим вход через Google', code: 'AUTH_REQUIRED' }, 401);
-      if (user.status !== 'active') return json({ error: 'Пользователь не активен', code: 'USER_INACTIVE' }, 403);
+    try {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith('/api/') && !bypassPermissionBoundary(url.pathname) && !isLegacyAdminRequest(request, env)) {
+        const user = await authenticateRequest(request, env);
+        if (!user) return json({ error: 'Необходим вход через Google', code: 'AUTH_REQUIRED' }, 401);
+        if (user.status !== 'active') return json({ error: 'Пользователь не активен', code: 'USER_INACTIVE' }, 403);
 
-      const denied = await authorizeApplicationRequest(request, env, user);
-      if (denied) return denied;
-      if (url.pathname.startsWith('/api/tasks')) {
-        const trusted = trustedRequest(request, user.role, user.id);
-        if (url.pathname.startsWith('/api/tasks/notifications')) {
-          const response = await handleTaskNotifications(trusted, env as unknown as Env, url);
-          if (response) return response;
-        }
-        const response = await handleTasks(trusted, env as unknown as Env, url);
-        if (response) {
-          if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
-            const body = await response.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null;
-            const task = body?.task;
-            if (task?.id && task.title) {
-              const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
-              const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
-              const notify = notifyAssignedTask(env as unknown as Env, { id: task.id, title: task.title, dueAt: task.dueAt }, companyId)
-                .catch((error) => console.error('Task assigned notification failed', error));
-              if (ctx) ctx.waitUntil(notify); else await notify;
-            }
+        const denied = await authorizeApplicationRequest(request, env, user);
+        if (denied) return denied;
+        if (url.pathname.startsWith('/api/tasks')) {
+          const trusted = trustedRequest(request, user.role, user.id);
+          if (url.pathname.startsWith('/api/tasks/notifications')) {
+            const response = await handleTaskNotifications(trusted, env as unknown as Env, url);
+            if (response) return response;
           }
-          return response;
+          const response = await handleTasks(trusted, env as unknown as Env, url);
+          if (response) {
+            if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
+              const body = await response.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null;
+              const task = body?.task;
+              if (task?.id && task.title) {
+                await scheduleAssignedNotification(request, env, ctx, user.id, { id: task.id, title: task.title, dueAt: task.dueAt });
+              }
+            }
+            return response;
+          }
         }
       }
+      return app.fetch(request, env, ctx);
+    } catch (error) {
+      console.error('Secured worker runtime error', error);
+      return json({
+        error: error instanceof Error ? error.message : String(error),
+        code: 'WORKER_RUNTIME_ERROR',
+      }, 500);
     }
-    return app.fetch(request, env, ctx);
   },
 
   async scheduled(controller: WorkerScheduledController, env: SecuredEnv, ctx: WorkerExecutionContext): Promise<void> {
