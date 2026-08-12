@@ -126,7 +126,30 @@ async function selectedScope(env: MetaBackfillEnv, companyId: string): Promise<{
   return { accountIds, adIds };
 }
 
-function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: string, selectedAdIds: Set<string>): JsonRecord | null {
+async function fetchAdStatusMap(env: MetaBackfillEnv, accountId: string, selectedAdIds: Set<string>): Promise<Map<string, string>> {
+  const accessToken = text(env.META_ACCESS_TOKEN);
+  if (!accessToken) throw new Error('Meta access token не найден');
+  const statuses = new Map<string, string>();
+  const params = new URLSearchParams({
+    access_token: accessToken,
+    fields: 'id,status,effective_status',
+    limit: '200',
+  });
+  let next: string | undefined = `https://graph.facebook.com/${graphVersion(env)}/act_${accountId}/ads?${params}`;
+  for (let page = 0; next && page < 250; page += 1) {
+    const payload: { data?: JsonRecord[]; paging?: { next?: string } } = await metaJson(next);
+    for (const item of payload.data || []) {
+      const id = text(item.id);
+      if (!id || (selectedAdIds.size && !selectedAdIds.has(id))) continue;
+      statuses.set(id, text(item.effective_status || item.status) || 'UNKNOWN');
+    }
+    next = payload.paging?.next;
+    if (selectedAdIds.size && statuses.size >= selectedAdIds.size) break;
+  }
+  return statuses;
+}
+
+function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: string, selectedAdIds: Set<string>, statusMap: Map<string, string>): JsonRecord | null {
   const adId = text(item.ad_id);
   if (!adId || (selectedAdIds.size && !selectedAdIds.has(adId))) return null;
   const leads = sumActions(item.actions, ['lead','onsite_conversion.lead_grouped','offsite_conversion.fb_pixel_lead','onsite_conversion.messaging_conversation_started_7d','onsite_conversion.messaging_conversation_started']);
@@ -144,6 +167,7 @@ function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: str
     adset_name: text(item.adset_name) || null,
     ad_id: adId,
     creative_name: text(item.ad_name) || `Объявление ${adId}`,
+    status: statusMap.get(adId) || 'UNKNOWN',
     impressions: number(item.impressions),
     reach: number(item.reach),
     clicks: number(item.clicks),
@@ -163,7 +187,7 @@ function normalizeInsight(item: JsonRecord, accountId: string, fallbackDate: str
   };
 }
 
-async function fetchInsightsChunk(env: MetaBackfillEnv, accountId: string, from: string, to: string, selectedAdIds: Set<string>): Promise<JsonRecord[]> {
+async function fetchInsightsChunk(env: MetaBackfillEnv, accountId: string, from: string, to: string, selectedAdIds: Set<string>, statusMap: Map<string, string>): Promise<JsonRecord[]> {
   const accessToken = text(env.META_ACCESS_TOKEN);
   if (!accessToken) throw new Error('Meta access token не найден');
   const rows: JsonRecord[] = [];
@@ -184,7 +208,7 @@ async function fetchInsightsChunk(env: MetaBackfillEnv, accountId: string, from:
   for (let page = 0; next && page < 250; page += 1) {
     const payload: { data?: JsonRecord[]; paging?: { next?: string } } = await metaJson(next);
     for (const item of payload.data || []) {
-      const normalized = normalizeInsight(item, accountId, to, selectedAdIds);
+      const normalized = normalizeInsight(item, accountId, to, selectedAdIds, statusMap);
       if (normalized) rows.push(normalized);
     }
     next = payload.paging?.next;
@@ -192,9 +216,9 @@ async function fetchInsightsChunk(env: MetaBackfillEnv, accountId: string, from:
   return rows;
 }
 
-async function fetchAdaptive(env: MetaBackfillEnv, accountId: string, from: string, to: string, selectedAdIds: Set<string>): Promise<Array<{ from: string; to: string; rows: JsonRecord[] }>> {
+async function fetchAdaptive(env: MetaBackfillEnv, accountId: string, from: string, to: string, selectedAdIds: Set<string>, statusMap: Map<string, string>): Promise<Array<{ from: string; to: string; rows: JsonRecord[] }>> {
   try {
-    return [{ from, to, rows: await fetchInsightsChunk(env, accountId, from, to, selectedAdIds) }];
+    return [{ from, to, rows: await fetchInsightsChunk(env, accountId, from, to, selectedAdIds, statusMap) }];
   } catch (error) {
     const rangeDays = daysBetween(from, to);
     const tooLarge = error instanceof MetaApiError && error.code === 1;
@@ -202,8 +226,8 @@ async function fetchAdaptive(env: MetaBackfillEnv, accountId: string, from: stri
     const leftDays = Math.ceil(rangeDays / 2);
     const leftTo = addDays(from, leftDays - 1);
     const rightFrom = addDays(leftTo, 1);
-    const left = await fetchAdaptive(env, accountId, from, leftTo, selectedAdIds);
-    const right = await fetchAdaptive(env, accountId, rightFrom, to, selectedAdIds);
+    const left = await fetchAdaptive(env, accountId, from, leftTo, selectedAdIds, statusMap);
+    const right = await fetchAdaptive(env, accountId, rightFrom, to, selectedAdIds, statusMap);
     return [...left, ...right];
   }
 }
@@ -259,8 +283,9 @@ export async function handleMetaBackfillRequest(request: Request, env: MetaBackf
     const selectedAdIds = new Set(scope.adIds);
     const chunks = buildChunks(from, to, 7);
     for (const accountId of scope.accountIds) {
+      const statusMap = await fetchAdStatusMap(env, accountId, selectedAdIds);
       for (const chunk of chunks) {
-        const adaptiveChunks = await fetchAdaptive(env, accountId, chunk.from, chunk.to, selectedAdIds);
+        const adaptiveChunks = await fetchAdaptive(env, accountId, chunk.from, chunk.to, selectedAdIds, statusMap);
         for (const result of adaptiveChunks) {
           fetched += result.rows.length;
           written += await writeRows(env, companyId, result.rows);
