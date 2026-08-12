@@ -17,14 +17,6 @@ export default function CrmWorkspace({ canView, children }: CrmWorkspaceProps) {
   const visibleTabs = tabs.filter((tab) => canView(tab.moduleId));
 
   return <section className="crm-workspace">
-    <header className="crm-workspace__header">
-      <div>
-        <span className="crm-workspace__eyebrow">CRM</span>
-        <h1>Клиенты и продажи</h1>
-        <p>Лиды, карточки клиентов и сделки — в одном рабочем пространстве.</p>
-      </div>
-    </header>
-
     <nav className="crm-workspace__tabs" aria-label="CRM разделы">
       {visibleTabs.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}>
         <Icon size={17}/>
