@@ -86,7 +86,7 @@ export default {
   async fetch(request: Request, env: SecuredEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
-      let forwardedRequest = sanitizedRequest(request);
+      let forwardedRequest: Request | null = null;
       if (url.pathname.startsWith('/api/') && !bypassPermissionBoundary(url.pathname) && !isLegacyAdminRequest(request, env)) {
         const user = await authenticateRequest(request, env);
         if (!user) return json({ error: 'Необходим вход через Google', code: 'AUTH_REQUIRED' }, 401);
@@ -113,6 +113,7 @@ export default {
           }
         }
       }
+      if (!forwardedRequest) forwardedRequest = sanitizedRequest(request);
       return app.fetch(forwardedRequest, env, ctx);
     } catch (error) {
       console.error('Secured worker runtime error', error);
