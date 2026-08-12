@@ -35,6 +35,27 @@ insert into public.platform_modules(id,name,description,category,route,navigatio
 values('work.tasks','Задачи','Общие, отделовые и персональные задачи.','work','/tasks','Задачи',30,'active','{"access_actions":["view","create","edit","delete","manage"]}'::jsonb)
 on conflict(id) do update set name=excluded.name,description=excluded.description,category=excluded.category,route=excluded.route,navigation_label=excluded.navigation_label,status='active',metadata=public.platform_modules.metadata||excluded.metadata,updated_at=now();
 
-update public.crm_access_position_permissions p set can_view=true,can_create=true,can_edit=true,can_manage=(pos.system_key='system_admin'),updated_at=now()
-from public.crm_access_positions pos where p.position_id=pos.id and p.module_id='work.tasks';
+insert into public.crm_access_positions(company_id,name,description,system_key,is_system)
+select id,'Колл-центр','Операторы и сотрудники колл-центра.','call_center',true from public.crm_companies
+on conflict(company_id,system_key) where system_key is not null do update set name=excluded.name,description=excluded.description,is_system=true,updated_at=now();
+
+insert into public.crm_access_position_permissions(position_id,company_id,module_id,can_view,can_create,can_edit,can_delete,can_export,can_manage)
+select p.id,p.company_id,'work.tasks',true,true,true,false,false,(p.system_key='system_admin')
+from public.crm_access_positions p
+on conflict(position_id,module_id) do update set can_view=true,can_create=true,can_edit=true,can_manage=(excluded.can_manage),updated_at=now();
+
+create or replace function private.ensure_work_tasks_access_after_membership()
+returns trigger language plpgsql security definer set search_path=public,private,pg_temp as $$
+begin
+  insert into public.crm_access_position_permissions(position_id,company_id,module_id,can_view,can_create,can_edit,can_delete,can_export,can_manage)
+  select p.id,p.company_id,'work.tasks',true,true,true,false,false,(p.system_key='system_admin')
+  from public.crm_access_positions p where p.company_id=new.company_id
+  on conflict(position_id,module_id) do update set can_view=true,can_create=true,can_edit=true,can_manage=(excluded.can_manage),updated_at=now();
+  return new;
+end; $$;
+
+drop trigger if exists zz_crm_company_members_work_tasks_access on public.crm_company_members;
+create trigger zz_crm_company_members_work_tasks_access after insert on public.crm_company_members
+for each row execute function private.ensure_work_tasks_access_after_membership();
+
 notify pgrst,'reload schema';
