@@ -143,7 +143,7 @@ export default {
     const requestCorrelationId = correlationId(request);
     // Preserve an untouched body stream before audit/pre-route handlers inspect the incoming request.
     // Request bodies are single-use in Cloudflare Workers; trusted-header reconstruction must use this copy.
-    const forwardingSource = request.clone();
+    const forwardingSource = new Request(request);
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
 
