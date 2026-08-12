@@ -22,7 +22,15 @@ async function upsertUser(authUser:JsonRecord,env:AuthEnv):Promise<Authenticated
   const googleName=text(metadata.full_name)||text(metadata.name)||email.split('@')[0]||'Пользователь';const avatar=text(metadata.avatar_url)||null;
   if(!authId||!email)throw new Error('Google account does not contain a valid user ID or email');if(!domainAllowed(email,env))throw new Error('Этот Google-аккаунт не разрешён для входа');
   let rowsResponse=await rest(env,`marketing_users?auth_user_id=eq.${encodeURIComponent(authId)}&select=*`);if(!rowsResponse.ok)throw new Error(`Unable to read marketing user: ${await rowsResponse.text()}`);let rows=await rowsResponse.json() as JsonRecord[];let row=rows[0];
-  if(row){const response=await rest(env,`marketing_users?id=eq.${encodeURIComponent(text(row.id))}`,{method:'PATCH',headers:{prefer:'return=representation'},body:JSON.stringify({email,avatar_url:avatar,provider:'google',provider_metadata:metadata,last_seen_at:new Date().toISOString()})});if(!response.ok)throw new Error(`Unable to update marketing user: ${await response.text()}`);row=(await response.json() as JsonRecord[])[0];}
+  if(row){
+    const lastSeenAt=row.last_seen_at?new Date(String(row.last_seen_at)).getTime():0;
+    const staleEnough=!Number.isFinite(lastSeenAt)||Date.now()-lastSeenAt>5*60*1000;
+    const profileChanged=text(row.email).toLowerCase()!==email||(row.avatar_url?text(row.avatar_url):null)!==avatar||text(row.provider)!=='google';
+    if(staleEnough||profileChanged){
+      const response=await rest(env,`marketing_users?id=eq.${encodeURIComponent(text(row.id))}`,{method:'PATCH',headers:{prefer:'return=representation'},body:JSON.stringify({email,avatar_url:avatar,provider:'google',provider_metadata:metadata,last_seen_at:new Date().toISOString()})});
+      if(!response.ok)throw new Error(`Unable to update marketing user: ${await response.text()}`);row=(await response.json() as JsonRecord[])[0];
+    }
+  }
   else{
     const invitedResponse=await rest(env,`marketing_users?email=ilike.${encodeURIComponent(email)}&auth_user_id=is.null&select=*&limit=1`);if(!invitedResponse.ok)throw new Error(`Unable to read invited user: ${await invitedResponse.text()}`);const invited=await invitedResponse.json() as JsonRecord[];
     if(invited[0]){const response=await rest(env,`marketing_users?id=eq.${encodeURIComponent(text(invited[0].id))}`,{method:'PATCH',headers:{prefer:'return=representation'},body:JSON.stringify({auth_user_id:authId,email,avatar_url:avatar,provider:'google',provider_metadata:{...metadata,manually_linked:true},last_seen_at:new Date().toISOString(),updated_at:new Date().toISOString()})});if(!response.ok)throw new Error(`Unable to activate invited user: ${await response.text()}`);row=(await response.json() as JsonRecord[])[0];}

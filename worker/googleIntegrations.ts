@@ -175,7 +175,8 @@ async function markStatus(env: GoogleIntegrationEnv, row: StoredCredential, ok: 
 
 async function insertRun(env: GoogleIntegrationEnv, source: GoogleProvider, from: string, to: string): Promise<string | null> {
   try {
-    const rows = await db<Array<{ id: string }>>(env, 'integration_runs?select=id', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify({ source, status: 'running', date_from: from, date_to: to, started_at: new Date().toISOString() }) });
+    const companyId = await resolveCompanyId(env);
+    const rows = await db<Array<{ id: string }>>(env, 'integration_runs?select=id', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify({ company_id: companyId, source, status: 'running', date_from: from, date_to: to, started_at: new Date().toISOString() }) });
     return rows[0]?.id || null;
   } catch { return null; }
 }
@@ -187,6 +188,7 @@ async function finishRun(env: GoogleIntegrationEnv, id: string | null, status: '
 
 async function syncGoogleAds(env: GoogleIntegrationEnv, row: StoredCredential, payload: Row, from: string, to: string): Promise<{ fetched: number; written: number }> {
   const token = await accessToken(payload);
+  const companyId = await resolveCompanyId(env);
   const apiVersion = text(payload.apiVersion) || 'v25';
   const customerIds = csv(payload.customerIds).map((id) => id.replace(/\D/g, '')).filter(Boolean);
   const loginCustomerId = text(payload.loginCustomerId).replace(/\D/g, '');
@@ -204,6 +206,7 @@ async function syncGoogleAds(env: GoogleIntegrationEnv, row: StoredCredential, p
         const item = record(raw); const customer = record(item.customer); const campaign = record(item.campaign); const adGroup = record(item.adGroup); const adGroupAd = record(item.adGroupAd); const ad = record(adGroupAd.ad); const metrics = record(item.metrics); const segments = record(item.segments);
         const adId = text(ad.id) || crypto.randomUUID();
         rows.push({
+          company_id: companyId,
           external_id: `google:${customerId}:${adId}`,
           report_date: text(segments.date) || to,
           source: 'Google Ads', platform: 'Google Ads', account_id: text(customer.id) || customerId, account_name: text(customer.descriptiveName),
@@ -215,12 +218,13 @@ async function syncGoogleAds(env: GoogleIntegrationEnv, row: StoredCredential, p
       }
     }
   }
-  if (rows.length) await db(env, `marketing_ads?on_conflict=${encodeURIComponent('external_id,report_date')}`, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows) });
+  if (rows.length) await db(env, `marketing_ads?on_conflict=${encodeURIComponent('company_id,external_id,report_date')}`, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows) });
   return { fetched: rows.length, written: rows.length };
 }
 
 async function syncGa4(env: GoogleIntegrationEnv, row: StoredCredential, payload: Row, from: string, to: string): Promise<{ fetched: number; written: number }> {
   const token = await accessToken(payload);
+  const companyId = await resolveCompanyId(env);
   const rows: Row[] = [];
   for (const propertyIdRaw of csv(payload.propertyIds)) {
     const propertyId = propertyIdRaw.replace(/^properties\//, '').replace(/\D/g, '');
@@ -240,7 +244,7 @@ async function syncGa4(env: GoogleIntegrationEnv, row: StoredCredential, payload
     for (const raw of dataRows) {
       const item = record(raw); const dims = Array.isArray(item.dimensionValues) ? item.dimensionValues.map(record) : []; const metrics = Array.isArray(item.metricValues) ? item.metricValues.map(record) : [];
       const dateRaw = text(dims[0]?.value); const date = /^\d{8}$/.test(dateRaw) ? `${dateRaw.slice(0,4)}-${dateRaw.slice(4,6)}-${dateRaw.slice(6,8)}` : from;
-      rows.push({ company_id: await resolveCompanyId(env), report_date: date, source: text(dims[1]?.value) || '(direct)', medium: text(dims[2]?.value) || '(none)', campaign: text(dims[3]?.value) || '(not set)', users: number(metrics[0]?.value), sessions: number(metrics[1]?.value), key_events: number(metrics[2]?.value), revenue: number(metrics[3]?.value), metadata: { property_id: propertyId, ga4: item } });
+      rows.push({ company_id: companyId, report_date: date, source: text(dims[1]?.value) || '(direct)', medium: text(dims[2]?.value) || '(none)', campaign: text(dims[3]?.value) || '(not set)', users: number(metrics[0]?.value), sessions: number(metrics[1]?.value), key_events: number(metrics[2]?.value), revenue: number(metrics[3]?.value), metadata: { property_id: propertyId, ga4: item } });
     }
   }
   if (rows.length) await db(env, `marketing_web_analytics?on_conflict=${encodeURIComponent('company_id,report_date,source,medium,campaign')}`, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows) });
