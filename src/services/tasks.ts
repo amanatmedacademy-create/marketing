@@ -21,7 +21,7 @@ export interface WorkTask {
   createdAt:string; updatedAt:string; createdBy?:string|null; createdByName?:string|null; assignmentMode:TaskAssignmentMode;
   targets:TaskTarget[]; executions:TaskExecution[]; comments?:TaskComment[]; checklist?:TaskChecklistItem[]; watchers?:TaskWatcher[]; history?:TaskHistoryItem[];
 }
-export interface TaskTemplate { id:string; name:string; description?:string|null; workflowKey:string; priority:TaskPriority; dueOffsetMinutes?:number|null; slaMinutes?:number|null; assignmentMode:TaskAssignmentMode; targets:Array<{targetType:TaskTargetType;targetValue?:string|null;targetLabel:string}>; checklist:string[]; linkType?:string|null; builtin:boolean; }
+export interface TaskTemplate { id:string; name:string; description?:string|null; workflowKey:string; priority:TaskPriority; dueOffsetMinutes?:number|null; slaMinutes?:number|null; assignmentMode:TaskAssignmentMode; targets:Array<{targetType:TaskTargetType;targetValue?:string;targetLabel:string}>; checklist:string[]; linkType?:string|null; builtin:boolean; }
 export interface TaskAutomationRule { id:string; key:string; name:string; description?:string|null; enabled:boolean; config:Record<string,unknown>; lastRunAt?:string|null; }
 export interface TaskAnalyticsSummary { total:number; open:number; done:number; overdue:number; slaBreached:number; averageCompletionHours:number|null; }
 export interface TaskAnalytics { summary:TaskAnalyticsSummary; byUser:Array<{userId:string;userName:string;open:number;overdue:number;done:number}>; byWorkflow:Array<{workflowKey:string;open:number;done:number;overdue:number}>; }
