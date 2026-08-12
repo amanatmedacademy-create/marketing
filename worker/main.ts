@@ -21,6 +21,7 @@ import { handleMetaOAuthStart, type MetaOAuthStartEnv } from './metaOAuthStart';
 import { handleMetaReachSync } from './metaReachSync';
 import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelection';
+import { guardMetaSignedWebhook } from './metaWebhookGuard';
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
@@ -169,6 +170,8 @@ export default {
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(request);
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
+      const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
+      if (webhookGuard) return webhookGuard;
 
       const clinicSchedule = await handleClinicSchedule(forwardedRequest, runtimeEnv, url);
       if (clinicSchedule) return clinicSchedule;
