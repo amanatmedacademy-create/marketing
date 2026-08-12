@@ -1,8 +1,10 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
 import { UserRoundSearch, UsersRound, Workflow } from 'lucide-react';
 
 type CrmWorkspaceProps = {
   canView: (moduleId: string) => boolean;
+  children: ReactNode;
 };
 
 const tabs = [
@@ -11,7 +13,7 @@ const tabs = [
   { to: '/pipeline', label: 'Сделки', icon: Workflow, moduleId: 'crm.pipeline' },
 ] as const;
 
-export default function CrmWorkspace({ canView }: CrmWorkspaceProps) {
+export default function CrmWorkspace({ canView, children }: CrmWorkspaceProps) {
   const visibleTabs = tabs.filter((tab) => canView(tab.moduleId));
 
   return <section className="crm-workspace">
@@ -21,7 +23,6 @@ export default function CrmWorkspace({ canView }: CrmWorkspaceProps) {
         <h1>Клиенты и продажи</h1>
         <p>Лиды, карточки клиентов и сделки — в одном рабочем пространстве.</p>
       </div>
-      <span className="crm-workspace__principle">Без дублирования модулей</span>
     </header>
 
     <nav className="crm-workspace__tabs" aria-label="CRM разделы">
@@ -31,8 +32,6 @@ export default function CrmWorkspace({ canView }: CrmWorkspaceProps) {
       </NavLink>)}
     </nav>
 
-    <div className="crm-workspace__content">
-      <Outlet/>
-    </div>
+    <div className="crm-workspace__content">{children}</div>
   </section>;
 }
