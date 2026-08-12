@@ -21,6 +21,10 @@ export interface WorkTask {
   createdAt:string; updatedAt:string; createdBy?:string|null; createdByName?:string|null; assignmentMode:TaskAssignmentMode;
   targets:TaskTarget[]; executions:TaskExecution[]; comments?:TaskComment[]; checklist?:TaskChecklistItem[]; watchers?:TaskWatcher[]; history?:TaskHistoryItem[];
 }
+export interface TaskTemplate { id:string; name:string; description?:string|null; workflowKey:string; priority:TaskPriority; dueOffsetMinutes?:number|null; slaMinutes?:number|null; assignmentMode:TaskAssignmentMode; targets:Array<{targetType:TaskTargetType;targetValue?:string;targetLabel:string}>; checklist:string[]; linkType?:string|null; builtin:boolean; }
+export interface TaskAutomationRule { id:string; key:string; name:string; description?:string|null; enabled:boolean; config:Record<string,unknown>; lastRunAt?:string|null; }
+export interface TaskAnalyticsSummary { total:number; open:number; done:number; overdue:number; slaBreached:number; averageCompletionHours:number|null; }
+export interface TaskAnalytics { summary:TaskAnalyticsSummary; byUser:Array<{userId:string;userName:string;open:number;overdue:number;done:number}>; byWorkflow:Array<{workflowKey:string;open:number;done:number;overdue:number}>; }
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
   const response=await authFetch(`/api/tasks${path}`,{...init,headers:{'content-type':'application/json',...init?.headers}});
@@ -34,9 +38,20 @@ export const tasksApi={
   list:(scope='all',workflow='')=>request<{tasks:WorkTask[]}>(`?scope=${encodeURIComponent(scope)}${workflow?`&workflow=${encodeURIComponent(workflow)}`:''}`),
   get:(id:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(id)}`),
   create:(payload:Record<string,unknown>)=>request<{task:WorkTask}>('',{method:'POST',body:JSON.stringify(payload)}),
-  update:(id:string,payload:Record<string,unknown>)=>request<{task:WorkTask}>(`/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)}),
+  update:(id:string,payload:Record<string,unknown>)=>Object.keys(payload).length===1&&Object.prototype.hasOwnProperty.call(payload,'dueAt')
+    ? request<{task:WorkTask}>('/suite/postpone',{method:'POST',body:JSON.stringify({taskId:id,dueAt:payload.dueAt})}).then(async result=>result.task?{task:result.task}:request<{task:WorkTask}>(`/${encodeURIComponent(id)}`))
+    : request<{task:WorkTask}>(`/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)}),
   updateExecution:(taskId:string,status:TaskStatus,resultCode?:string,resultNote?:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/execution`,{method:'PATCH',body:JSON.stringify({status,resultCode,resultNote})}),
   comment:(taskId:string,body:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/comments`,{method:'POST',body:JSON.stringify({body})}),
   addChecklist:(taskId:string,title:string)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/checklist`,{method:'POST',body:JSON.stringify({title})}),
   toggleChecklist:(taskId:string,itemId:string,isDone:boolean)=>request<{task:WorkTask}>(`/${encodeURIComponent(taskId)}/checklist/${encodeURIComponent(itemId)}`,{method:'PATCH',body:JSON.stringify({isDone})}),
+  next:()=>request<{taskId:string|null;reused?:boolean}>('/suite/next',{method:'POST'}),
+  templates:()=>request<{templates:TaskTemplate[]}>('/suite/templates'),
+  createTemplate:(payload:Record<string,unknown>)=>request<{template:TaskTemplate}>('/suite/templates',{method:'POST',body:JSON.stringify(payload)}),
+  deleteTemplate:(id:string)=>request<{template:TaskTemplate}>(`/suite/templates/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  analytics:()=>request<TaskAnalytics>('/suite/analytics'),
+  automations:()=>request<{rules:TaskAutomationRule[]}>('/suite/automations'),
+  updateAutomation:(key:string,payload:Record<string,unknown>)=>request<{rule:TaskAutomationRule}>('/suite/automations',{method:'PATCH',body:JSON.stringify({key,...payload})}),
+  runAutomations:()=>request<{created:number}>('/suite/run-automations',{method:'POST'}),
+  createFollowUp:(taskId:string,when?:string,title?:string)=>request<{taskId:string}>('/suite/follow-up',{method:'POST',body:JSON.stringify({taskId,when,title})}),
 };

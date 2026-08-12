@@ -7,6 +7,8 @@ import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
 import { handleTaskNotifications, notifyAssignedTask, runTaskNotificationScan } from './taskNotifications';
+import { handleTaskQuickActions } from './taskQuickActions';
+import { handleTaskSuite, runTaskAutomationScan } from './taskSuite';
 import { handleTasks } from './tasks';
 
 type SecuredEnv = AuthEnv & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
@@ -100,6 +102,14 @@ export default {
             const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
           }
+          if (url.pathname === '/api/tasks/suite/postpone') {
+            const response = await handleTaskQuickActions(forwardedRequest, env as unknown as Env, url);
+            if (response) return response;
+          }
+          if (url.pathname.startsWith('/api/tasks/suite')) {
+            const response = await handleTaskSuite(forwardedRequest, env as unknown as Env, url);
+            if (response) return response;
+          }
           const response = await handleTasks(forwardedRequest, env as unknown as Env, url);
           if (response) {
             if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
@@ -125,6 +135,20 @@ export default {
   },
 
   async scheduled(controller: WorkerScheduledController, env: SecuredEnv, ctx: WorkerExecutionContext): Promise<void> {
+    if (controller.cron === '*/5 * * * *') {
+      ctx.waitUntil(
+        runTaskAutomationScan(env as unknown as Env)
+          .then((result) => console.log('Scheduled task automation completed', result))
+          .catch((error) => console.error('Scheduled task automation failed', error)),
+      );
+      ctx.waitUntil(
+        runTaskNotificationScan(env as unknown as Env)
+          .then((result) => console.log('Scheduled task notifications completed', result))
+          .catch((error) => console.error('Scheduled task notifications failed', error)),
+      );
+      return;
+    }
+
     await app.scheduled(controller, env, ctx);
     ctx.waitUntil(
       runAutomationEngine(env)
