@@ -1,0 +1,179 @@
+/* Final cleanup for legacy Inbox/Funnel styles.
+   These modules still contain historical navy/blue/purple literals; map their active UI back to IMDS tokens. */
+
+.callcenter-root,
+.funnel-page-root{
+  --border:var(--imds-border)!important;
+  --border2:var(--imds-border-strong)!important;
+  --surface:var(--imds-surface)!important;
+  --surface2:var(--imds-surface-2)!important;
+  --surface3:var(--imds-surface-3)!important;
+  --control:var(--imds-glass-soft)!important;
+  --text:var(--imds-text)!important;
+  --text2:var(--imds-text-soft)!important;
+  --text3:var(--imds-muted)!important;
+  --muted:var(--imds-muted)!important;
+  --accent:var(--imds-primary)!important;
+  --accent2:var(--imds-primary-strong)!important;
+}
+
+.callcenter-heading>div:first-child span,
+.funnel-heading>div:first-child span{
+  color:var(--imds-primary)!important;
+}
+.callcenter-heading p,
+.funnel-heading p{color:var(--imds-muted)!important}
+
+.callcenter-root .button,
+.funnel-page-root .button,
+.inbox-channel-tabs button,
+.inbox-contact-actions button,
+.inbox-icon-button,
+.rop-filterbar>button,
+.rop-lead-card>footer button,
+.rop-modal>header button{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+}
+.callcenter-root .button-primary,
+.funnel-page-root .button-primary,
+.inbox-send-button{
+  border-color:var(--imds-primary)!important;
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+.callcenter-root .button-primary:hover,
+.funnel-page-root .button-primary:hover,
+.inbox-send-button:hover{background:var(--imds-primary-strong)!important}
+
+.inbox-workspace,
+.funnel-state,
+.refdash-kpis article,
+.refdash-card,
+.rop-filterbar,
+.rop-modal{
+  border-color:var(--imds-border)!important;
+  background:linear-gradient(180deg,var(--imds-surface),var(--imds-surface-2))!important;
+  color:var(--imds-text-soft)!important;
+}
+.inbox-left,
+.inbox-right,
+.rop-column{background:var(--imds-surface-2)!important}
+.inbox-center{background:var(--imds-bg)!important}
+
+.inbox-thread{
+  border-bottom-color:var(--imds-border)!important;
+  color:var(--imds-text-soft)!important;
+}
+.inbox-thread:hover,
+.inbox-template-menu button:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important}
+.inbox-thread.active{
+  background:var(--imds-primary-soft)!important;
+  box-shadow:inset 3px 0 0 var(--imds-primary)!important;
+}
+.inbox-thread-meta b{background:var(--imds-primary)!important}
+.inbox-contact-avatar,
+.inbox-crm-avatar,
+.rop-lead-avatar{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+  color:#fff!important;
+}
+.inbox-contact-actions select,
+.inbox-status-filter select,
+.inbox-search,
+.inbox-input-row textarea,
+.refdash-toolbar select,
+.rop-filterbar input,
+.rop-filterbar select{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text)!important;
+}
+.inbox-input-row textarea:focus{
+  outline:2px solid var(--imds-primary-a18)!important;
+  border-color:var(--imds-primary)!important;
+}
+.inbox-ai-button{
+  border-color:var(--imds-primary-a18)!important;
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary)!important;
+}
+.inbox-message{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-surface)!important;
+  color:var(--imds-text-soft)!important;
+}
+.inbox-message.outbound{
+  border-color:var(--imds-primary-a18)!important;
+  background:var(--imds-primary-soft)!important;
+}
+.inbox-message header strong{color:var(--imds-primary)!important}
+.inbox-message.inbound header strong{color:var(--imds-muted)!important}
+.inbox-attachment,
+.inbox-attachment-draft,
+.inbox-quick-replies button{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+}
+.inbox-quick-replies button:hover,
+.inbox-icon-button:hover{
+  border-color:var(--imds-primary)!important;
+  color:var(--imds-primary)!important;
+}
+
+.refdash-kpis article,
+.refdash-card,
+.rop-filterbar{box-shadow:var(--imds-shadow-soft)!important}
+.refdash-card>header,
+.rop-lead-card>footer,
+.rop-performance-table>article,
+.rop-activity-card>div>article{border-color:var(--imds-border)!important}
+.refdash-kpi-icon,
+.rop-lead-card>header>b{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-muted)!important;
+}
+.refdash-kpis article.tone-blue{border-top-color:var(--imds-blue)!important}
+.refdash-kpis article.tone-teal{border-top-color:var(--imds-primary)!important}
+.refdash-kpis article.tone-green{border-top-color:var(--imds-success)!important}
+.refdash-kpis article.tone-purple{border-top-color:var(--imds-primary-strong)!important}
+.refdash-kpis article.tone-red{border-top-color:var(--imds-danger)!important}
+.refdash-kpis article.tone-amber{border-top-color:var(--imds-warning)!important}
+.tone-blue .refdash-kpi-icon{background:color-mix(in srgb,var(--imds-blue) 10%,var(--imds-surface))!important;color:var(--imds-blue)!important}
+.tone-teal .refdash-kpi-icon{background:var(--imds-primary-a10)!important;color:var(--imds-primary)!important}
+.tone-green .refdash-kpi-icon{background:var(--imds-success-a10)!important;color:var(--imds-success)!important}
+.tone-purple .refdash-kpi-icon{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.tone-red .refdash-kpi-icon{background:var(--imds-danger-a10)!important;color:var(--imds-danger)!important}
+.tone-amber .refdash-kpi-icon{background:var(--imds-warning-a10)!important;color:var(--imds-warning)!important}
+
+.rop-column.drag-active{
+  background:var(--imds-primary-a10)!important;
+  border-color:var(--imds-primary-a18)!important;
+}
+.rop-lead-card{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+.rop-lead-card.priority-low{border-left-color:var(--imds-muted)!important}
+.rop-lead-card.priority-medium{border-left-color:var(--imds-primary)!important}
+.rop-lead-card.priority-high{border-left-color:var(--imds-warning)!important}
+.rop-lead-card.priority-urgent{border-left-color:var(--imds-danger)!important}
+.rop-lead-amount{background:var(--imds-success-a10)!important}
+.rop-lead-amount span,.rop-lead-amount strong{color:var(--imds-success)!important}
+.rop-lost-reason{background:var(--imds-danger-a10)!important;color:var(--imds-danger)!important}
+.rop-lead-card>footer button:hover{
+  border-color:var(--imds-primary)!important;
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary)!important;
+}
+
+.inbox-inline-error,
+.refdash-action-error{
+  border-color:color-mix(in srgb,var(--imds-danger) 32%,var(--imds-border))!important;
+  background:var(--imds-danger-a10)!important;
+  color:var(--imds-danger)!important;
+}
