@@ -3,6 +3,7 @@
 
 export type ChatDirection = 'INBOUND' | 'OUTBOUND';
 export type ChatStatus = 'OPEN' | 'PENDING' | 'CLOSED';
+export type ChatWorkspaceScope = 'all' | 'mine' | 'unassigned' | 'unread' | 'waiting';
 
 export type ChatMessage = {
   id: string;
@@ -69,9 +70,26 @@ export type ChatThread = {
   unreadCount?: number;
 };
 
+export type ChatWorkspaceMeta = {
+  scope: ChatWorkspaceScope;
+  q?: string;
+  channel?: string;
+  status?: ChatStatus;
+  limit: number;
+};
+
 export type ChatWorkspace = {
   threads: ChatThread[];
   users: ChatUser[];
+  meta?: ChatWorkspaceMeta;
+};
+
+export type ChatWorkspaceOptions = {
+  scope?: ChatWorkspaceScope;
+  q?: string;
+  channel?: string;
+  status?: ChatStatus;
+  limit?: number;
 };
 
 export type ChatAttachmentInput = {
@@ -135,7 +153,16 @@ function prioritizeCrmThread(workspace: ChatWorkspace): ChatWorkspace {
   return { ...workspace, threads };
 }
 
-export const fetchChatWorkspace = async () => prioritizeCrmThread(await request<ChatWorkspace>('/workspace'));
+export const fetchChatWorkspace = async (options: ChatWorkspaceOptions = {}) => {
+  const params = new URLSearchParams();
+  if (options.scope && options.scope !== 'all') params.set('scope', options.scope);
+  if (options.q?.trim()) params.set('q', options.q.trim());
+  if (options.channel && options.channel !== 'ALL') params.set('channel', options.channel);
+  if (options.status) params.set('status', options.status);
+  if (options.limit) params.set('limit', String(Math.min(250, Math.max(20, options.limit))));
+  const suffix = params.size ? `?${params.toString()}` : '';
+  return prioritizeCrmThread(await request<ChatWorkspace>(`/workspace${suffix}`));
+};
 
 export async function fetchChatMessagePage(threadId: string, options: { before?: string; limit?: number } = {}): Promise<ChatMessagePage> {
   const params = new URLSearchParams();

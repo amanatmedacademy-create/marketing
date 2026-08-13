@@ -12,6 +12,7 @@ type Row = Record<string, unknown>;
 type ScopedEnv = Env & TenantScopedEnv;
 type ChatDirection = 'INBOUND' | 'OUTBOUND';
 type ChatStatus = 'OPEN' | 'PENDING' | 'CLOSED';
+type QueueScope = 'all' | 'mine' | 'unassigned' | 'unread' | 'waiting';
 
 type AttachmentInput = {
   name?: string;
@@ -42,6 +43,7 @@ type ThreadPatchInput = {
 };
 
 const ROLE_HEADER = 'x-amanat-auth-role';
+const USER_HEADER = 'x-amanat-auth-user';
 const WRITE_ROLES = ['administrator', 'marketer'];
 
 const THREAD_SELECT = 'id,lead_id,contact_id,title,phone,channel,status,assigned_user_id,unread_count,last_message_at,created_at,updated_at';
@@ -50,6 +52,7 @@ const CONTACT_SELECT = 'id,name,phone,source,stage,utm_source,first_message';
 const FUNNEL_SELECT = 'id,contact_id,stage,priority,amount,source,updated_at';
 const STATUSES: ChatStatus[] = ['OPEN', 'PENDING', 'CLOSED'];
 const CHANNELS = ['WHATSAPP', 'INSTAGRAM', 'WEB', 'PHONE', 'OTHER'];
+const QUEUE_SCOPES: QueueScope[] = ['all', 'mine', 'unassigned', 'unread', 'waiting'];
 const STORAGE_BUCKET = 'marketing-chat-attachments';
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
@@ -58,6 +61,8 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 const MESSAGE_PAGE_DEFAULT = 100;
 const MESSAGE_PAGE_MAX = 200;
+const WORKSPACE_LIMIT_DEFAULT = 120;
+const WORKSPACE_LIMIT_MAX = 250;
 
 class ChatUpstreamError extends Error {
   constructor(readonly status: number, readonly detail: string) {
@@ -87,6 +92,11 @@ const companyFilter = (env: Env) => `company_id=eq.${encodeURIComponent(companyI
 
 function requestRole(request: Request): string {
   return (request.headers.get(ROLE_HEADER) || '').trim().toLowerCase();
+}
+
+function requestUserId(request: Request): string | null {
+  const value = (request.headers.get(USER_HEADER) || '').trim();
+  return isUuid(value) ? value : null;
 }
 
 function canWrite(request: Request): boolean {
@@ -144,6 +154,10 @@ function normalizePhone(value: unknown): string {
   let digits = value.replace(/\D/g, '');
   if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
   return digits.length >= 10 && digits.length <= 15 ? digits : '';
+}
+
+function safeSearch(value: string): string {
+  return value.trim().slice(0, 100).replace(/[,*()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function mapMessage(row: Row) {
@@ -225,10 +239,45 @@ async function ensureActiveUser(env: Env, id?: string | null): Promise<boolean> 
   return rows.length > 0;
 }
 
-async function workspace(env: Env, requestId: string): Promise<Response> {
+async function workspace(request: Request, env: Env, url: URL, requestId: string): Promise<Response> {
   const tenantId = companyId(env);
+  const scopeRaw = (url.searchParams.get('scope') || 'all').toLowerCase();
+  const scope: QueueScope = QUEUE_SCOPES.includes(scopeRaw as QueueScope) ? scopeRaw as QueueScope : 'all';
+  const statusRaw = (url.searchParams.get('status') || '').toUpperCase();
+  const channelRaw = (url.searchParams.get('channel') || '').toUpperCase();
+  const query = safeSearch(url.searchParams.get('q') || '');
+  const requestedLimit = Number(url.searchParams.get('limit'));
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(WORKSPACE_LIMIT_MAX, Math.max(20, requestedLimit))
+    : WORKSPACE_LIMIT_DEFAULT;
+
+  const params = new URLSearchParams();
+  params.set('select', THREAD_SELECT);
+  params.set('company_id', `eq.${tenantId}`);
+  params.set('archived_at', 'is.null');
+  params.set('order', 'last_message_at.desc.nullslast');
+  params.set('limit', String(limit));
+
+  if (scope === 'mine') {
+    const actorId = requestUserId(request);
+    if (!actorId || !await isActiveCompanyUser(env, tenantId, actorId)) {
+      return json(requestId, { error: 'Не удалось определить текущего сотрудника для фильтра «Мои»' }, 403);
+    }
+    params.set('assigned_user_id', `eq.${actorId}`);
+  } else if (scope === 'unassigned') {
+    params.set('assigned_user_id', 'is.null');
+  } else if (scope === 'unread') {
+    params.set('unread_count', 'gt.0');
+  } else if (scope === 'waiting') {
+    params.set('status', 'eq.PENDING');
+  }
+
+  if (STATUSES.includes(statusRaw as ChatStatus) && scope !== 'waiting') params.set('status', `eq.${statusRaw}`);
+  if (CHANNELS.includes(channelRaw)) params.set('channel', `eq.${channelRaw}`);
+  if (query) params.set('or', `(title.ilike.*${query}*,phone.ilike.*${query}*)`);
+
   const [threads, users] = await Promise.all([
-    db<Row[]>(env, `/marketing_conversations?select=${THREAD_SELECT}&${companyFilter(env)}&archived_at=is.null&order=last_message_at.desc.nullslast&limit=500`),
+    db<Row[]>(env, `/marketing_conversations?${params.toString()}`),
     listActiveCompanyUsers(env, tenantId, 'id,name,role,status')
   ]);
 
@@ -237,15 +286,16 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
     .flatMap((row) => [optionalString(row, 'lead_id'), optionalString(row, 'contact_id')])
     .filter((value): value is string => Boolean(value && isUuid(value)))));
 
+  const messageLimit = Math.min(5000, Math.max(500, threadIds.length * 25));
   const [messages, contacts, funnelLeads] = await Promise.all([
     threadIds.length
-      ? db<Row[]>(env, `/marketing_messages?select=${MESSAGE_SELECT}&${companyFilter(env)}&conversation_id=in.(${inFilter(threadIds)})&order=sent_at.desc&limit=5000`)
+      ? db<Row[]>(env, `/marketing_messages?select=${MESSAGE_SELECT}&${companyFilter(env)}&conversation_id=in.(${inFilter(threadIds)})&order=sent_at.desc&limit=${messageLimit}`)
       : Promise.resolve([] as Row[]),
     contactIds.length
-      ? db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&${companyFilter(env)}&id=in.(${inFilter(contactIds)})&limit=500`)
+      ? db<Row[]>(env, `/marketing_leads?select=${CONTACT_SELECT}&${companyFilter(env)}&id=in.(${inFilter(contactIds)})&limit=${Math.min(500, Math.max(50, contactIds.length))}`)
       : Promise.resolve([] as Row[]),
     contactIds.length
-      ? db<Row[]>(env, `/sales_funnel_leads?select=${FUNNEL_SELECT}&contact_id=in.(${inFilter(contactIds)})&order=updated_at.desc&limit=1000`)
+      ? db<Row[]>(env, `/sales_funnel_leads?select=${FUNNEL_SELECT}&contact_id=in.(${inFilter(contactIds)})&order=updated_at.desc&limit=${Math.min(1000, Math.max(100, contactIds.length * 2))}`)
       : Promise.resolve([] as Row[])
   ]);
 
@@ -258,11 +308,9 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
   const userMap = new Map(users.map((row) => [stringValue(row, 'id'), mapUser(row)]));
 
   const lastMessageMap = new Map<string, ReturnType<typeof mapMessage>>();
-  const unreadMap = new Map<string, number>();
   messages.forEach((row) => {
     const message = mapMessage(row);
     if (!lastMessageMap.has(message.threadId)) lastMessageMap.set(message.threadId, message);
-    if (message.direction === 'INBOUND' && !message.readAt) unreadMap.set(message.threadId, (unreadMap.get(message.threadId) || 0) + 1);
   });
 
   return json(requestId, {
@@ -274,10 +322,11 @@ async function workspace(env: Env, requestId: string): Promise<Response> {
         funnelLead: base.leadId ? funnelMap.get(base.leadId) : undefined,
         assignedUser: base.assignedUserId ? userMap.get(base.assignedUserId) : undefined,
         lastMessage: lastMessageMap.get(base.id),
-        unreadCount: unreadMap.get(base.id) || 0
+        unreadCount: numberValue(row, 'unread_count')
       };
     }),
-    users: users.map(mapUser)
+    users: users.map(mapUser),
+    meta: { scope, q: query, channel: CHANNELS.includes(channelRaw) ? channelRaw : undefined, status: STATUSES.includes(statusRaw as ChatStatus) ? statusRaw : undefined, limit }
   });
 }
 
@@ -510,7 +559,7 @@ export async function handleCallCenterChat(request: Request, env: Env, url: URL)
   }
   try {
     requireCompanyId(scopedEnv(env));
-    if (request.method === 'GET' && path === '/api/callcenter/workspace') return await workspace(env, requestId);
+    if (request.method === 'GET' && path === '/api/callcenter/workspace') return await workspace(request, env, url, requestId);
     if (request.method === 'POST' && path === '/api/callcenter/threads') return await createThread(request, env, requestId);
 
     const threadMatch = path.match(/^\/api\/callcenter\/threads\/([^/]+)$/);
