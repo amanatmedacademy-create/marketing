@@ -7,6 +7,8 @@ import './crm-custom-fields-layer';
 import './messaging-live-context-layer';
 import './whatsapp-business-profile-layer';
 import './messaging-unanswered-label-layer';
+import './contact-avatar-layer';
+import './contact-avatar.css';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
