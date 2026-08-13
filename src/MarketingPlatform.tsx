@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, CalendarDays, ChartNoAxesCombined, Database, FileText, Goal, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, Tags, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
-import AdsManagerPage from './components/AdsManagerPage';
+import { Activity, BarChart3, Bot, Cable, CalendarDays, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import CompanySwitcher from './components/CompanySwitcher';
 import CrmWorkspace from './components/CrmWorkspace';
@@ -25,8 +24,6 @@ import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
 import Customer360Page from './pages/Customer360Page';
 import GrowthEnginePage from './pages/GrowthEnginePage';
-import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './pages/GrowthToolsSafePages';
-import JourneyAutomationPage from './pages/JourneyAutomationPage';
 import { MarketingAiPage } from './pages/StrategicPlatformPages';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import ContextualTasksPage from './pages/ContextualTasksPage';
@@ -54,20 +51,13 @@ const navigation: NavGroup[] = [
     { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
   ]},
-  { label: 'РЕКЛАМА', items: [
-    { to: '/advertising', label: 'Рекламные кампании', icon: ChartNoAxesCombined, moduleId: 'advertising' },
+  { label: 'МАРКЕТИНГ', items: [
+    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'] },
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
     { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports' },
-    { to: '/utm-builder', label: 'UTM Builder', icon: Tags, moduleId: 'analytics.attribution' },
-  ]},
-  { label: 'МАРКЕТИНГ', items: [
-    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: 'dashboard' },
-    { to: '/automation', label: 'Journey Automation', icon: Workflow, moduleId: 'dashboard' },
     { to: '/assistant', label: 'IMDS AI', icon: Bot, moduleId: 'analytics.reports' },
-    { to: '/lead-forms', label: 'Формы захвата', icon: FileText, moduleId: 'crm.leads' },
-    { to: '/media-plan', label: 'Медиаплан', icon: Goal, moduleId: 'dashboard' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
@@ -94,16 +84,18 @@ function Shell() {
   const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canViewItem(item.moduleId)) })).filter(group => group.items.length > 0);
   const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
   const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
+  const guardAny = (moduleIds: string[], element: ReactNode) => moduleIds.some(canView) ? element : <AccessDenied/>;
   const crmHome = canView('crm.leads') ? '/leads' : canView('crm.pipeline') ? '/pipeline' : firstRoute;
   const crm = (element: ReactNode) => <CrmWorkspace canView={canView}>{element}</CrmWorkspace>;
   const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
+  const isMarketingRoute = location.pathname === '/marketing' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
       <div className="marketing-brand"><ImdsBrand compact /></div>
       <div className="marketing-nav-groups">{visibleGroups.map(group => <section className="marketing-nav-group" key={group.label}>
         <div className="marketing-nav-label">{group.label}</div>
-        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive || (to === '/crm' && isCrmRoute) ? 'active' : undefined} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+        <nav>{group.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive || (to === '/crm' && isCrmRoute) || (to === '/marketing' && isMarketingRoute) ? 'active' : undefined} onClick={() => setOpen(false)}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
       </section>)}</div>
     </aside>
     {open && <button className="marketing-mobile-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setOpen(false)} />}
@@ -133,18 +125,18 @@ function Shell() {
         <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>))} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
-        <Route path="/advertising" element={guard('advertising', <AdsManagerPage/>)} />
+        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS/>)} />
+        <Route path="/advertising" element={<Navigate to="/marketing?view=ads" replace/>} />
+        <Route path="/automation" element={<Navigate to="/marketing?view=automation" replace/>} />
+        <Route path="/lead-forms" element={<Navigate to="/marketing?view=leads" replace/>} />
+        <Route path="/media-plan" element={<Navigate to="/marketing?view=media-plan" replace/>} />
+        <Route path="/utm-builder" element={<Navigate to="/marketing?view=attribution" replace/>} />
+        <Route path="/attribution" element={<Navigate to="/marketing?view=attribution" replace/>} />
         <Route path="/segments" element={<Navigate to="/leads" replace/>} />
-        <Route path="/attribution" element={<Navigate to="/analytics" replace/>} />
-        <Route path="/utm-builder" element={guard('analytics.attribution', <SafeUtmBuilderPage/>)} />
         <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
         <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>)} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
-        <Route path="/marketing" element={guard('dashboard', <MarketingOS/>)} />
-        <Route path="/automation" element={guard('dashboard', <JourneyAutomationPage/>)} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
-        <Route path="/lead-forms" element={guard('crm.leads', <SafeLeadFormsPage/>)} />
-        <Route path="/media-plan" element={guard('dashboard', <SafeMediaPlanPage/>)} />
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
