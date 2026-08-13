@@ -1,5 +1,10 @@
-alter table public.crm_contacts
-  add constraint crm_contacts_company_id_id_key unique (company_id, id);
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'crm_contacts_company_id_id_key') then
+    alter table public.crm_contacts
+      add constraint crm_contacts_company_id_id_key unique (company_id, id);
+  end if;
+end $$;
 
 create table if not exists public.crm_contact_avatars (
   id uuid primary key default gen_random_uuid(),
