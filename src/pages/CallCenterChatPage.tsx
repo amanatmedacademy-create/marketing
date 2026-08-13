@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Activity, Bot, CheckCircle2, Clock3, MessageCircle, Phone, Search, Send, Sparkles, UserRound, UsersRound } from 'lucide-react';
 import VoiceTranscriptionAction from '../components/VoiceTranscriptionAction';
 import {
   createChatThread,
@@ -41,6 +42,7 @@ const LIVE_REFRESH_VISIBLE_MS = 2500;
 const LIVE_REFRESH_HIDDEN_MS = 12000;
 
 type ChannelFilter = 'ALL' | 'WHATSAPP' | 'INSTAGRAM' | 'WEB' | 'PHONE' | 'OTHER';
+type QueueFilter = 'ALL' | 'UNREAD' | 'WAITING';
 type MobilePanel = 'list' | 'chat' | 'crm';
 
 type NewThreadDraft = {
@@ -60,8 +62,7 @@ function formatTime(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '—';
   const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
-  return sameDay
+  return date.toDateString() === today.toDateString()
     ? date.toLocaleTimeString('ru-KZ', { hour: '2-digit', minute: '2-digit' })
     : date.toLocaleDateString('ru-KZ', { day: '2-digit', month: '2-digit' });
 }
@@ -99,6 +100,21 @@ function messagesAreEqual(current: ChatMessage[], next: ChatMessage[]): boolean 
   });
 }
 
+function minutesSince(value?: string): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
+}
+
+function waitLabel(minutes: number | null): string {
+  if (minutes == null) return '—';
+  if (minutes < 60) return `${minutes} мин`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}ч ${rest}м`;
+}
+
 async function fileToAttachment(file: File): Promise<ChatAttachmentInput> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,6 +139,7 @@ export function CallCenterChatPage() {
   const [selectedId, setSelectedId] = useState('');
   const [query, setQuery] = useState('');
   const [channel, setChannel] = useState<ChannelFilter>('ALL');
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('ALL');
   const [status, setStatus] = useState<ChatStatus | ''>('');
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState<ChatAttachmentInput | null>(null);
@@ -147,9 +164,7 @@ export function CallCenterChatPage() {
   const selectedContact = selected?.contact;
   const activeUsers = useMemo(() => users.filter((user) => user.active), [users]);
 
-  useEffect(() => {
-    selectedIdRef.current = selectedId;
-  }, [selectedId]);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,9 +173,7 @@ export function CallCenterChatPage() {
       const workspace = await fetchChatWorkspace();
       setThreads(workspace.threads);
       setUsers(workspace.users);
-      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current)
-        ? current
-        : workspace.threads[0]?.id ?? '');
+      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current) ? current : workspace.threads[0]?.id ?? '');
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить колл-центр');
     } finally {
@@ -175,26 +188,19 @@ export function CallCenterChatPage() {
       const workspace = await fetchChatWorkspace();
       const activeId = selectedIdRef.current;
       const activeThread = workspace.threads.find((thread) => thread.id === activeId);
-
       setThreads(workspace.threads);
       setUsers(workspace.users);
-      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current)
-        ? current
-        : workspace.threads[0]?.id ?? '');
-
+      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current) ? current : workspace.threads[0]?.id ?? '');
       if (activeId && activeThread) {
         const nextMessages = await fetchChatMessages(activeId);
         setMessages((current) => messagesAreEqual(current, nextMessages) ? current : nextMessages);
-
         if (document.visibilityState === 'visible' && (activeThread.unreadCount ?? 0) > 0) {
           await markChatThreadRead(activeId).catch(() => undefined);
-          setThreads((current) => current.map((thread) => thread.id === activeId
-            ? { ...thread, unreadCount: 0 }
-            : thread));
+          setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, unreadCount: 0 } : thread));
         }
       }
     } catch {
-      // Временная ошибка фонового обновления не должна заменять рабочий чат экраном ошибки.
+      // Фоновая ошибка не должна заменять рабочий экран чата.
     } finally {
       liveRefreshInFlightRef.current = false;
     }
@@ -203,10 +209,7 @@ export function CallCenterChatPage() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!selectedId) {
-      setMessages([]);
-      return;
-    }
+    if (!selectedId) { setMessages([]); return; }
     let cancelled = false;
     setMessagesLoading(true);
     setActionError('');
@@ -224,24 +227,16 @@ export function CallCenterChatPage() {
   useEffect(() => {
     let timer: number | undefined;
     let stopped = false;
-
     const schedule = () => {
       if (stopped) return;
-      const delay = document.visibilityState === 'visible' ? LIVE_REFRESH_VISIBLE_MS : LIVE_REFRESH_HIDDEN_MS;
-      timer = window.setTimeout(() => {
-        void refreshLive().finally(schedule);
-      }, delay);
+      timer = window.setTimeout(() => { void refreshLive().finally(schedule); }, document.visibilityState === 'visible' ? LIVE_REFRESH_VISIBLE_MS : LIVE_REFRESH_HIDDEN_MS);
     };
     const wake = () => { void refreshLive(); };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') wake();
-    };
-
+    const onVisibility = () => { if (document.visibilityState === 'visible') wake(); };
     schedule();
     window.addEventListener('focus', wake);
     window.addEventListener('online', wake);
     document.addEventListener('visibilitychange', onVisibility);
-
     return () => {
       stopped = true;
       if (timer !== undefined) window.clearTimeout(timer);
@@ -251,35 +246,31 @@ export function CallCenterChatPage() {
     };
   }, [refreshLive]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return threads.filter((thread) => {
-      if (channel !== 'ALL' && thread.channel !== channel) return false;
-      if (status && thread.status !== status) return false;
-      if (!normalized) return true;
-      return [
-        thread.title,
-        thread.phone,
-        thread.channel,
-        thread.contact?.fullName,
-        thread.contact?.source,
-        thread.contact?.firstMessage,
-        thread.lastMessage?.body
-      ].some((value) => value?.toLowerCase().includes(normalized));
-    });
-  }, [channel, query, status, threads]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
 
   const unreadTotal = threads.reduce((sum, thread) => sum + (thread.unreadCount ?? 0), 0);
   const openTotal = threads.filter((thread) => thread.status === 'OPEN').length;
   const pendingTotal = threads.filter((thread) => thread.status === 'PENDING').length;
+  const unassignedTotal = threads.filter((thread) => !thread.assignedUserId && thread.status !== 'CLOSED').length;
+  const pipelineAmount = threads.reduce((sum, thread) => sum + (thread.funnelLead?.amount || 0), 0);
+  const selectedWait = selected?.lastMessage?.direction === 'INBOUND' ? minutesSince(selected.lastMessage.sentAt) : null;
+
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return threads.filter((thread) => {
+      if (queueFilter === 'UNREAD' && !(thread.unreadCount ?? 0)) return false;
+      if (queueFilter === 'WAITING' && thread.status !== 'PENDING') return false;
+      if (channel !== 'ALL' && thread.channel !== channel) return false;
+      if (status && thread.status !== status) return false;
+      if (!normalized) return true;
+      return [thread.title, thread.phone, thread.channel, thread.contact?.fullName, thread.contact?.source, thread.contact?.firstMessage, thread.lastMessage?.body]
+        .some((value) => value?.toLowerCase().includes(normalized));
+    });
+  }, [channel, query, queueFilter, status, threads]);
 
   useEffect(() => {
     const previous = document.title;
-    document.title = unreadTotal > 0 ? `(${unreadTotal}) Колл-центр · Amanat Marketing` : 'Колл-центр · Amanat Marketing';
+    document.title = unreadTotal > 0 ? `(${unreadTotal}) IMDS Messaging` : 'IMDS Messaging';
     return () => { document.title = previous; };
   }, [unreadTotal]);
 
@@ -300,41 +291,27 @@ export function CallCenterChatPage() {
     try {
       const saved = await sendChatMessage(selected.id, text.trim(), 'Оператор', attachment ?? undefined);
       setMessages((current) => current.some((message) => message.id === saved.id) ? current : [...current, saved]);
-      setThreads((current) => current.map((thread) => thread.id === selected.id
-        ? { ...thread, lastMessageAt: saved.sentAt, lastMessage: saved, status: 'OPEN' as const }
-        : thread));
+      setThreads((current) => current.map((thread) => thread.id === selected.id ? { ...thread, lastMessageAt: saved.sentAt, lastMessage: saved, status: 'OPEN' as const } : thread));
       setText('');
       setAttachment(null);
       setTemplatesOpen(false);
       void refreshLive();
     } catch (nextError) {
       setActionError(nextError instanceof Error ? nextError.message : 'Не удалось отправить сообщение');
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   };
 
   const openTemplates = async () => {
     if (!selected) return;
-    if (selected.channel !== 'WHATSAPP') {
-      setTemplatesOpen((current) => !current);
-      return;
-    }
-    if (templatesOpen) {
-      setTemplatesOpen(false);
-      return;
-    }
+    if (selected.channel !== 'WHATSAPP') { setTemplatesOpen((current) => !current); return; }
+    if (templatesOpen) { setTemplatesOpen(false); return; }
     setTemplatesOpen(true);
     if (whatsappTemplates.length) return;
     setTemplateLoading(true);
     setActionError('');
-    try {
-      setWhatsappTemplates(await fetchWhatsAppTemplates(selected.id));
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить WhatsApp-шаблоны');
-    } finally {
-      setTemplateLoading(false);
-    }
+    try { setWhatsappTemplates(await fetchWhatsAppTemplates(selected.id)); }
+    catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить WhatsApp-шаблоны'); }
+    finally { setTemplateLoading(false); }
   };
 
   const sendTemplate = async (template: WhatsAppTemplate) => {
@@ -350,16 +327,11 @@ export function CallCenterChatPage() {
     try {
       const saved = await sendWhatsAppTemplate(selected.id, template, parameters, 'Оператор');
       setMessages((current) => current.some((message) => message.id === saved.id) ? current : [...current, saved]);
-      setThreads((current) => current.map((thread) => thread.id === selected.id
-        ? { ...thread, lastMessageAt: saved.sentAt, lastMessage: saved, status: 'OPEN' as const }
-        : thread));
+      setThreads((current) => current.map((thread) => thread.id === selected.id ? { ...thread, lastMessageAt: saved.sentAt, lastMessage: saved, status: 'OPEN' as const } : thread));
       setTemplatesOpen(false);
       void refreshLive();
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось отправить WhatsApp-шаблон');
-    } finally {
-      setSending(false);
-    }
+    } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось отправить WhatsApp-шаблон'); }
+    finally { setSending(false); }
   };
 
   const changeStatus = async (next: ChatStatus) => {
@@ -368,9 +340,7 @@ export function CallCenterChatPage() {
     try {
       const saved = await updateChatThread(selected.id, { status: next });
       setThreads((current) => current.map((thread) => thread.id === saved.id ? { ...thread, ...saved, contact: thread.contact, funnelLead: thread.funnelLead, assignedUser: thread.assignedUser, lastMessage: thread.lastMessage, unreadCount: thread.unreadCount } : thread));
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось изменить статус');
-    }
+    } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось изменить статус'); }
   };
 
   const changeAssignee = async (assignedUserId: string) => {
@@ -379,12 +349,8 @@ export function CallCenterChatPage() {
     try {
       const saved = await updateChatThread(selected.id, { assignedUserId: assignedUserId || null });
       const assignedUser = users.find((user) => user.id === assignedUserId);
-      setThreads((current) => current.map((thread) => thread.id === saved.id
-        ? { ...thread, ...saved, contact: thread.contact, funnelLead: thread.funnelLead, lastMessage: thread.lastMessage, unreadCount: thread.unreadCount, assignedUser }
-        : thread));
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось назначить сотрудника');
-    }
+      setThreads((current) => current.map((thread) => thread.id === saved.id ? { ...thread, ...saved, contact: thread.contact, funnelLead: thread.funnelLead, lastMessage: thread.lastMessage, unreadCount: thread.unreadCount, assignedUser } : thread));
+    } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось назначить сотрудника'); }
   };
 
   const createThread = async (event: FormEvent) => {
@@ -393,38 +359,24 @@ export function CallCenterChatPage() {
     setCreatingBusy(true);
     setActionError('');
     try {
-      const saved = await createChatThread({
-        channel: newThread.channel,
-        title: newThread.title.trim() || undefined,
-        phone: newThread.phone.trim() || undefined,
-        assignedUserId: newThread.assignedUserId || undefined
-      });
+      const saved = await createChatThread({ channel: newThread.channel, title: newThread.title.trim() || undefined, phone: newThread.phone.trim() || undefined, assignedUserId: newThread.assignedUserId || undefined });
       await load();
       setSelectedId(saved.id);
       setCreating(false);
       setNewThread(emptyThreadDraft());
       setMobilePanel('chat');
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось создать диалог');
-    } finally {
-      setCreatingBusy(false);
-    }
+    } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось создать диалог'); }
+    finally { setCreatingBusy(false); }
   };
 
   const chooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setActionError('Максимальный размер вложения — 5 МБ');
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) { setActionError('Максимальный размер вложения — 5 МБ'); return; }
     setActionError('');
-    try {
-      setAttachment(await fileToAttachment(file));
-    } catch (nextError) {
-      setActionError(nextError instanceof Error ? nextError.message : 'Не удалось подготовить вложение');
-    }
+    try { setAttachment(await fileToAttachment(file)); }
+    catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось подготовить вложение'); }
   };
 
   const makeAiDraft = () => {
@@ -438,32 +390,37 @@ export function CallCenterChatPage() {
   const contactPhone = (selectedContact?.phone || selected?.phone || '').replace(/\D/g, '');
 
   return <div className="stack callcenter-root">
-    <div className="callcenter-heading">
-      <div><span>Обработка лидов</span><h1>Колл-центр</h1><p>Входящие обращения из WhatsApp, Instagram, сайта и других подключённых каналов — как CRM-чат МИС.</p></div>
-      <div className="callcenter-toolbar">
-        <span className="inbox-unread-pill">{unreadTotal} непрочитано</span>
-        <button className="button button-primary" type="button" onClick={() => { setCreating(true); setActionError(''); }}>+ Новый диалог</button>
-      </div>
-    </div>
+    <header className="messaging-hero">
+      <div><span>IMDS MESSAGING</span><h1>Единый Inbox</h1><p>WhatsApp, Instagram, сайт и звонки в одном рабочем месте менеджера.</p></div>
+      <div className="callcenter-toolbar"><span className="inbox-unread-pill">{unreadTotal} непрочитано</span><button className="button button-primary" type="button" onClick={() => { setCreating(true); setActionError(''); }}>+ Новый диалог</button></div>
+    </header>
+
+    <section className="messaging-kpis" aria-label="Показатели Inbox">
+      <article><span className="kpi-icon"><MessageCircle size={17}/></span><div><small>Непрочитано</small><strong>{unreadTotal}</strong></div></article>
+      <article><span className="kpi-icon waiting"><Clock3 size={17}/></span><div><small>Ожидают</small><strong>{pendingTotal}</strong></div></article>
+      <article><span className="kpi-icon active"><Activity size={17}/></span><div><small>Активные чаты</small><strong>{openTotal}</strong></div></article>
+      <article><span className="kpi-icon unassigned"><UsersRound size={17}/></span><div><small>Без менеджера</small><strong>{unassignedTotal}</strong></div></article>
+      <article className="wide"><div><small>Потенциал воронки</small><strong>{money.format(pipelineAmount)}</strong><em>по сделкам из текущего Inbox</em></div></article>
+    </section>
 
     <section className={`inbox-workspace mobile-${mobilePanel}`}>
-      <header className="inbox-workspace-header">
-        <div><span>CRM · CALL CENTER</span><h2>Единый чат колл-центра</h2></div>
-        <div className="inbox-header-stats"><span><b>{openTotal}</b> открытых</span><span><b>{pendingTotal}</b> ожидают</span><span><b>{unreadTotal}</b> непрочитано</span></div>
-      </header>
-
       {actionError && <div className="inbox-inline-error">{actionError}<button type="button" onClick={() => setActionError('')}>×</button></div>}
-      {loading && <div className="inbox-state">Загрузка колл-центра…</div>}
+      {loading && <div className="inbox-state">Загрузка IMDS Messaging…</div>}
       {error !== null && <div className="inbox-state inbox-state-error">{error}<button className="button button-secondary" type="button" onClick={() => void load()}>Повторить</button></div>}
 
       {!loading && error === null && <main className="inbox-layout">
         <aside className="inbox-left">
+          <header className="inbox-panel-title"><div><span>Unified Inbox</span><small>{threads.length} диалогов</small></div><button type="button" title="Обновить" onClick={() => void refreshLive()}>↻</button></header>
           <div className="inbox-left-top">
-            <label className="inbox-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по чатам" />{query && <button type="button" onClick={() => setQuery('')}>×</button>}</label>
-            <div className="inbox-channel-tabs">
-              {(['ALL', 'WHATSAPP', 'INSTAGRAM', 'WEB', 'PHONE'] as ChannelFilter[]).map((value) => <button type="button" key={value} className={channel === value ? 'active' : ''} onClick={() => setChannel(value)}>{value === 'ALL' ? 'Все' : CHANNEL_LABELS[value]}{value === 'ALL' && unreadTotal > 0 && <b>{unreadTotal}</b>}</button>)}
+            <label className="inbox-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по чатам" />{query && <button type="button" onClick={() => setQuery('')}>×</button>}</label>
+            <div className="inbox-queue-tabs">
+              <button type="button" className={queueFilter === 'ALL' ? 'active' : ''} onClick={() => setQueueFilter('ALL')}>Все</button>
+              <button type="button" title="Фильтр по текущему сотруднику подключим после публикации client identity в Inbox API">Мои</button>
+              <button type="button" className={queueFilter === 'UNREAD' ? 'active' : ''} onClick={() => setQueueFilter('UNREAD')}>Непрочитанные <b>{unreadTotal}</b></button>
+              <button type="button" className={queueFilter === 'WAITING' ? 'active' : ''} onClick={() => setQueueFilter('WAITING')}>Ожидают <b>{pendingTotal}</b></button>
             </div>
-            <label className="inbox-status-filter"><span>Статус</span><select value={status} onChange={(event) => setStatus(event.target.value as ChatStatus | '')}><option value="">Все статусы</option><option value="OPEN">Открытые</option><option value="PENDING">Ожидают</option><option value="CLOSED">Закрытые</option></select></label>
+            <div className="inbox-channel-tabs">{(['ALL', 'WHATSAPP', 'INSTAGRAM', 'WEB', 'PHONE'] as ChannelFilter[]).map((value) => <button type="button" key={value} className={channel === value ? 'active' : ''} onClick={() => setChannel(value)}>{value === 'ALL' ? 'Все каналы' : CHANNEL_LABELS[value]}</button>)}</div>
+            <label className="inbox-status-filter"><span>Статус</span><select value={status} onChange={(event) => setStatus(event.target.value as ChatStatus | '')}><option value="">Все</option><option value="OPEN">Открытые</option><option value="PENDING">Ожидают</option><option value="CLOSED">Закрытые</option></select></label>
           </div>
           <div className="inbox-thread-list">
             {filtered.map((thread) => {
@@ -485,82 +442,49 @@ export function CallCenterChatPage() {
               <button className="inbox-mobile-back" type="button" onClick={() => setMobilePanel('list')}>‹</button>
               <span className="inbox-contact-avatar">{initials(selectedContact?.fullName || selected.title || selected.phone || '?')}</span>
               <div className="inbox-contact-title"><strong>{selectedContact?.fullName || selected.title || selected.phone || 'Диалог'}</strong><small>{CHANNEL_LABELS[selected.channel] || selected.channel} · {selected.phone || selectedContact?.phone || 'телефон не указан'}</small></div>
-              <div className="inbox-contact-actions">
-                <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as ChatStatus)}><option value="OPEN">Открыт</option><option value="PENDING">Ожидает</option><option value="CLOSED">Закрыт</option></select>
-                <button type="button" onClick={() => setMobilePanel('crm')}>CRM</button>
-              </div>
+              <div className="inbox-contact-actions"><select value={selected.status} onChange={(event) => void changeStatus(event.target.value as ChatStatus)}><option value="OPEN">Открыт</option><option value="PENDING">Ожидает</option><option value="CLOSED">Закрыт</option></select><button type="button" onClick={() => setMobilePanel('crm')}>CRM</button></div>
             </header>
+            <div className={`inbox-sla ${selectedWait != null && selectedWait > 5 ? 'late' : ''}`}><Clock3 size={13}/><span>{selectedWait == null ? 'Последнее сообщение клиента уже обработано' : `Клиент ждёт ответа: ${waitLabel(selectedWait)}`}</span>{selectedWait != null && <b>{selectedWait <= 5 ? 'SLA ≤ 5 мин' : 'SLA превышен'}</b>}</div>
 
             <div className="inbox-messages">
               {messagesLoading && <div className="inbox-empty">Загрузка сообщений…</div>}
               {!messagesLoading && messages.map((message, index) => {
                 const previous = messages[index - 1];
                 const showDate = !previous || new Date(previous.sentAt).toDateString() !== new Date(message.sentAt).toDateString();
-                return <div key={message.id} className="inbox-message-block">
-                  {showDate && <div className="inbox-date-divider"><span>{new Date(message.sentAt).toLocaleDateString('ru-KZ', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}
-                  <article className={`inbox-message ${message.direction === 'OUTBOUND' ? 'outbound' : 'inbound'}`}>
-                    <header><strong>{message.senderName || (message.direction === 'OUTBOUND' ? 'Оператор' : selectedContact?.fullName || 'Клиент')}</strong></header>
-                    <p>{message.body}</p>
-                    {message.hasAttachment && <a className="inbox-attachment" href={getChatAttachmentUrl(message.id)} target="_blank" rel="noreferrer"><span>📎</span><div><strong>{message.attachmentName || 'Вложение'}</strong><small>{message.attachmentMimeType || 'Файл'} {bytesLabel(message.attachmentSizeBytes)}</small></div></a>}
-                    <VoiceTranscriptionAction message={message}/>
-                    <footer><time>{formatMessageTime(message.sentAt)}</time><span>{message.direction === 'OUTBOUND' ? outboundStatusLabel(message.status) : message.readAt ? 'Прочитано' : 'Новое'}</span></footer>
-                  </article>
-                </div>;
+                return <div key={message.id} className="inbox-message-block">{showDate && <div className="inbox-date-divider"><span>{new Date(message.sentAt).toLocaleDateString('ru-KZ', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}<article className={`inbox-message ${message.direction === 'OUTBOUND' ? 'outbound' : 'inbound'}`}><header><strong>{message.senderName || (message.direction === 'OUTBOUND' ? 'Оператор' : selectedContact?.fullName || 'Клиент')}</strong></header><p>{message.body}</p>{message.hasAttachment && <a className="inbox-attachment" href={getChatAttachmentUrl(message.id)} target="_blank" rel="noreferrer"><span>📎</span><div><strong>{message.attachmentName || 'Вложение'}</strong><small>{message.attachmentMimeType || 'Файл'} {bytesLabel(message.attachmentSizeBytes)}</small></div></a>}<VoiceTranscriptionAction message={message}/><footer><time>{formatMessageTime(message.sentAt)}</time><span>{message.direction === 'OUTBOUND' ? outboundStatusLabel(message.status) : message.readAt ? 'Прочитано' : 'Новое'}</span></footer></article></div>;
               })}
               {!messagesLoading && !messages.length && <div className="inbox-empty">Сообщений пока нет</div>}
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef}/>
             </div>
 
             <form className="inbox-compose" onSubmit={(event) => void send(event)}>
               <div className="inbox-quick-replies">{QUICK_REPLIES.slice(0, 3).map((reply) => <button type="button" key={reply} onClick={() => setText(reply)}>{reply}</button>)}</div>
-              {selected.channel === 'WHATSAPP' && <small>Если клиент не писал последние 24 часа, отправьте одобренный шаблон через кнопку ▤.</small>}
+              {selected.channel === 'WHATSAPP' && <small>После 24-часового окна используйте одобренный WhatsApp-шаблон.</small>}
               {attachment && <div className="inbox-attachment-draft"><span>📎</span><div><strong>{attachment.name}</strong><small>{attachment.mimeType} · {bytesLabel(attachment.sizeBytes)}</small></div><button type="button" onClick={() => setAttachment(null)}>×</button></div>}
-              <div className="inbox-input-row">
-                <input ref={fileInputRef} type="file" hidden accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,.docx" onChange={(event) => void chooseFile(event)} />
-                <button className="inbox-icon-button" type="button" onClick={() => fileInputRef.current?.click()} title="Прикрепить файл">📎</button>
-                <div className="inbox-template-wrap"><button className="inbox-icon-button" type="button" onClick={() => void openTemplates()} title={selected.channel === 'WHATSAPP' ? 'Одобренные WhatsApp-шаблоны' : 'Шаблоны'}>▤</button>{templatesOpen && <div className="inbox-template-menu">{selected.channel === 'WHATSAPP' ? <>{templateLoading && <span>Загрузка шаблонов…</span>}{!templateLoading && !whatsappTemplates.length && <span>Одобренных шаблонов нет</span>}{whatsappTemplates.map((template) => <button type="button" key={`${template.name}:${template.language}`} onClick={() => void sendTemplate(template)}><strong>{template.name}</strong><small>{template.language} · {template.category || 'template'}</small><span>{template.body}</span></button>)}</> : QUICK_REPLIES.map((reply) => <button type="button" key={reply} onClick={() => { setText(reply); setTemplatesOpen(false); }}>{reply}</button>)}</div>}</div>
-                <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Напишите сообщение." rows={1} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
-                <button className="inbox-ai-button" type="button" onClick={makeAiDraft} title="Подготовить ответ по контексту">AI</button>
-                <button className="inbox-send-button" disabled={sending || (!text.trim() && !attachment)}>{sending ? '…' : '➤'}</button>
-              </div>
+              <div className="inbox-input-row"><input ref={fileInputRef} type="file" hidden accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,.docx" onChange={(event) => void chooseFile(event)}/><button className="inbox-icon-button" type="button" onClick={() => fileInputRef.current?.click()} title="Прикрепить файл">📎</button><div className="inbox-template-wrap"><button className="inbox-icon-button" type="button" onClick={() => void openTemplates()} title="Шаблоны">▤</button>{templatesOpen && <div className="inbox-template-menu">{selected.channel === 'WHATSAPP' ? <>{templateLoading && <span>Загрузка шаблонов…</span>}{!templateLoading && !whatsappTemplates.length && <span>Одобренных шаблонов нет</span>}{whatsappTemplates.map((template) => <button type="button" key={`${template.name}:${template.language}`} onClick={() => void sendTemplate(template)}><strong>{template.name}</strong><small>{template.language} · {template.category || 'template'}</small><span>{template.body}</span></button>)}</> : QUICK_REPLIES.map((reply) => <button type="button" key={reply} onClick={() => { setText(reply); setTemplatesOpen(false); }}>{reply}</button>)}</div>}</div><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Напишите сообщение..." rows={1} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}/><button className="inbox-ai-button" type="button" onClick={makeAiDraft}><Sparkles size={14}/> AI draft</button><button className="inbox-send-button" disabled={sending || (!text.trim() && !attachment)}>{sending ? '…' : <Send size={15}/>}</button></div>
             </form>
           </> : <div className="inbox-empty inbox-empty-main">Выберите диалог</div>}
         </section>
 
         <aside className="inbox-right">
-          <header className="inbox-crm-mobile-head"><button type="button" onClick={() => setMobilePanel('chat')}>‹ Чат</button><strong>CRM-карточка</strong></header>
+          <header className="inbox-crm-mobile-head"><button type="button" onClick={() => setMobilePanel('chat')}>‹ Чат</button><strong>Пациент / CRM</strong></header>
           {selected ? <>
-            <section className="inbox-crm-profile">
-              <span className="inbox-crm-avatar">{initials(selectedContact?.fullName || selected.title || '?')}</span>
-              <h3>{selectedContact?.fullName || selected.title || 'Контакт не привязан'}</h3>
-              <p>{selectedContact?.phone || selected.phone || 'Телефон не указан'}</p>
-              <div><a href={`tel:${contactPhone}`}>Позвонить</a><a href={`https://wa.me/${contactPhone}`} target="_blank" rel="noreferrer">WhatsApp</a></div>
-            </section>
+            <section className="inbox-crm-profile"><span className="inbox-crm-avatar">{initials(selectedContact?.fullName || selected.title || '?')}</span><h3>{selectedContact?.fullName || selected.title || 'Контакт не привязан'}</h3><p>{selectedContact?.phone || selected.phone || 'Телефон не указан'}</p><div><a href={`tel:${contactPhone}`}><Phone size={13}/> Позвонить</a><a href={`https://wa.me/${contactPhone}`} target="_blank" rel="noreferrer"><MessageCircle size={13}/> WhatsApp</a></div></section>
 
-            <section className="inbox-crm-section"><header><h4>Ответственный</h4></header><label><span>Сотрудник</span><select value={selected.assignedUserId || ''} onChange={(event) => void changeAssignee(event.target.value)}><option value="">Не назначен</option>{activeUsers.map((user) => <option value={user.id} key={user.id}>{user.fullName}</option>)}</select></label>{selected.assignedUser && <small>{selected.assignedUser.role}</small>}</section>
+            <section className="inbox-crm-section"><header><h4>Пациент / CRM</h4></header><dl><div><dt>Источник</dt><dd>{selectedContact?.source || 'Не указан'}</dd></div><div><dt>UTM source</dt><dd>{selectedContact?.utmSource || 'Не указан'}</dd></div><div><dt>Стадия</dt><dd>{selectedContact?.stage || 'Не указана'}</dd></div><div><dt>Ответственный</dt><dd>{selected.assignedUser?.fullName || 'Не назначен'}</dd></div></dl><label><span>Сотрудник</span><select value={selected.assignedUserId || ''} onChange={(event) => void changeAssignee(event.target.value)}><option value="">Не назначен</option>{activeUsers.map((user) => <option value={user.id} key={user.id}>{user.fullName}</option>)}</select></label></section>
 
-            <section className="inbox-crm-section"><header><h4>Контекст лида</h4></header><dl><div><dt>Источник</dt><dd>{selectedContact?.source || 'Не указан'}</dd></div><div><dt>UTM source</dt><dd>{selectedContact?.utmSource || 'Не указан'}</dd></div><div><dt>Первое сообщение</dt><dd>{selectedContact?.firstMessage || 'Не сохранено'}</dd></div><div><dt>Стадия (лиды)</dt><dd>{selectedContact?.stage || 'Не указана'}</dd></div></dl></section>
+            <section className="inbox-crm-section"><header><h4>Этап воронки</h4>{selected.funnelLead && <a href="/pipeline">Открыть</a>}</header>{selected.funnelLead ? <><article className="inbox-funnel-card"><strong>{FUNNEL_STAGE_LABELS[selected.funnelLead.stage] || selected.funnelLead.stage}</strong><span>{selected.funnelLead.source}</span>{selected.funnelLead.amount > 0 && <b>{money.format(selected.funnelLead.amount)}</b>}</article><div className="inbox-pipeline-track"><i className="done"/><i className={['APPOINTMENT','DIAGNOSTIC','COURSE'].includes(selected.funnelLead.stage) ? 'done' : ''}/><i className={['DIAGNOSTIC','COURSE'].includes(selected.funnelLead.stage) ? 'done' : ''}/><i className={selected.funnelLead.stage === 'COURSE' ? 'done' : ''}/></div></> : <div className="inbox-crm-empty">Лид ещё не в воронке</div>}</section>
 
-            <section className="inbox-crm-section"><header><h4>Воронка продаж</h4>{selected.funnelLead && <a href="/pipeline">Открыть воронку</a>}</header>{selected.funnelLead ? <article className="inbox-funnel-card"><strong>{FUNNEL_STAGE_LABELS[selected.funnelLead.stage] || selected.funnelLead.stage}</strong><span>{selected.funnelLead.source}</span>{selected.funnelLead.amount > 0 && <b>{money.format(selected.funnelLead.amount)}</b>}</article> : <div className="inbox-crm-empty">Лид ещё не в воронке</div>}<a className="inbox-crm-action" href="/pipeline">+ Открыть воронку продаж</a></section>
+            <section className="inbox-crm-section"><header><h4>Задачи</h4><a href="/tasks">Все задачи</a></header><div className="inbox-linked-module"><CheckCircle2 size={17}/><div><strong>IMDS Tasks</strong><span>Откройте задачи клиента и follow-up в модуле задач.</span></div><a href="/tasks">Открыть</a></div></section>
 
-            <section className="inbox-crm-section"><header><h4>Быстрые действия</h4></header><div className="inbox-crm-buttons"><a href="/leads">База лидов</a><a href="/pipeline">Воронка продаж</a><a href="/calls">Звонки</a></div></section>
+            <section className="inbox-crm-section"><header><h4>Последние звонки</h4><a href="/calls">Все звонки</a></header><div className="inbox-linked-module"><Phone size={17}/><div><strong>Телефония</strong><span>История и аналитика звонков доступны в модуле Calls.</span></div><a href="/calls">Открыть</a></div></section>
+
+            <section className="inbox-crm-section"><header><h4>Быстрые действия</h4></header><div className="inbox-crm-buttons"><a href={`tel:${contactPhone}`}><Phone size={13}/> Позвонить</a><a href="/leads"><UserRound size={13}/> Открыть лид</a><a href="/tasks"><CheckCircle2 size={13}/> Создать задачу</a><button type="button" onClick={() => void openTemplates()}><Bot size={13}/> Шаблон</button></div></section>
           </> : <div className="inbox-empty">Выберите диалог</div>}
         </aside>
       </main>}
     </section>
 
-    {creating && <div className="inbox-modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingBusy) setCreating(false); }}>
-      <form className="inbox-modal" onSubmit={(event) => void createThread(event)}>
-        <header><div><span>КОЛЛ-ЦЕНТР</span><h2>Новый диалог</h2></div><button type="button" onClick={() => setCreating(false)}>×</button></header>
-        <div className="inbox-modal-body">
-          <label><span>Имя лида</span><input value={newThread.title} onChange={(event) => setNewThread((current) => ({ ...current, title: event.target.value }))} placeholder="Имя или тема обращения" /></label>
-          <label><span>Телефон</span><input value={newThread.phone} onChange={(event) => setNewThread((current) => ({ ...current, phone: event.target.value }))} placeholder="+7 700 000 00 00" /></label>
-          <label><span>Канал</span><select value={newThread.channel} onChange={(event) => setNewThread((current) => ({ ...current, channel: event.target.value }))}>{Object.entries(CHANNEL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label><span>Ответственный</span><select value={newThread.assignedUserId} onChange={(event) => setNewThread((current) => ({ ...current, assignedUserId: event.target.value }))}><option value="">Не назначен</option>{activeUsers.map((user) => <option value={user.id} key={user.id}>{user.fullName}</option>)}</select></label>
-        </div>
-        {actionError && <div className="inbox-inline-error">{actionError}</div>}
-        <footer><button type="button" className="button button-secondary" disabled={creatingBusy} onClick={() => setCreating(false)}>Отмена</button><button className="button button-primary" disabled={creatingBusy}>{creatingBusy ? 'Создание…' : 'Создать диалог'}</button></footer>
-      </form>
-    </div>}
+    {creating && <div className="inbox-modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingBusy) setCreating(false); }}><form className="inbox-modal" onSubmit={(event) => void createThread(event)}><header><div><span>IMDS MESSAGING</span><h2>Новый диалог</h2></div><button type="button" onClick={() => setCreating(false)}>×</button></header><div className="inbox-modal-body"><label><span>Имя лида</span><input value={newThread.title} onChange={(event) => setNewThread((current) => ({ ...current, title: event.target.value }))} placeholder="Имя или тема обращения"/></label><label><span>Телефон</span><input value={newThread.phone} onChange={(event) => setNewThread((current) => ({ ...current, phone: event.target.value }))} placeholder="+7 700 000 00 00"/></label><label><span>Канал</span><select value={newThread.channel} onChange={(event) => setNewThread((current) => ({ ...current, channel: event.target.value }))}>{Object.entries(CHANNEL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Ответственный</span><select value={newThread.assignedUserId} onChange={(event) => setNewThread((current) => ({ ...current, assignedUserId: event.target.value }))}><option value="">Не назначен</option>{activeUsers.map((user) => <option value={user.id} key={user.id}>{user.fullName}</option>)}</select></label></div>{actionError && <div className="inbox-inline-error">{actionError}</div>}<footer><button type="button" className="button button-secondary" disabled={creatingBusy} onClick={() => setCreating(false)}>Отмена</button><button className="button button-primary" disabled={creatingBusy}>{creatingBusy ? 'Создание…' : 'Создать диалог'}</button></footer></form></div>}
   </div>;
 }
