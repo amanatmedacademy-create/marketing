@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# generated API definitions
+src/types/generated/
+
 # секреты и локальные переменные окружения
 .env
 .env.*

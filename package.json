@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "dev:worker": "wrangler dev",
+    "prebuild": "npm run meta:openapi:sync",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "pretypecheck": "npm run meta:openapi:sync",
     "typecheck": "tsc -b --pretty false && tsc -p tsconfig.worker.json --pretty false",
+    "meta:openapi:sync": "node scripts/sync-meta-openapi.mjs",
+    "meta:openapi:check": "node scripts/sync-meta-openapi.mjs --check",
     "deploy": "bun run build && wrangler deploy",
     "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },
