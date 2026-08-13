@@ -1,18 +1,5 @@
 -- Admin-managed custom fields for CRM deals.
--- Field definitions are company-scoped. Deal rows only keep values keyed by stable field UUID.
-
-alter table public.crm_deals
-  add column if not exists custom_fields jsonb not null default '{}'::jsonb;
-
-alter table public.crm_deals
-  drop constraint if exists crm_deals_custom_fields_object_check;
-
-alter table public.crm_deals
-  add constraint crm_deals_custom_fields_object_check
-  check (jsonb_typeof(custom_fields) = 'object');
-
-create index if not exists crm_deals_custom_fields_gin_idx
-  on public.crm_deals using gin (custom_fields);
+-- Definitions are company-scoped; values are stored separately per deal and stable field UUID.
 
 create table if not exists public.crm_custom_field_definitions (
   id uuid primary key default gen_random_uuid(),
@@ -42,7 +29,23 @@ create table if not exists public.crm_custom_field_definitions (
 create index if not exists crm_custom_field_definitions_company_position_idx
   on public.crm_custom_field_definitions (company_id, entity_type, is_active, position, created_at);
 
+create table if not exists public.crm_custom_field_values (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.crm_companies(id) on delete cascade,
+  deal_id uuid not null references public.crm_deals(id) on delete cascade,
+  field_id uuid not null references public.crm_custom_field_definitions(id) on delete cascade,
+  value jsonb not null default 'null'::jsonb,
+  updated_by uuid references public.marketing_users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, deal_id, field_id)
+);
+
+create index if not exists crm_custom_field_values_deal_idx
+  on public.crm_custom_field_values (company_id, deal_id, field_id);
+
 alter table public.crm_custom_field_definitions enable row level security;
+alter table public.crm_custom_field_values enable row level security;
 
 drop policy if exists crm_custom_field_definitions_member_select on public.crm_custom_field_definitions;
 create policy crm_custom_field_definitions_member_select
@@ -50,5 +53,11 @@ create policy crm_custom_field_definitions_member_select
   for select to authenticated
   using ((select public.is_company_member(company_id)));
 
+drop policy if exists crm_custom_field_values_member_select on public.crm_custom_field_values;
+create policy crm_custom_field_values_member_select
+  on public.crm_custom_field_values
+  for select to authenticated
+  using ((select public.is_company_member(company_id)));
+
 -- Writes intentionally have no authenticated RLS policy. They are performed by the
--- server-side Worker with the service role after checking administrator privileges.
+-- server-side Worker with the service role after explicit role/company checks.
