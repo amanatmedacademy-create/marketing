@@ -14,20 +14,29 @@ function identity(): { key: string; phone: string } | null {
 function clearAvatar(): void {
   const host = document.querySelector<HTMLElement>('.callcenter-root .inbox-contact-avatar');
   host?.querySelector('[data-imds-patient-avatar]')?.remove();
-  host?.classList.remove('has-imds-patient-avatar');
+  if (host) host.style.fontSize = '';
 }
 
 function applyAvatar(url: string): void {
   const host = document.querySelector<HTMLElement>('.callcenter-root .inbox-contact-avatar');
   if (!host) return;
   host.querySelector('[data-imds-patient-avatar]')?.remove();
+  host.style.position = 'relative';
+  host.style.overflow = 'hidden';
+  host.style.fontSize = '0';
   const image = document.createElement('img');
   image.dataset.imdsPatientAvatar = '1';
   image.src = url;
   image.alt = 'Фото пациента';
   image.referrerPolicy = 'no-referrer';
+  image.style.position = 'absolute';
+  image.style.inset = '0';
+  image.style.width = '100%';
+  image.style.height = '100%';
+  image.style.objectFit = 'cover';
+  image.style.borderRadius = 'inherit';
+  image.style.display = 'block';
   host.appendChild(image);
-  host.classList.add('has-imds-patient-avatar');
 }
 
 async function enhance(): Promise<void> {
