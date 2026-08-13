@@ -5,6 +5,7 @@ import TelephonyManagementWorkspace from '../components/TelephonyManagementWorks
 import TelephonyOperatorWorkspace from '../components/TelephonyOperatorWorkspace';
 import '../telephony-page.css';
 import '../telephony-layout-hotfix.css';
+import '../telephony-data-inspector-fix.css';
 
 type TelephonyMode = 'operator' | 'supervisor' | 'analytics';
 
