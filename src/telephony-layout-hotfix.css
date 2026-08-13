@@ -29,6 +29,50 @@
   left: 10px;
 }
 
+/* Patient identity must never be covered by shell/global badge rules. */
+.marketing-shell .telephony-patient__identity {
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.marketing-shell .telephony-patient__identity > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.marketing-shell .telephony-patient__identity > div > h2 {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketing-shell .telephony-patient__identity > div > h2::before,
+.marketing-shell .telephony-patient__identity > div > h2::after {
+  display: none !important;
+  content: none !important;
+}
+
+.marketing-shell .telephony-patient__identity > div > span {
+  position: static !important;
+  inset: auto !important;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin: 0;
+  transform: none !important;
+  white-space: nowrap;
+}
+
 /* Compact telephony command bar: dialer + workspace modes in one row. */
 .marketing-content:has(.telephony-v5) {
   padding-top: 8px;
