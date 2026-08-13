@@ -1,4 +1,5 @@
 export type DealWorkspaceActivityType = 'comment' | 'task' | 'note';
+export type DealCustomFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox' | 'phone' | 'email';
 
 export type DealWorkspaceActivity = {
   id: string;
@@ -65,6 +66,26 @@ export type DealWorkspaceConversation = {
 
 export type DealWorkspaceUser = { id: string; fullName: string };
 
+export type DealCustomFieldDefinition = {
+  id: string;
+  key: string;
+  label: string;
+  type: DealCustomFieldType;
+  options: string[];
+  required: boolean;
+  active: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DealCustomFieldsState = {
+  definitions: DealCustomFieldDefinition[];
+  values: Record<string, unknown>;
+  canManageFields: boolean;
+  canEditValues: boolean;
+};
+
 export type DealWorkspacePayload = {
   activities: DealWorkspaceActivity[];
   messages: DealWorkspaceMessage[];
@@ -72,6 +93,7 @@ export type DealWorkspacePayload = {
   stageEvents: DealWorkspaceStageEvent[];
   conversations: DealWorkspaceConversation[];
   users: DealWorkspaceUser[];
+  customFields: DealCustomFieldsState;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -109,4 +131,20 @@ export const updateDealWorkspaceActivity = (
 ) => request<DealWorkspaceActivity>(`/api/deal-workspace/${encodeURIComponent(dealId)}/activities/${encodeURIComponent(activityId)}`, {
   method: 'PATCH',
   body: JSON.stringify(input),
+});
+
+export const createDealCustomField = (
+  dealId: string,
+  input: { label: string; type: DealCustomFieldType; options?: string[]; required?: boolean },
+) => request<DealCustomFieldDefinition>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-fields`, {
+  method: 'POST',
+  body: JSON.stringify(input),
+});
+
+export const saveDealCustomFieldValues = (
+  dealId: string,
+  values: Record<string, unknown>,
+) => request<{ values: Record<string, unknown> }>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-values`, {
+  method: 'PATCH',
+  body: JSON.stringify({ values }),
 });
