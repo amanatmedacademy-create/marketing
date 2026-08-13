@@ -2,6 +2,7 @@ import { BarChart3, Headphones, Radio } from 'lucide-react';
 import TelephonyDialer from '../components/TelephonyDialer';
 import TelephonyOperatorWorkspace from '../components/TelephonyOperatorWorkspace';
 import '../telephony-page.css';
+import '../telephony-layout-hotfix.css';
 
 export default function TelephonyPage() {
   return (
