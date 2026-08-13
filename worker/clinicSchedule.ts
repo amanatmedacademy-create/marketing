@@ -94,12 +94,13 @@ async function snapshot(env: ScopedEnv, url: URL): Promise<Response> {
     db<Row[]>(env, `waba_clinic_branches?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`),
     db<Row[]>(env, `waba_clinic_doctors?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=sort_order.asc,name.asc`),
     db<Row[]>(env, `waba_clinic_schedules?company_id=eq.${encodeURIComponent(companyId)}&select=*&order=weekday.asc,start_time.asc`),
-    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(range.from)}&starts_at=lt.${encodeURIComponent(range.to)}&select=id,branch_id,doctor_id,lead_id,patient_id,starts_at,ends_at,patient_name,phone,status,source,metadata,created_at,updated_at&order=starts_at.asc&limit=750`),
-    db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&select=id,name,phone,email,last_visit_at,next_visit_at,source_system,metadata,updated_at&order=updated_at.desc&limit=500`).catch(() => []),
+    db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&starts_at=gte.${encodeURIComponent(range.from)}&starts_at=lt.${encodeURIComponent(range.to)}&select=id,branch_id,doctor_id,contact_id,lead_id,patient_id,starts_at,ends_at,patient_name,phone,status,source,metadata,created_at,updated_at&order=starts_at.asc&limit=750`),
+    db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&select=id,crm_contact_id,name,phone,email,last_visit_at,next_visit_at,source_system,metadata,updated_at&order=updated_at.desc&limit=500`).catch(() => []),
     db<Row[]>(env, `waba_clinic_schedule_blocks?company_id=eq.${encodeURIComponent(companyId)}&starts_at=lt.${encodeURIComponent(range.to)}&ends_at=gt.${encodeURIComponent(range.from)}&select=id,doctor_id,starts_at,ends_at,block_type,title,note,metadata,created_at,updated_at&order=starts_at.asc&limit=750`).catch(() => []),
   ]);
   const visibleAppointments = appointments.map((item) => isMisAppointment(item) ? {
     ...item,
+    contact_id: null,
     lead_id: null,
     patient_id: null,
     patient_name: 'Занято',
@@ -235,9 +236,78 @@ async function doctorInCompany(env: ScopedEnv, companyId: string, doctorId: stri
 
 async function patientInCompany(env: ScopedEnv, companyId: string, patientId: string): Promise<Row | null> {
   if (!patientId) return null;
-  const rows = await db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(patientId)}&select=id,name,phone,source_system&limit=1`).catch(() => []);
+  const rows = await db<Row[]>(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(patientId)}&select=id,crm_contact_id,name,phone,source_system&limit=1`).catch(() => []);
   const patient = rows[0] || null;
   return patient && text(patient.source_system).toLowerCase() !== 'mis' ? patient : null;
+}
+
+async function contactInCompany(env: ScopedEnv, companyId: string, contactId: string): Promise<Row | null> {
+  if (!contactId) return null;
+  const rows = await db<Row[]>(env, `crm_contacts?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(contactId)}&deleted_at=is.null&select=id&limit=1`);
+  return rows[0] || null;
+}
+
+async function leadInCompany(env: ScopedEnv, companyId: string, leadId: string): Promise<Row | null> {
+  if (!leadId) return null;
+  const rows = await db<Row[]>(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(leadId)}&select=id,crm_contact_id&limit=1`);
+  return rows[0] || null;
+}
+
+async function dealInCompany(env: ScopedEnv, companyId: string, dealId: string): Promise<Row | null> {
+  if (!dealId) return null;
+  const rows = await db<Row[]>(env, `crm_deals?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(dealId)}&deleted_at=is.null&select=id,marketing_lead_id&limit=1`);
+  return rows[0] || null;
+}
+
+async function resolveCanonicalContact(env: ScopedEnv, companyId: string, patientName: string, phone: string): Promise<string> {
+  if (!patientName && !phone) return '';
+  const rows = await db<string[] | string | null>(env, 'rpc/crm_resolve_contact', {
+    method: 'POST',
+    body: JSON.stringify({ p_company_id: companyId, p_name: patientName || null, p_phone: phone || null, p_email: null, p_source: 'Clinic Schedule', p_created_by: null }),
+  });
+  return Array.isArray(rows) ? text(rows[0]) : text(rows);
+}
+
+type ResolvedCrmContext = { contactId: string; leadId: string; dealId: string };
+
+async function resolveCrmContext(env: ScopedEnv, companyId: string, body: Row, patient: Row | null, fallback?: Row): Promise<{ context?: ResolvedCrmContext; error?: Response }> {
+  const hasContact = Object.prototype.hasOwnProperty.call(body, 'contact_id');
+  const hasLead = Object.prototype.hasOwnProperty.call(body, 'lead_id');
+  const hasDeal = Object.prototype.hasOwnProperty.call(body, 'deal_id');
+  const requestedContactId = hasContact ? text(body.contact_id) : text(fallback?.contact_id);
+  const requestedLeadId = hasLead ? text(body.lead_id) : text(fallback?.lead_id);
+  const fallbackMetadata = record(fallback?.metadata);
+  const requestedDealId = hasDeal ? text(body.deal_id) : text(fallbackMetadata.crm_deal_id);
+
+  const requestedContact = requestedContactId ? await contactInCompany(env, companyId, requestedContactId) : null;
+  if (requestedContactId && !requestedContact) return { error: json({ error: 'CRM contact не принадлежит выбранной клинике' }, 403) };
+
+  const lead = requestedLeadId ? await leadInCompany(env, companyId, requestedLeadId) : null;
+  if (requestedLeadId && !lead) return { error: json({ error: 'Лид не найден в выбранной клинике' }, 404) };
+  const leadContactId = text(lead?.crm_contact_id);
+  if (requestedContactId && leadContactId && requestedContactId !== leadContactId) return { error: json({ error: 'CRM contact не совпадает с contact лида' }, 409) };
+
+  const deal = requestedDealId ? await dealInCompany(env, companyId, requestedDealId) : null;
+  if (requestedDealId && !deal) return { error: json({ error: 'Сделка не найдена в выбранной клинике' }, 404) };
+  const dealLeadId = text(deal?.marketing_lead_id);
+  if (requestedLeadId && dealLeadId && requestedLeadId !== dealLeadId) return { error: json({ error: 'Сделка связана с другим лидом' }, 409) };
+
+  const patientContactId = text(patient?.crm_contact_id);
+  const candidateContactId = requestedContactId || leadContactId || patientContactId;
+  if (candidateContactId && patientContactId && candidateContactId !== patientContactId) return { error: json({ error: 'Пациент связан с другим CRM contact' }, 409) };
+
+  let contactId = candidateContactId;
+  if (!contactId) contactId = await resolveCanonicalContact(env, companyId, text(body.patient_name) || text(patient?.name) || text(fallback?.patient_name), text(body.phone) || text(patient?.phone) || text(fallback?.phone));
+  if (contactId && !await contactInCompany(env, companyId, contactId)) return { error: json({ error: 'Не удалось подтвердить CRM contact выбранной клиники' }, 409) };
+
+  if (patient && contactId && !patientContactId) {
+    await db(env, `clinic_patients?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(text(patient.id))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ crm_contact_id: contactId, updated_at: new Date().toISOString() }),
+    });
+  }
+
+  return { context: { contactId, leadId: requestedLeadId, dealId: requestedDealId } };
 }
 
 async function appointmentInCompany(env: ScopedEnv, companyId: string, id: string): Promise<Row | null> {
@@ -308,7 +378,6 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
   const companyId = requireCompanyId(env);
   const doctorId = text(body.doctor_id);
   const patientId = text(body.patient_id);
-  const leadId = text(body.lead_id);
   const startsAt = iso(body.starts_at);
   const endsAt = iso(body.ends_at);
   if (!doctorId || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) return json({ error: 'Укажите специалиста и корректное время записи' }, 400);
@@ -322,6 +391,9 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
   if (patientId && !patient) return json({ error: 'Пациент не найден в Marketing выбранной клиники' }, 404);
   const patientName = text(body.patient_name) || text(patient?.name);
   if (!patientName) return json({ error: 'Укажите пациента' }, 400);
+  const crm = await resolveCrmContext(env, companyId, body, patient);
+  if (crm.error) return crm.error;
+  const context = crm.context!;
   const now = new Date().toISOString();
   try {
     const rows = await db<Row[]>(env, 'waba_clinic_appointments?select=*', {
@@ -331,14 +403,15 @@ async function createAppointment(request: Request, env: ScopedEnv, body: Row): P
         branch_id: text(doctor.branch_id),
         doctor_id: doctorId,
         patient_id: patientId || null,
-        lead_id: leadId || null,
+        contact_id: context.contactId || null,
+        lead_id: context.leadId || null,
         starts_at: startsAt,
         ends_at: endsAt,
         patient_name: patientName,
         phone: text(body.phone) || text(patient?.phone),
         status: 'BOOKED',
         source: 'Clinic Schedule',
-        metadata: { ...record(body.metadata), note: text(body.note) || null, created_from: 'clinic_schedule', created_by: text(request.headers.get('x-amanat-auth-user')) || null },
+        metadata: { ...record(body.metadata), crm_deal_id: context.dealId || null, note: text(body.note) || null, created_from: 'clinic_schedule', created_by: text(request.headers.get('x-amanat-auth-user')) || null },
         created_at: now,
         updated_at: now,
       }),
@@ -401,14 +474,19 @@ async function updateAppointment(_request: Request, env: ScopedEnv, body: Row): 
   const patientId = body.patient_id === undefined ? text(current.patient_id) : text(body.patient_id);
   const patient = patientId ? await patientInCompany(env, companyId, patientId) : null;
   if (patientId && !patient) return json({ error: 'Пациент не найден в Marketing выбранной клиники' }, 404);
+  const crm = await resolveCrmContext(env, companyId, body, patient, current);
+  if (crm.error) return crm.error;
+  const context = crm.context!;
   const metadata = record(current.metadata);
   const rows = await db<Row[]>(env, `waba_clinic_appointments?company_id=eq.${encodeURIComponent(companyId)}&id=eq.${encodeURIComponent(id)}&select=*`, {
     method: 'PATCH', headers: { prefer: 'return=representation' },
     body: JSON.stringify({
       patient_id: patientId || null,
+      contact_id: context.contactId || null,
+      lead_id: context.leadId || null,
       patient_name: text(body.patient_name) || text(patient?.name) || text(current.patient_name),
       phone: body.phone === undefined ? text(current.phone) : text(body.phone),
-      metadata: { ...metadata, note: body.note === undefined ? metadata.note ?? null : text(body.note) || null },
+      metadata: { ...metadata, crm_deal_id: context.dealId || null, note: body.note === undefined ? metadata.note ?? null : text(body.note) || null },
       updated_at: new Date().toISOString(),
     }),
   });

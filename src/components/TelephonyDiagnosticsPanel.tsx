@@ -15,7 +15,7 @@ async function read<T>(path: string): Promise<T> {
 
 export default function TelephonyDiagnosticsPanel() {
   const [status, setStatus] = useState<Status | null>(null);
-  const [settings, setSettings] = useState<Settings['settings']>(null);
+  const [settings, setSettings] = useState<Settings['settings'] | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
