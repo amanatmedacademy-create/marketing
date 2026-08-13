@@ -27,6 +27,7 @@ export interface TelephonyCallResponse {
   phone: string;
   marketingCallId?: string;
   correlationRequestId?: string;
+  providerCallId?: string;
   result?: unknown;
 }
 
@@ -44,6 +45,8 @@ export interface TelephonyTranscriptionResponse {
   analysisError?: string;
   analysisSkipped?: string;
 }
+
+export type TelephonyControlAction = 'mute' | 'unmute' | 'hold' | 'unhold' | 'transfer' | 'dtmf' | 'record' | 'hangup';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/telephony${path}`, {
@@ -68,6 +71,10 @@ export const telephonyApi = {
   startCall: (phone: string, lineId?: string) => request<TelephonyCallResponse>('/calls', {
     method: 'POST',
     body: JSON.stringify({ phone, ...(lineId ? { lineId } : {}) }),
+  }),
+  control: (callId: string, action: TelephonyControlAction, value?: string) => request<{ ok: boolean; provider: string; action: string }>(`/calls/${encodeURIComponent(callId)}/control`, {
+    method: 'POST',
+    body: JSON.stringify({ action, ...(value ? { value } : {}) }),
   }),
   transcribe: (callId: string) => request<TelephonyTranscriptionResponse>(`/calls/${encodeURIComponent(callId)}/transcribe`, {
     method: 'POST',
