@@ -140,12 +140,13 @@ function adminCreator(dealId: string, afterCreate: () => Promise<void>): HTMLEle
 
 async function renderPanel(details: HTMLElement, dealId: string): Promise<void> {
   const old = details.querySelector<HTMLElement>('.crm-custom-fields-panel');
-  if (old?.dataset.dealId === dealId && old.dataset.ready === '1') return;
+  if (old?.dataset.dealId === dealId && (old.dataset.state === 'loading' || old.dataset.state === 'ready')) return;
   old?.remove();
 
   const panel = document.createElement('section');
   panel.className = 'crm-custom-fields-panel';
   panel.dataset.dealId = dealId;
+  panel.dataset.state = 'loading';
   panel.innerHTML = '<div class="crm-custom-fields-loading">Загрузка дополнительных полей…</div>';
   const relations = details.querySelector('.deal-workspace-relations');
   if (relations) details.insertBefore(panel, relations);
@@ -155,18 +156,19 @@ async function renderPanel(details: HTMLElement, dealId: string): Promise<void> 
   try {
     payload = await fetchDealWorkspace(dealId);
   } catch (error) {
+    panel.dataset.state = 'error';
     panel.innerHTML = `<div class="crm-custom-fields-error">${error instanceof Error ? error.message : 'Не удалось загрузить поля'}</div>`;
     return;
   }
 
   const repaint = async () => {
-    panel.dataset.ready = '0';
+    panel.dataset.state = 'loading';
     const fresh = await fetchDealWorkspace(dealId);
     paint(fresh);
   };
   const paint = (data: DealWorkspacePayload) => {
     panel.replaceChildren();
-    panel.dataset.ready = '1';
+    panel.dataset.state = 'ready';
     const head = document.createElement('header');
     head.innerHTML = '<div><strong>Поля клиники</strong><small>Создаются администратором и доступны всем сделкам</small></div>';
     if (data.customFields.canManageFields) head.appendChild(adminCreator(dealId, repaint));
