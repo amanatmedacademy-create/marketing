@@ -1,0 +1,45 @@
+/* Telephony layout isolation from the global shell navigation rules. */
+.marketing-shell .telephony-patient__tabs {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 0;
+  min-height: 38px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.marketing-shell .telephony-patient__tabs > button {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  margin: 0;
+}
+
+.marketing-shell .telephony-patient__tabs > button.active::after {
+  right: 10px;
+  left: 10px;
+}
+
+/* Keep the operator workspace dense and reference-like on wide screens. */
+@media (min-width: 1280px) {
+  .marketing-shell .telephony-operator__grid {
+    grid-template-columns: minmax(230px, 258px) minmax(560px, 1fr) minmax(278px, 310px);
+  }
+
+  .marketing-shell .telephony-patient__hero {
+    min-height: 62px;
+  }
+
+  .marketing-shell .telephony-timeline__list {
+    padding-bottom: 18px;
+  }
+}
