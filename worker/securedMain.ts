@@ -8,6 +8,7 @@ import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
 import { handleTaskNotifications, notifyAssignedTask, runTaskNotificationScan } from './taskNotifications';
 import { handleTaskQuickActions } from './taskQuickActions';
+import { assertTaskDependenciesComplete, handleTaskPhase2, runTaskRecurrenceScan } from './taskPhase2';
 import { handleTaskSuite, runTaskAutomationScan } from './taskSuite';
 import { handleTasks } from './tasks';
 
@@ -102,6 +103,10 @@ export default {
             const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
           }
+          if (url.pathname.startsWith('/api/tasks/phase2')) {
+            const response = await handleTaskPhase2(forwardedRequest, env as unknown as Env, url);
+            if (response) return response;
+          }
           if (url.pathname === '/api/tasks/suite/postpone') {
             const response = await handleTaskQuickActions(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
@@ -110,6 +115,8 @@ export default {
             const response = await handleTaskSuite(forwardedRequest, env as unknown as Env, url);
             if (response) return response;
           }
+          const dependencyDenied = await assertTaskDependenciesComplete(forwardedRequest, env as unknown as Env, url);
+          if (dependencyDenied) return dependencyDenied;
           const response = await handleTasks(forwardedRequest, env as unknown as Env, url);
           if (response) {
             if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
@@ -140,6 +147,11 @@ export default {
         runTaskAutomationScan(env as unknown as Env)
           .then((result) => console.log('Scheduled task automation completed', result))
           .catch((error) => console.error('Scheduled task automation failed', error)),
+      );
+      ctx.waitUntil(
+        runTaskRecurrenceScan(env as unknown as Env)
+          .then((result) => console.log('Scheduled recurring tasks completed', result))
+          .catch((error) => console.error('Scheduled recurring tasks failed', error)),
       );
       ctx.waitUntil(
         runTaskNotificationScan(env as unknown as Env)
