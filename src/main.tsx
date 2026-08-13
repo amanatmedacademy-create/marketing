@@ -7,6 +7,7 @@ import './crm-custom-fields-layer';
 import './messaging-live-context-layer';
 import './whatsapp-business-profile-layer';
 import './messaging-unanswered-label-layer';
+import './contact-avatar-layer';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
@@ -49,7 +50,6 @@ function applyInitialTheme() {
   const theme: ThemeMode = saved === 'light' || saved === 'dark'
     ? saved
     : window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#031923' : '#edf8f9');
@@ -58,17 +58,10 @@ function applyInitialTheme() {
 applyInitialTheme();
 
 function Root() {
-  if (window.location.pathname === '/operations') {
-    window.history.replaceState({}, document.title, '/marketing');
-  }
-
+  if (window.location.pathname === '/operations') window.history.replaceState({}, document.title, '/marketing');
   return <MarketingPlatform />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <AuthGate>
-      <Root />
-    </AuthGate>
-  </React.StrictMode>,
+  <React.StrictMode><AuthGate><Root /></AuthGate></React.StrictMode>,
 );
