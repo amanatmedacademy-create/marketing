@@ -106,8 +106,29 @@ async function calls(env: ScopedEnv, url: URL): Promise<Response> {
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 100), 1), 5000);
   const params = new URLSearchParams({ select: '*', company_id: `eq.${companyId}`, order: 'started_at.desc', limit: String(limit) });
   const operator = url.searchParams.get('operator');
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
   if (operator) params.set('operator_name', `eq.${operator}`);
+  if (from) params.set('started_at', `gte.${from}`);
+  if (to) params.append('started_at', `lte.${to}`);
   return json(await db<Row[]>(env, `marketing_calls?${params}`));
+}
+
+async function callAnalytics(env: ScopedEnv, url: URL): Promise<Response> {
+  const companyId = requireCompanyId(env);
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
+  const operator = url.searchParams.get('operator');
+  const payload = await db<Row>(env, 'rpc/telephony_call_analytics', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_company_id: companyId,
+      p_from: from || null,
+      p_to: to || null,
+      p_operator: operator || null,
+    }),
+  });
+  return json(payload || {});
 }
 
 async function callOperators(env: ScopedEnv): Promise<Response> {
@@ -222,6 +243,7 @@ export async function handleTenantDataApi(request: Request, env: Env, url: URL):
   if (url.pathname === '/api/leads') return leads(request, scoped, url);
   if (url.pathname.startsWith('/api/leads/')) return leadById(request, scoped, decodeURIComponent(url.pathname.split('/').pop() || ''));
   if (url.pathname === '/api/calls' && request.method === 'GET') return calls(scoped, url);
+  if (url.pathname === '/api/calls/analytics' && request.method === 'GET') return callAnalytics(scoped, url);
   if (url.pathname === '/api/calls/operators' && request.method === 'GET') return callOperators(scoped);
   if (url.pathname === '/api/dashboard' && request.method === 'GET') return dailyMetrics(scoped, url);
   if (url.pathname === '/api/sources' && request.method === 'GET') return sourceSummary(scoped);
