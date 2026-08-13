@@ -26,9 +26,11 @@ function headers(env: Env, extra: HeadersInit = {}): Headers {
   return out;
 }
 
-async function db(env: Env, path: string, init: RequestInit): Promise<void> {
+async function db<T>(env: Env, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1${path}`, { ...init, headers: headers(env, init.headers) });
-  if (!response.ok) throw new Error(`WhatsApp session DB HTTP ${response.status}`);
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`WhatsApp session DB HTTP ${response.status}: ${raw.slice(0, 400)}`);
+  return (raw ? JSON.parse(raw) : null) as T;
 }
 
 function normalizePhone(value: string): string {
@@ -44,14 +46,24 @@ function base64Buffer(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+async function resolveContactId(env: Env, companyId: string, phone: string): Promise<string> {
+  const normalized = normalizePhone(phone);
+  if (!normalized) throw new Error('Invalid WhatsApp phone');
+  const rows = await db<Row[]>(env, `/crm_contacts?company_id=eq.${encodeURIComponent(companyId)}&normalized_phone=eq.${encodeURIComponent(normalized)}&archived_at=is.null&select=id&order=last_seen_at.desc.nullslast&limit=1`);
+  const contactId = text(rows[0]?.id);
+  if (!contactId) throw new Error('CRM contact not found for WhatsApp phone');
+  return contactId;
+}
+
 async function ingestAvatar(request: Request, env: WhatsAppSessionBridgeEnv): Promise<Response> {
   const body = await request.json().catch(() => null) as Row | null;
   if (!body) return json({ error: 'Invalid JSON' }, 400);
   const companyId = text(body.companyId);
-  const contactId = text(body.contactId);
+  const phone = text(body.phone);
   const mimeType = text(body.mimeType).toLowerCase();
-  if (!/^[0-9a-f-]{36}$/i.test(companyId) || !/^[0-9a-f-]{36}$/i.test(contactId)) return json({ error: 'Invalid id' }, 400);
+  if (!/^[0-9a-f-]{36}$/i.test(companyId)) return json({ error: 'Invalid companyId' }, 400);
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return json({ error: 'Unsupported mime type' }, 415);
+  const contactId = await resolveContactId(env, companyId, phone);
   const file = base64Buffer(text(body.avatarBase64));
   if (!file.byteLength || file.byteLength > 5 * 1024 * 1024) return json({ error: 'Avatar too large' }, 413);
   const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
@@ -66,7 +78,7 @@ async function ingestAvatar(request: Request, env: WhatsAppSessionBridgeEnv): Pr
     headers: { 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ company_id: companyId, contact_id: contactId, source: 'whatsapp_session', storage_path: storagePath, external_url: null, priority: 1000, is_active: true, fetched_at: now, metadata: { provider: 'baileys', mimeType }, updated_at: now }),
   });
-  return json({ ok: true, source: 'whatsapp_session' }, 201);
+  return json({ ok: true, contactId, source: 'whatsapp_session' }, 201);
 }
 
 async function updateStatus(request: Request, env: WhatsAppSessionBridgeEnv): Promise<Response> {
