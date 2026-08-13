@@ -141,9 +141,9 @@ export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
-    // Preserve an untouched body stream before audit/pre-route handlers inspect the incoming request.
-    // Request bodies are single-use in Cloudflare Workers; trusted-header reconstruction must use this copy.
-    const forwardingSource = new Request(request);
+    // Keep routing on an independent clone. Never reconstruct from the original request before
+    // audit/pre-route handlers have had a chance to clone or consume their own body stream.
+    const forwardingSource = request.clone() as Request;
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
 
