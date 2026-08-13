@@ -18,6 +18,7 @@ import { handleGoogleIntegrationRequest } from './googleIntegrations';
 import { handleMarketingAssistantRequest } from './marketingAssistant';
 import { handleAutomationEngineRequest, runAutomationEngine } from './automationEngine';
 import { handleTenantDataApi } from './tenantDataApi';
+import { handleCustomer360 } from './customer360';
 import { runTenantSyncs } from './tenantSync';
 import { handleGrowthEngine } from './growthEngine';
 import { handlePhoneWorkspace } from './phoneWorkspace';
@@ -166,9 +167,9 @@ export default {
       if (phoneWorkspace) return phoneWorkspace;
       if (url.pathname === '/api/health') return json({ ok: true, service: 'amanat-marketing-api', supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname === '/api/exchange-rates' && request.method === 'GET') return handleRates(request, runtimeEnv);
-      if (url.pathname === '/api/web-analytics' && request.method === 'GET') {
-        return json([], 200, corsHeaders(request, runtimeEnv));
-      }
+      if (url.pathname === '/api/web-analytics' && request.method === 'GET') return json([], 200, corsHeaders(request, runtimeEnv));
+      const customer360Response = await handleCustomer360(request, runtimeEnv, url);
+      if (customer360Response) return customer360Response;
       const tenantDataResponse = await handleTenantDataApi(request, runtimeEnv, url);
       if (tenantDataResponse) return tenantDataResponse;
       const growthResponse = await handleGrowthEngine(request, runtimeEnv, url);
