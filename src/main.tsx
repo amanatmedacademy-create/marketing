@@ -34,6 +34,7 @@ import './call-center-mobile.css';
 import './crm-color-harmony.css';
 import './imds-platform-color-harmony.css';
 import './source-status-harmony.css';
+import './imds-legacy-color-cleanup.css';
 
 type ThemeMode = 'light' | 'dark';
 
