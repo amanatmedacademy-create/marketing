@@ -3,6 +3,7 @@ import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type Row = Record<string, unknown>;
 type TelephonySettingsEnv = Env & TenantScopedEnv;
+type Provider = 'zadarma' | 'asterisk' | 'freepbx' | 'twilio' | 'voximplant' | 'sip';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -15,6 +16,10 @@ const asBool = (value: unknown, fallback: boolean) => typeof value === 'boolean'
 const asInt = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+};
+const provider = (value: unknown, fallback: Provider): Provider => {
+  const next = text(value).toLowerCase();
+  return ['zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip'].includes(next) ? next as Provider : fallback;
 };
 
 function headers(env: Env, extra: HeadersInit = {}): Headers {
@@ -44,7 +49,13 @@ async function getSettings(env: TelephonySettingsEnv): Promise<Row> {
   const created = await db<Row[]>(env, 'telephony_settings?on_conflict=company_id', {
     method: 'POST',
     headers: { prefer: 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify({ company_id: companyId, provider: 'zadarma' }),
+    body: JSON.stringify({
+      company_id: companyId,
+      provider: 'zadarma',
+      auto_transcribe: true,
+      auto_analyze: true,
+      archive_recordings: true,
+    }),
   });
   return created[0] || {};
 }
@@ -55,15 +66,18 @@ async function saveSettings(request: Request, env: TelephonySettingsEnv): Promis
   const body = await request.json().catch(() => null) as Row | null;
   if (!body) return json({ error: 'Некорректный JSON' }, 400);
   const current = await getSettings(env);
-  const autoTranscribe = asBool(body.autoTranscribe, Boolean(current.auto_transcribe));
-  const autoAnalyze = asBool(body.autoAnalyze, Boolean(current.auto_analyze));
+  const autoTranscribe = asBool(body.autoTranscribe, current.auto_transcribe !== false);
+  const autoAnalyze = asBool(body.autoAnalyze, current.auto_analyze !== false);
   if (autoAnalyze && !autoTranscribe) return json({ error: 'Авто AI-анализ требует включённой автотранскрипции' }, 400);
 
+  const currentProvider = provider(current.provider, 'zadarma');
   const payload = {
     company_id: companyId,
-    provider: 'zadarma',
+    provider: provider(body.provider, currentProvider),
     auto_transcribe: autoTranscribe,
     auto_analyze: autoAnalyze,
+    archive_recordings: asBool(body.archiveRecordings, current.archive_recordings !== false),
+    recording_retention_days: asInt(body.recordingRetentionDays, Number(current.recording_retention_days || 365), 1, 3650),
     transcription_model: 'gpt-4o-mini-transcribe',
     recording_delay_seconds: asInt(body.recordingDelaySeconds, Number(current.recording_delay_seconds || 45), 0, 600),
     max_attempts: asInt(body.maxAttempts, Number(current.max_attempts || 3), 1, 10),

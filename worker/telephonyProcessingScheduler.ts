@@ -54,16 +54,11 @@ export async function runScheduledTelephonyProcessing(env: TelephonyProcessingSc
         continue;
       }
 
+      // Hydration keeps Zadarma working, while archived recordings from any provider
+      // can be processed without a provider-specific credential check.
       const runtime = await hydrateIntegrationEnv(tenantBase) as TelephonyProcessingSchedulerEnv;
-      const tenantConfigured = text(runtime.ZADARMA_TENANT_CONFIGURED) === 'true';
-      const legacyDefault = !tenantConfigured && text(runtime.DEFAULT_COMPANY_ID) === companyId;
-      if (!tenantConfigured && !legacyDefault) {
-        results.push({ companyId, ok: true, skipped: 'zadarma_not_configured', followUps });
-        continue;
-      }
-
       const calls = await db<Row[]>(runtime,
-        `marketing_calls?company_id=eq.${encodeURIComponent(companyId)}&call_status=eq.COMPLETED&transcription_status=in.(pending,failed)&or=(recording_external_id.not.is.null,pbx_call_id.not.is.null,recording_url.not.is.null)&select=*&order=updated_at.asc&limit=10`,
+        `marketing_calls?company_id=eq.${encodeURIComponent(companyId)}&call_status=eq.COMPLETED&transcription_status=in.(pending,failed)&or=(recording_storage_path.not.is.null,recording_external_id.not.is.null,pbx_call_id.not.is.null,recording_url.not.is.null)&select=*&order=updated_at.asc&limit=10`,
       );
       const candidates = calls.filter((call) => due(call, settings, nowMs));
       let completed = 0;
