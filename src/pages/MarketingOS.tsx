@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, FileText, Goal, LayoutDashboard, Megaphone, MousePointerClick, RefreshCw, Sparkles, Target, UsersRound, Workflow, Wrench, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, BarChart3, Cable, CalendarDays, CheckCircle2, FileText, Goal, LayoutDashboard, Megaphone, MousePointerClick, RefreshCw, Sparkles, Target, UsersRound, Workflow, Zap } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import AdvertisingAccountsCenter from '../components/AdvertisingAccountsCenter';
-import AdsPlatformExplorer from '../components/AdsPlatformExplorer';
 import AdsManagerPage from '../components/AdsManagerPage';
 import { useAuth } from '../components/AuthGate';
 import { operationsApi, type Campaign, type ContentItem, type MarketingTask } from '../services/operations';
@@ -10,7 +8,7 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './Grow
 import JourneyAutomationPage from './JourneyAutomationPage';
 import '../marketing-hub.css';
 
-type MarketingView = 'overview' | 'ads' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation' | 'tools';
+type MarketingView = 'overview' | 'ads' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
 type AdsRow = { platform?: string; source?: string; account_id?: string; leads?: number; sales?: number; revenue?: number };
 type AdsResponse = { accounts?: Array<{ id: string; name: string; platform?: string }>; rows?: AdsRow[] };
 type PlatformKey = 'Meta' | 'TikTok' | 'Google' | 'Yandex';
@@ -53,9 +51,8 @@ export default function MarketingOS() {
     { id: 'content' as const, label: 'Контент', icon: FileText, modules: ['dashboard'] },
     { id: 'media-plan' as const, label: 'Медиаплан', icon: Goal, modules: ['dashboard'] },
     { id: 'leads' as const, label: 'Лиды', icon: UsersRound, modules: ['crm.leads'] },
-    { id: 'attribution' as const, label: 'Атрибуция', icon: MousePointerClick, modules: ['analytics.attribution'] },
+    { id: 'attribution' as const, label: 'UTM и ссылки', icon: MousePointerClick, modules: ['analytics.attribution'] },
     { id: 'automation' as const, label: 'Автоматизация', icon: Zap, modules: ['dashboard'] },
-    { id: 'tools' as const, label: 'Инструменты', icon: Wrench, modules: ['dashboard', 'integrations', 'analytics.reports'] },
   ], []);
   const visibleTabs = tabs.filter((tab) => canViewAny(tab.modules));
   const requested = searchParams.get('view') as MarketingView | null;
@@ -132,7 +129,7 @@ export default function MarketingOS() {
       <div>
         <span className="marketing-hub-eyebrow"><Sparkles size={15}/> IMDS MARKETING HUB</span>
         <h1>Центр маркетинга</h1>
-        <p>Одна рабочая зона для рекламы, контента, медиаплана, лидов, атрибуции и автоматизаций.</p>
+        <p>Операционная работа с рекламой, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
       </div>
       <button className="button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} size={16}/>{loading ? 'Обновляем…' : 'Обновить'}</button>
     </header>
@@ -156,13 +153,12 @@ export default function MarketingOS() {
       canView={canView}
       changeView={changeView}
     />}
-    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Сначала подключение и здоровье рекламных платформ, затем структура кабинета и детальная таблица."/><AdvertisingAccountsCenter/><AdsPlatformExplorer/><AdsManagerPage/></section>}
+    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Здесь — операционная работа с кабинетами, кампаниями, группами и объявлениями. Подключения и аналитика остаются в своих модулях."/><MarketingBoundaryLinks canView={canView}/><AdsManagerPage/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
     {view === 'leads' && <section className="marketing-hub-module"><ModuleHeading title="Лиды и формы" text="Формы захвата и точки входа лидов. Операционная CRM остаётся связанной с этим разделом."/><SafeLeadFormsPage/></section>}
-    {view === 'attribution' && <section className="marketing-hub-module"><ModuleHeading title="Атрибуция" text="UTM-разметка и связка рекламного источника с лидом, записью и продажей."/><SafeUtmBuilderPage/></section>}
+    {view === 'attribution' && <section className="marketing-hub-module"><ModuleHeading title="UTM и ссылки" text="Создание и хранение отслеживаемых рекламных ссылок. Анализ атрибуции находится в модуле Аналитика."/><SafeUtmBuilderPage/></section>}
     {view === 'automation' && <section className="marketing-hub-module"><ModuleHeading title="Автоматизация" text="Маркетинговые сценарии и Journey Automation в том же рабочем контуре."/><JourneyAutomationPage/></section>}
-    {view === 'tools' && <ToolsWorkspace canView={canView}/>} 
   </div>;
 }
 
@@ -176,28 +172,27 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
     </section>
 
     {canView('advertising') && <section className="marketing-hub-section">
-      <div className="marketing-hub-section-head"><div><span>РЕКЛАМНЫЕ ПЛАТФОРМЫ</span><h2>Кабинеты в одном месте</h2><p>Сначала состояние платформы и ключевой результат. Детали открываются только по клику.</p></div><button className="marketing-hub-text-button" type="button" onClick={() => changeView('ads')}>Открыть Ads Workspace <ArrowUpRight size={15}/></button></div>
+      <div className="marketing-hub-section-head"><div><span>РЕКЛАМНЫЕ ДАННЫЕ</span><h2>Платформы в работе</h2><p>Здесь показываем уже полученные рекламные данные. Настройка подключений выполняется в модуле «Интеграции».</p></div><button className="marketing-hub-text-button" type="button" onClick={() => changeView('ads')}>Открыть Ads Workspace <ArrowUpRight size={15}/></button></div>
       <div className="marketing-platform-grid">{platformDefinitions.map((platform) => {
         const stat = platformStats.get(platform.key)!;
-        const connected = stat.accounts.size > 0;
+        const hasData = stat.accounts.size > 0;
         return <button className="marketing-platform-card" type="button" key={platform.key} onClick={() => changeView('ads')}>
-          <div className="marketing-platform-card-top"><span className={`marketing-platform-mark marketing-platform-mark--${platform.key.toLowerCase()}`}>{platform.short}</span><span className={`marketing-platform-state ${connected ? 'connected' : ''}`}>{connected ? 'Подключено' : 'Не подключено'}</span></div>
+          <div className="marketing-platform-card-top"><span className={`marketing-platform-mark marketing-platform-mark--${platform.key.toLowerCase()}`}>{platform.short}</span><span className={`marketing-platform-state ${hasData ? 'connected' : ''}`}>{hasData ? 'Есть данные' : 'Нет данных'}</span></div>
           <div><h3>{platform.title}</h3><p>{platform.subtitle}</p></div>
           <div className="marketing-platform-metrics"><span><b>{stat.accounts.size}</b> кабинетов</span><span><b>{number(stat.leads)}</b> лидов</span><span><b>{number(stat.sales)}</b> продаж</span></div>
-          <footer><span>{connected && stat.revenue > 0 ? `CRM-выручка ${money(stat.revenue)}` : connected ? 'Данные синхронизируются' : 'Подключить платформу'}</span><ArrowUpRight size={16}/></footer>
+          <footer><span>{hasData && stat.revenue > 0 ? `CRM-выручка ${money(stat.revenue)}` : hasData ? 'Открыть рекламные объекты' : 'Ожидаем данные из интеграции'}</span><ArrowUpRight size={16}/></footer>
         </button>;
       })}</div>
     </section>}
 
     <section className="marketing-hub-section">
-      <div className="marketing-hub-section-head"><div><span>РАБОЧИЕ МОДУЛИ</span><h2>Маркетинг без лишней навигации</h2><p>Каждый блок открывается внутри Центра маркетинга.</p></div></div>
+      <div className="marketing-hub-section-head"><div><span>РАБОЧИЕ МОДУЛИ</span><h2>Маркетинг без дублирования платформы</h2><p>В Центре маркетинга остаются только рабочие маркетинговые процессы.</p></div></div>
       <div className="marketing-module-grid">
         {canView('dashboard') && <PreviewCard icon={<FileText size={20}/>} title="Контент" text={`${content.length} материалов · ${readyContent} готовы / сегодня`} onClick={() => changeView('content')}/>} 
         {canView('dashboard') && <PreviewCard icon={<Goal size={20}/>} title="Медиаплан" text="Бюджеты, каналы, периоды и план-факт" onClick={() => changeView('media-plan')}/>} 
         {canView('crm.leads') && <PreviewCard icon={<UsersRound size={20}/>} title="Лиды" text="Формы захвата и точки входа в CRM" onClick={() => changeView('leads')}/>} 
-        {canView('analytics.attribution') && <PreviewCard icon={<Target size={20}/>} title="Атрибуция" text="UTM → лид → запись → продажа" onClick={() => changeView('attribution')}/>} 
+        {canView('analytics.attribution') && <PreviewCard icon={<Target size={20}/>} title="UTM и ссылки" text="Разметка и сохранение рекламных ссылок" onClick={() => changeView('attribution')}/>} 
         {canView('dashboard') && <PreviewCard icon={<Workflow size={20}/>} title="Автоматизация" text="Journey и маркетинговые сценарии" onClick={() => changeView('automation')}/>} 
-        <PreviewCard icon={<Wrench size={20}/>} title="Инструменты" text="IMDS AI, Growth Engine и интеграции" onClick={() => changeView('tools')}/>
       </div>
     </section>
 
@@ -208,22 +203,22 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
   </div>;
 }
 
+function MarketingBoundaryLinks({canView}:{canView:(id:string)=>boolean}) {
+  const links = [
+    { to:'/integrations', title:'Подключения', text:'Meta, TikTok, Google, GA4 и синхронизация', icon:<Cable size={18}/>, show:canView('integrations') },
+    { to:'/analytics', title:'Анализ рекламы', text:'ROAS, ROMI, CPL, CAC и дерево рекламных объектов', icon:<BarChart3 size={18}/>, show:canView('analytics.reports') },
+    { to:'/growth', title:'Events / CAPI', text:'Conversion events, destinations и доставка событий', icon:<Activity size={18}/>, show:canView('analytics.reports') },
+  ].filter((item) => item.show);
+  if (!links.length) return null;
+  return <div className="marketing-boundary-links">{links.map((item)=><Link key={item.to} to={item.to}><span>{item.icon}</span><div><strong>{item.title}</strong><small>{item.text}</small></div><ArrowUpRight size={15}/></Link>)}</div>;
+}
+
 function ContentWorkspace({campaigns,content,loading}:{campaigns:Campaign[];content:ContentItem[];loading:boolean}) {
   return <section className="marketing-hub-module">
     <ModuleHeading title="Контент" text="Производство, готовность и публикация контента — отдельно от рекламного Ads Workspace."/>
     <div className="marketing-content-summary"><article><CalendarDays size={19}/><div><span>Материалов</span><strong>{content.length}</strong></div></article><article><CheckCircle2 size={19}/><div><span>Готово / сегодня</span><strong>{content.filter((item) => item.status === 'Готово' || item.status === 'Сегодня').length}</strong></div></article><article><Activity size={19}/><div><span>Инициатив</span><strong>{campaigns.length}</strong></div></article></div>
     {loading ? <div className="marketing-hub-empty">Загрузка…</div> : content.length === 0 ? <div className="marketing-hub-empty">Контент-план пока пуст.</div> : <div className="marketing-content-board">{content.map((item) => <article key={item.id}><time>{formatDate(item.publish_on)}</time><div><strong>{item.title}</strong><span>{item.platform || 'Площадка не указана'} · {item.owner || 'Не назначен'}</span><small>{item.production_stage || 'Этап не указан'}</small></div><b className={item.status === 'Готово' ? 'ready' : item.status === 'Сегодня' ? 'today' : ''}>{item.status}</b></article>)}</div>}
   </section>;
-}
-
-function ToolsWorkspace({canView}:{canView:(id:string)=>boolean}) {
-  const tools = [
-    {to:'/assistant',title:'IMDS AI',text:'Анализ маркетинга и рекомендации',icon:<Sparkles size={20}/>,show:canView('analytics.reports')},
-    {to:'/growth',title:'Growth Engine',text:'Рост, воронки и аналитические сценарии',icon:<BarChart3 size={20}/>,show:canView('analytics.reports')},
-    {to:'/analytics',title:'Аналитика',text:'Отчёты и сводные показатели',icon:<CircleDollarSign size={20}/>,show:canView('analytics.reports')},
-    {to:'/integrations',title:'Интеграции',text:'Подключения платформ и внешних систем',icon:<Workflow size={20}/>,show:canView('integrations')},
-  ].filter((item) => item.show);
-  return <section className="marketing-hub-module"><ModuleHeading title="Инструменты" text="Вспомогательные возможности вокруг основного маркетингового процесса."/><div className="marketing-tools-grid">{tools.map((tool) => <Link key={tool.to} to={tool.to}><span>{tool.icon}</span><div><strong>{tool.title}</strong><p>{tool.text}</p></div><ArrowUpRight size={17}/></Link>)}</div></section>;
 }
 
 function ModuleHeading({title,text}:{title:string;text:string}) { return <div className="marketing-hub-module-heading"><div><span>MARKETING HUB</span><h2>{title}</h2><p>{text}</p></div></div>; }

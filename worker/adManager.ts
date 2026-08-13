@@ -48,7 +48,6 @@ type AdManagerResult = AdManagerRow & {
 const numericFields = ['impressions', 'reach', 'clicks', 'link_clicks', 'spend', 'leads', 'target_leads', 'arrived', 'sales', 'revenue'] as const;
 const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
-const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 
 async function query<T>(env: Env, path: string): Promise<T> {
@@ -67,42 +66,7 @@ function dateRange(days: number, url: URL) {
   return { from, to };
 }
 
-async function advertisingConnections(env: ScopedEnv): Promise<Response> {
-  const companyId = requireCompanyId(env);
-  const providers = 'meta,tiktok,google_ads,yandex';
-  const credentials = await query<Row[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=in.(${providers})&select=provider,config_summary,status,last_error,last_verified_at,updated_at&order=provider.asc`);
-  const runs = await query<Row[]>(env, `integration_runs?company_id=eq.${encodeURIComponent(companyId)}&source=in.(${providers})&select=source,status,fetched,written,error,started_at,finished_at&order=started_at.desc&limit=40`).catch(() => []);
-  const latestRuns = new Map<string, Row>();
-  for (const run of runs) {
-    const source = text(run.source);
-    if (source && !latestRuns.has(source)) latestRuns.set(source, run);
-  }
-  return json({
-    providers: credentials.map((row) => {
-      const summary = record(row.config_summary);
-      return {
-        provider: text(row.provider),
-        configured: true,
-        status: text(row.status, 'configured'),
-        values: record(summary.values),
-        secretFields: record(summary.secretFields),
-        updatedAt: row.updated_at || null,
-        lastVerifiedAt: row.last_verified_at || null,
-        lastError: row.last_error || null,
-      };
-    }),
-    runs: [...latestRuns.values()].map((run) => ({
-      source: text(run.source), status: text(run.status), fetched: num(run.fetched), written: num(run.written), error: run.error || null,
-      started_at: run.started_at || null, finished_at: run.finished_at || null,
-    })),
-  });
-}
-
-export async function handleAdManager(request: Request, env: Env, url: URL): Promise<Response | null> {
-  if (url.pathname === '/api/ads/connections') {
-    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-    return advertisingConnections(env as ScopedEnv);
-  }
+export async function handleAdManager(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/ad-manager') return null;
   const companyId = requireCompanyId(env as ScopedEnv);
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 30), 1), 365);

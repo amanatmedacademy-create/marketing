@@ -160,8 +160,7 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
 }
 
 function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: string): Response {
-  const target = new URL('/marketing', redirectUri(env));
-  target.searchParams.set('view', 'ads');
+  const target = new URL('/integrations', redirectUri(env));
   target.searchParams.set('meta', kind);
   target.searchParams.set(kind === 'connected' ? 'accounts' : 'message', value.slice(0, 300));
   return new Response(null, {
