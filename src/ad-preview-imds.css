@@ -1,0 +1,64 @@
+.ad-preview-trigger {
+  margin-left: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--imds-primary);
+  border-radius: 999px;
+  background: var(--imds-primary-a10);
+  color: var(--imds-primary);
+  font-size: .66rem;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.ad-preview-trigger:hover { background: var(--imds-primary); color: #fff; }
+.ad-preview-layer { position: fixed; inset: 0; z-index: 1200; display: flex; justify-content: flex-end; }
+.ad-preview-backdrop { position: absolute; inset: 0; border: 0; background: rgba(2,6,23,.62); backdrop-filter: blur(2px); }
+.ad-preview-drawer { position: relative; display: grid; grid-template-rows: auto minmax(0,1fr); width: min(920px,98vw); height: 100%; background: var(--imds-surface); color: var(--imds-text); border-left: 1px solid var(--imds-border); box-shadow: -22px 0 70px rgba(0,0,0,.34); overflow: hidden; }
+.ad-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--imds-border); background: var(--imds-glass-strong); }
+.ad-preview-header span { color: var(--imds-primary); font-size: .66rem; font-weight: 850; letter-spacing: .14em; }
+.ad-preview-header h2 { margin: 4px 0 0; font-size: 1.05rem; }
+.ad-preview-header button { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--imds-border); border-radius: 9px; background: var(--imds-glass-soft); color: var(--imds-text-soft); cursor: pointer; }
+.ad-preview-stage { min-height: 0; padding: 16px; background: var(--imds-bg); overflow: auto; }
+.ad-preview-state { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 420px; color: var(--imds-muted); }
+.ad-preview-state.error { color: var(--imds-danger); text-align: center; }
+.ad-preview-state.error p { max-width: 460px; color: var(--imds-muted); line-height: 1.5; }
+.ad-preview-layout { display: grid; grid-template-columns: minmax(320px,1.1fr) minmax(280px,.9fr); gap: 14px; align-items: start; }
+.ad-preview-card { width: 100%; border: 1px solid var(--imds-border); border-radius: 16px; background: var(--imds-surface); box-shadow: var(--imds-shadow-soft); overflow: hidden; }
+.ad-preview-card > header { display: flex; align-items: center; gap: 10px; padding: 13px 14px; }
+.ad-preview-page { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--imds-primary-soft); color: var(--imds-primary); font-size: .72rem; font-weight: 850; }
+.ad-preview-card > header div:last-child { display: grid; gap: 2px; }
+.ad-preview-card > header strong { font-size: .78rem; }
+.ad-preview-card > header span { color: var(--imds-muted); font-size: .66rem; }
+.ad-preview-message { margin: 0; padding: 0 14px 13px; white-space: pre-wrap; font-size: .78rem; line-height: 1.5; color: var(--imds-text-soft); }
+.ad-preview-media { position: relative; display: grid; place-items: center; min-height: 330px; background: var(--imds-surface-2); color: var(--imds-muted); overflow: hidden; }
+.ad-preview-media img { display: block; width: 100%; max-height: 620px; object-fit: contain; }
+.ad-preview-video-badge { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 999px; background: var(--imds-glass-strong); border: 1px solid var(--imds-border); color: var(--imds-text); font-size: .68rem; font-weight: 850; box-shadow: var(--imds-shadow-soft); }
+.ad-preview-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--imds-surface-2); border-top: 1px solid var(--imds-border); }
+.ad-preview-link > div { display: grid; gap: 3px; min-width: 0; }
+.ad-preview-link span { overflow: hidden; color: var(--imds-muted); font-size: .61rem; text-overflow: ellipsis; white-space: nowrap; }
+.ad-preview-link strong { font-size: .8rem; }
+.ad-preview-link p { margin: 0; color: var(--imds-muted); font-size: .68rem; }
+.ad-preview-link a, .ad-preview-link button { display: flex; align-items: center; gap: 5px; flex: none; padding: 8px 11px; border: 1px solid var(--imds-border); border-radius: 8px; background: var(--imds-glass-soft); color: var(--imds-text); font-size: .7rem; font-weight: 700; text-decoration: none; }
+.ad-preview-warning { display: block; padding: 10px 14px; color: var(--imds-warning); background: var(--imds-warning-a10); font-size: .66rem; }
+.ad-preview-details { display: grid; gap: 12px; }
+.ad-preview-details > section { padding: 14px; border: 1px solid var(--imds-border); border-radius: 14px; background: var(--imds-glass); box-shadow: var(--imds-shadow-soft); }
+.ad-preview-details h3 { margin: 0 0 10px; font-size: .78rem; }
+.ad-preview-details dl { display: grid; gap: 0; margin: 0; }
+.ad-preview-details dl > div { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 10px; padding: 8px 0; border-top: 1px solid var(--imds-border); }
+.ad-preview-details dl > div:first-child { border-top: 0; }
+.ad-preview-details dt { color: var(--imds-muted); font-size: .64rem; }
+.ad-preview-details dd { display: grid; gap: 2px; margin: 0; min-width: 0; color: var(--imds-text); font-size: .7rem; overflow-wrap: anywhere; }
+.ad-preview-details dd small { color: var(--imds-muted); font-size: .58rem; }
+.ad-preview-details dd a { display: inline-flex; align-items: center; gap: 4px; color: var(--imds-primary); text-decoration: none; }
+.ad-preview-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.ad-preview-metrics span { display: grid; gap: 3px; padding: 9px; border-radius: 10px; background: var(--imds-glass-soft); border: 1px solid var(--imds-border); }
+.ad-preview-metrics small { font-size: .6rem; color: var(--imds-muted); }
+.ad-preview-metrics b { font-size: .72rem; }
+.spin { animation: ad-preview-spin .9s linear infinite; }
+@keyframes ad-preview-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .ad-preview-drawer { width: 100vw; }
+  .ad-preview-stage { padding: 10px; }
+  .ad-preview-layout { grid-template-columns: 1fr; }
+  .ad-preview-media { min-height: 260px; }
+}
