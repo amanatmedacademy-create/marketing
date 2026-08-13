@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MarketingPlatform from './MarketingPlatform';
+import './source-badge-auto-layer';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
