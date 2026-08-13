@@ -5,8 +5,6 @@ export interface AdPreviewEnv {
   META_GRAPH_VERSION?: string;
 }
 
-type PreviewMode = 'desktop' | 'mobile' | 'instagram';
-
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -30,12 +28,6 @@ async function meta<T>(url: string): Promise<T> {
     throw new Error(text(error.message) || `Meta API вернул HTTP ${response.status}`);
   }
   return parsed as T;
-}
-
-function previewFormats(mode: PreviewMode): string[] {
-  if (mode === 'mobile') return ['MOBILE_FEED_STANDARD', 'MOBILE_BANNER'];
-  if (mode === 'instagram') return ['INSTAGRAM_STANDARD', 'INSTAGRAM_STORY', 'INSTAGRAM_REELS'];
-  return ['DESKTOP_FEED_STANDARD', 'RIGHT_COLUMN_STANDARD'];
 }
 
 function firstAsset(value: unknown): JsonRecord {
@@ -74,22 +66,6 @@ function creativeContent(ad: JsonRecord) {
   };
 }
 
-async function fetchPreviewHtml(base: string, adId: string, accessToken: string, mode: PreviewMode) {
-  const errors: string[] = [];
-  for (const format of previewFormats(mode)) {
-    try {
-      const params = new URLSearchParams({ ad_format: format, access_token: accessToken });
-      const preview = await meta<{ data?: Array<{ body?: string }> }>(`${base}/${adId}/previews?${params}`);
-      const body = text(preview.data?.[0]?.body);
-      if (body) return { html: body, format, error: '' };
-      errors.push(`${format}: пустой ответ`);
-    } catch (error) {
-      errors.push(`${format}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  return { html: '', format: '', error: errors.join(' · ') };
-}
-
 export async function handleAdPreview(request: Request, env: AdPreviewEnv, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/ad-preview') return null;
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -98,8 +74,6 @@ export async function handleAdPreview(request: Request, env: AdPreviewEnv, url: 
   if (!accessToken) return json({ error: 'Meta не подключена или access token недоступен' }, 503);
 
   const adId = text(url.searchParams.get('adId')).replace(/[^0-9]/g, '');
-  const requestedMode = text(url.searchParams.get('mode')) as PreviewMode;
-  const mode: PreviewMode = ['desktop', 'mobile', 'instagram'].includes(requestedMode) ? requestedMode : 'desktop';
   if (!adId) return json({ error: 'Не указан ID объявления' }, 400);
 
   const base = `https://graph.facebook.com/${graphVersion(env)}`;
@@ -110,17 +84,9 @@ export async function handleAdPreview(request: Request, env: AdPreviewEnv, url: 
 
   try {
     const ad = await meta<JsonRecord>(`${base}/${adId}?${adParams}`);
-    const preview = await fetchPreviewHtml(base, adId, accessToken, mode);
-    return json({
-      platform: 'Meta',
-      mode,
-      previewHtml: preview.html,
-      previewFormat: preview.format,
-      previewError: preview.error,
-      content: creativeContent(ad),
-    });
+    return json({ platform: 'Meta', content: creativeContent(ad) });
   } catch (error) {
-    console.error('Meta ad preview failed', { adId, error });
+    console.error('Meta ad creative data failed', { adId, error });
     return json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 }
