@@ -25,6 +25,9 @@ export interface TaskTemplate { id:string; name:string; description?:string|null
 export interface TaskAutomationRule { id:string; key:string; name:string; description?:string|null; enabled:boolean; config:Record<string,unknown>; lastRunAt?:string|null; }
 export interface TaskAnalyticsSummary { total:number; open:number; done:number; overdue:number; slaBreached:number; averageCompletionHours:number|null; }
 export interface TaskAnalytics { summary:TaskAnalyticsSummary; byUser:Array<{userId:string;userName:string;open:number;overdue:number;done:number}>; byWorkflow:Array<{workflowKey:string;open:number;done:number;overdue:number}>; }
+export interface TaskDependency { id:string; taskId:string; title:string; status:TaskStatus; dueAt?:string|null; priority:TaskPriority; dependencyType:'blocks'; }
+export interface TaskRecurrenceRule { id:string; frequency:'daily'|'weekly'|'monthly'; intervalCount:number; nextRunAt:string; enabled:boolean; lastRunAt?:string|null; }
+export interface TaskCalendarItem { id:string; title:string; status:TaskStatus; stageKey:string; workflowKey:string; priority:TaskPriority; dueAt:string; linkType?:string|null; linkId?:string|null; linkLabel?:string|null; }
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
   const response=await authFetch(`/api/tasks${path}`,{...init,headers:{'content-type':'application/json',...init?.headers}});
@@ -54,4 +57,11 @@ export const tasksApi={
   updateAutomation:(key:string,payload:Record<string,unknown>)=>request<{rule:TaskAutomationRule}>('/suite/automations',{method:'PATCH',body:JSON.stringify({key,...payload})}),
   runAutomations:()=>request<{created:number}>('/suite/run-automations',{method:'POST'}),
   createFollowUp:(taskId:string,when?:string,title?:string)=>request<{taskId:string}>('/suite/follow-up',{method:'POST',body:JSON.stringify({taskId,when,title})}),
+  dependencies:(taskId:string)=>request<{dependencies:TaskDependency[]}>(`/phase2/dependencies?taskId=${encodeURIComponent(taskId)}`),
+  addDependency:(taskId:string,dependsOnTaskId:string)=>request<{dependency:unknown}>(`/phase2/dependencies?taskId=${encodeURIComponent(taskId)}`,{method:'POST',body:JSON.stringify({dependsOnTaskId})}),
+  deleteDependency:(taskId:string,dependencyId:string)=>request<{ok:boolean}>(`/phase2/dependencies?taskId=${encodeURIComponent(taskId)}&dependencyId=${encodeURIComponent(dependencyId)}`,{method:'DELETE'}),
+  recurrence:(taskId:string)=>request<{rule:TaskRecurrenceRule|null}>(`/phase2/recurrence?taskId=${encodeURIComponent(taskId)}`),
+  setRecurrence:(taskId:string,payload:{frequency:'daily'|'weekly'|'monthly';intervalCount:number;nextRunAt:string})=>request<{rule:TaskRecurrenceRule}>(`/phase2/recurrence?taskId=${encodeURIComponent(taskId)}`,{method:'PUT',body:JSON.stringify(payload)}),
+  stopRecurrence:(taskId:string)=>request<{ok:boolean}>(`/phase2/recurrence?taskId=${encodeURIComponent(taskId)}`,{method:'DELETE'}),
+  calendar:(from:string,to:string)=>request<{items:TaskCalendarItem[]}>(`/phase2/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 };
