@@ -233,6 +233,44 @@ async function readConnection(env: WabaEmbeddedSignupEnv, companyId: string, use
   return rows[0] || null;
 }
 
+async function readBusinessProfile(env: WabaEmbeddedSignupEnv, companyId: string, userId: string): Promise<JsonRecord | null> {
+  const rows = await credentialRows(env, companyId, userId, 'encrypted_payload,iv');
+  const row = rows[0];
+  const encryptedPayload = text(row?.encrypted_payload);
+  const iv = text(row?.iv);
+  if (!encryptedPayload || !iv) return null;
+
+  const credential = await decrypt(encryptedPayload, iv, encryptionSecret(env));
+  const accessToken = text(credential.accessToken);
+  const wabaId = text(credential.wabaId);
+  const phoneNumberId = text(credential.phoneNumberId);
+  if (!accessToken || !wabaId || !phoneNumberId) return null;
+
+  const [profilePayload, phonePayload] = await Promise.all([
+    graphGet(env, accessToken, `${encodeURIComponent(phoneNumberId)}/whatsapp_business_profile?fields=about,address,description,email,profile_picture_url,websites,vertical`),
+    graphGet(env, accessToken, `${encodeURIComponent(wabaId)}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating&limit=100`),
+  ]);
+
+  const profiles = Array.isArray(profilePayload.data) ? profilePayload.data.map(record) : [];
+  const profile = profiles[0] || {};
+  const phoneRows = Array.isArray(phonePayload.data) ? phonePayload.data.map(record) : [];
+  const phone = phoneRows.find((item) => text(item.id) === phoneNumberId) || {};
+  const websites = Array.isArray(profile.websites) ? profile.websites.map(text).filter(Boolean) : [];
+
+  return {
+    profilePictureUrl: text(profile.profile_picture_url) || null,
+    verifiedName: text(phone.verified_name) || null,
+    displayPhoneNumber: text(phone.display_phone_number) || null,
+    qualityRating: text(phone.quality_rating) || null,
+    about: text(profile.about) || null,
+    description: text(profile.description) || null,
+    address: text(profile.address) || null,
+    email: text(profile.email) || null,
+    websites,
+    vertical: text(profile.vertical) || null,
+  };
+}
+
 export async function handleWabaEmbeddedSignupRequest(request: Request, env: WabaEmbeddedSignupEnv, url: URL): Promise<Response | null> {
   if (url.pathname === '/api/integrations/waba/config' && request.method === 'GET') {
     const appId = text(env.META_APP_ID);
@@ -241,6 +279,12 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
     const configured = Boolean(appId && env.META_APP_SECRET && configId);
     const companyId = userId ? await resolveCompanyId(env).catch(() => '') : '';
     const connection = companyId ? await readConnection(env, companyId, userId).catch(() => null) : null;
+    const businessProfile = companyId && connection && text(connection.status) === 'connected'
+      ? await readBusinessProfile(env, companyId, userId).catch((error) => {
+          console.warn('Unable to load WABA business profile', error instanceof Error ? error.message : String(error));
+          return null;
+        })
+      : null;
     return json({
       configured,
       appId,
@@ -250,6 +294,7 @@ export async function handleWabaEmbeddedSignupRequest(request: Request, env: Wab
       connection: connection ? {
         status: connection.status,
         values: record(record(connection.config_summary).values),
+        businessProfile,
         lastVerifiedAt: connection.last_verified_at || null,
         lastError: connection.last_error || null,
       } : null,
