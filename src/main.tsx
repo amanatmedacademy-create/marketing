@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import MarketingPlatform from './MarketingPlatform';
 import './source-badge-auto-layer';
+import './crm-custom-fields-layer';
 import './styles.css';
 import './analytics.css';
 import './dashboard-theme.css';
@@ -35,6 +36,7 @@ import './crm-color-harmony.css';
 import './imds-platform-color-harmony.css';
 import './source-status-harmony.css';
 import './imds-legacy-color-cleanup.css';
+import './crm-custom-fields.css';
 
 type ThemeMode = 'light' | 'dark';
 
