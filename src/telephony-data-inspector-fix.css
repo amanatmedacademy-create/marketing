@@ -1,0 +1,15 @@
+/* Keep the global IMDS Data Inspector out of the dynamic patient identity row.
+   The auto-layer treats every h2 as an inspectable title and appends an
+   absolutely positioned trigger. In Telephony that h2 is the patient's name,
+   so the trigger must not occupy or cover that text. */
+.marketing-shell .telephony-patient__identity .data-inspector-auto-host {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.marketing-shell .telephony-patient__identity h2.data-inspector-anchor,
+.marketing-shell .telephony-patient__identity h2.data-inspector-title-anchor,
+.marketing-shell .telephony-patient__identity h3.data-inspector-anchor,
+.marketing-shell .telephony-patient__identity h3.data-inspector-title-anchor {
+  padding-right: 0 !important;
+}
