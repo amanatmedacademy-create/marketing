@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowUpRight, BarChart3, Cable, CalendarDays, CheckCircle2, FileText, Goal, LayoutDashboard, Megaphone, MousePointerClick, RefreshCw, Sparkles, Target, UsersRound, Workflow, Zap } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import AdCreativeGallery from '../components/AdCreativeGallery';
 import AdsManagerPage from '../components/AdsManagerPage';
 import { useAuth } from '../components/AuthGate';
 import { operationsApi, type Campaign, type ContentItem, type MarketingTask } from '../services/operations';
@@ -153,7 +154,7 @@ export default function MarketingOS() {
       canView={canView}
       changeView={changeView}
     />}
-    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Здесь — операционная работа с кабинетами, кампаниями, группами и объявлениями. Подключения и аналитика остаются в своих модулях."/><MarketingBoundaryLinks canView={canView}/><AdsManagerPage/></section>}
+    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Здесь — операционная работа с кабинетами, кампаниями, группами и объявлениями. Подключения и аналитика остаются в своих модулях."/><MarketingBoundaryLinks canView={canView}/><AdCreativeGallery/><AdsManagerPage/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
     {view === 'leads' && <section className="marketing-hub-module"><ModuleHeading title="Лиды и формы" text="Формы захвата и точки входа лидов. Операционная CRM остаётся связанной с этим разделом."/><SafeLeadFormsPage/></section>}
