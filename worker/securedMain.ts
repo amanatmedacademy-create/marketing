@@ -3,6 +3,7 @@ import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type
 import { runAutomationEngine } from './automationEngine';
 import { resolveCompanyId } from './companyContext';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
+import { runMessagingSlaScan } from './messagingSla';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
@@ -143,6 +144,11 @@ export default {
 
   async scheduled(controller: WorkerScheduledController, env: SecuredEnv, ctx: WorkerExecutionContext): Promise<void> {
     if (controller.cron === '*/5 * * * *') {
+      ctx.waitUntil(
+        runMessagingSlaScan(env as unknown as Env)
+          .then((result) => console.log('Scheduled Messaging SLA completed', result))
+          .catch((error) => console.error('Scheduled Messaging SLA failed', error)),
+      );
       ctx.waitUntil(
         runTaskAutomationScan(env as unknown as Env)
           .then((result) => console.log('Scheduled task automation completed', result))
