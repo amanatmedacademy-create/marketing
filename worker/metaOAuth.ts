@@ -12,6 +12,7 @@ export interface MetaOAuthEnv {
   META_GRAPH_VERSION?: string;
   META_OAUTH_REDIRECT_URI?: string;
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
 }
 
 interface MetaAdAccount {
@@ -22,6 +23,7 @@ interface MetaAdAccount {
 
 const DEFAULT_REDIRECT_URI = 'https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback';
 const STATE_COOKIE = 'amanat_meta_oauth_state';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -45,6 +47,19 @@ function cookieValue(request: Request, name: string): string {
     if (key === name) return decodeURIComponent(parts.join('='));
   }
   return '';
+}
+
+function stateBinding(request: Request): { state: string; companyId: string } {
+  const raw = cookieValue(request, STATE_COOKIE);
+  const separator = raw.indexOf('.');
+  if (separator <= 0) return { state: raw, companyId: '' };
+  return { state: raw.slice(0, separator), companyId: raw.slice(separator + 1) };
+}
+
+function boundStateCookie(env: MetaOAuthEnv, state: string): string {
+  const companyId = asString(env.CURRENT_COMPANY_ID);
+  if (!UUID_PATTERN.test(companyId)) throw new Error('Выберите клинику перед подключением Meta');
+  return `${state}.${companyId}`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -145,7 +160,8 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
 }
 
 function redirectResult(env: MetaOAuthEnv, kind: 'connected' | 'error', value: string): Response {
-  const target = new URL('/integrations', redirectUri(env));
+  const target = new URL('/marketing', redirectUri(env));
+  target.searchParams.set('view', 'ads');
   target.searchParams.set('meta', kind);
   target.searchParams.set(kind === 'connected' ? 'accounts' : 'message', value.slice(0, 300));
   return new Response(null, {
@@ -174,7 +190,7 @@ export async function handleMetaOAuthRequest(
       status: 302,
       headers: {
         location: `https://www.facebook.com/${graphVersion(env)}/dialog/oauth?${params}`,
-        'set-cookie': `${STATE_COOKIE}=${encodeURIComponent(state)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+        'set-cookie': `${STATE_COOKIE}=${encodeURIComponent(boundStateCookie(env, state))}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
         'cache-control': 'no-store',
       },
     });
@@ -186,12 +202,15 @@ export async function handleMetaOAuthRequest(
       if (metaError) throw new Error(metaError);
       const code = url.searchParams.get('code') || '';
       const state = url.searchParams.get('state') || '';
+      const binding = stateBinding(request);
       if (!code) throw new Error('Meta не вернула authorization code');
-      if (!state || state !== cookieValue(request, STATE_COOKIE)) throw new Error('OAuth state не совпадает. Повторите подключение.');
-      const accessToken = await exchangeCode(env, code);
-      const accounts = await listAdAccounts(env, accessToken);
-      await saveMetaCredentials(env, accessToken, accounts);
-      return redirectResult(env, 'connected', String(accounts.length));
+      if (!state || state !== binding.state) throw new Error('OAuth state не совпадает. Повторите подключение.');
+      if (!UUID_PATTERN.test(binding.companyId)) throw new Error('OAuth не содержит выбранную клинику. Повторите подключение.');
+      const tenantEnv = { ...env, CURRENT_COMPANY_ID: binding.companyId };
+      const accessToken = await exchangeCode(tenantEnv, code);
+      const accounts = await listAdAccounts(tenantEnv, accessToken);
+      await saveMetaCredentials(tenantEnv, accessToken, accounts);
+      return redirectResult(tenantEnv, 'connected', String(accounts.length));
     } catch (error) {
       console.error('Meta OAuth callback failed', error);
       return redirectResult(env, 'error', error instanceof Error ? error.message : 'Ошибка подключения Meta');
