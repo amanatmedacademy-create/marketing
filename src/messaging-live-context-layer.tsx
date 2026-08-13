@@ -170,7 +170,6 @@ function LiveContactPanel({ context }: { context: ContactContext }) {
 let liveRoot: Root | null = null;
 let mountedHost: HTMLElement | null = null;
 let currentContext = '';
-let currentUser: AppUser | null = null;
 
 function readContactContext(): ContactContext | null {
   const root = document.querySelector('.callcenter-root');
@@ -194,47 +193,6 @@ function ensureHost(): HTMLElement | null {
   return host;
 }
 
-function applyMineFilter(): void {
-  const root = document.querySelector<HTMLElement>('.callcenter-root');
-  if (!root || root.dataset.messagingMine !== '1' || !currentUser) return;
-  const userName = (currentUser.name || '').trim().toLowerCase();
-  root.querySelectorAll<HTMLElement>('.inbox-thread').forEach((thread) => {
-    const meta = thread.querySelector('.inbox-thread-main em')?.textContent?.toLowerCase() || '';
-    thread.style.display = userName && meta.includes(userName) ? '' : 'none';
-  });
-}
-
-function clearMineFilter(): void {
-  const root = document.querySelector<HTMLElement>('.callcenter-root');
-  if (!root) return;
-  root.dataset.messagingMine = '0';
-  root.querySelectorAll<HTMLElement>('.inbox-thread').forEach((thread) => { thread.style.display = ''; });
-  root.querySelectorAll<HTMLButtonElement>('.inbox-queue-tabs button').forEach((button) => {
-    if (button.textContent?.trim().startsWith('Мои')) button.classList.remove('active');
-  });
-}
-
-function enhanceQueueButtons(): void {
-  const root = document.querySelector<HTMLElement>('.callcenter-root');
-  if (!root || root.dataset.messagingMineBound === '1') return;
-  root.dataset.messagingMineBound = '1';
-  root.addEventListener('click', (event) => {
-    const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('.inbox-queue-tabs button') : null;
-    if (!target) return;
-    const label = target.textContent?.trim() || '';
-    if (label.startsWith('Мои')) {
-      event.preventDefault();
-      event.stopPropagation();
-      root.querySelectorAll<HTMLButtonElement>('.inbox-queue-tabs button').forEach((button) => button.classList.remove('active'));
-      target.classList.add('active');
-      root.dataset.messagingMine = '1';
-      applyMineFilter();
-      return;
-    }
-    clearMineFilter();
-  }, true);
-}
-
 function mountLivePanel(): void {
   const context = readContactContext();
   const host = ensureHost();
@@ -253,13 +211,11 @@ function mountLivePanel(): void {
 }
 
 function enhance(): void {
-  enhanceQueueButtons();
-  applyMineFilter();
   mountLivePanel();
 }
 
 if (typeof window !== 'undefined') {
-  loadAppUser().then((user) => { currentUser = user; enhance(); }).catch(() => undefined);
+  enhance();
   const observer = new MutationObserver(() => window.requestAnimationFrame(enhance));
   observer.observe(document.documentElement, { subtree: true, childList: true });
   window.addEventListener('focus', enhance);
