@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Image as ImageIcon, LoaderCircle, Play, X } from 'lucide-react';
-import '../ad-preview.css';
+import '../ad-preview-imds.css';
 
 export type AdPreviewContext = {
   platform?: string;
