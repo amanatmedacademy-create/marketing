@@ -1,5 +1,6 @@
 export type DealWorkspaceActivityType = 'comment' | 'task' | 'note';
 export type DealCustomFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox' | 'phone' | 'email';
+export type DealCustomFieldRole = 'administrator' | 'marketer' | 'analyst' | 'viewer';
 
 export type DealWorkspaceActivity = { id: string; dealId: string; type: DealWorkspaceActivityType; body: string; dueAt?: string; completedAt?: string; actorUserId?: string; createdAt: string; updatedAt: string; };
 export type DealWorkspaceMessage = { id: string; conversationId: string; body: string; direction: string; senderName?: string; status: string; sentAt: string; attachmentName?: string; attachmentMimeType?: string; };
@@ -8,10 +9,59 @@ export type DealWorkspaceStageEvent = { id: string; dealId: string; pipelineId: 
 export type DealWorkspaceConversation = { id: string; leadId?: string; title?: string; phone?: string; channel: string; status: string; assignedUserId?: string; unreadCount: number; lastMessageAt?: string; };
 export type DealWorkspaceUser = { id: string; fullName: string };
 
-export type DealCustomFieldDefinition = {
-  id: string; key: string; label: string; type: DealCustomFieldType; options: string[]; required: boolean; active: boolean; position: number; createdAt: string; updatedAt: string;
+export type DealCustomFieldSection = {
+  id: string;
+  name: string;
+  description?: string;
+  position: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
-export type DealCustomFieldsState = { definitions: DealCustomFieldDefinition[]; values: Record<string, unknown>; canManageFields: boolean; canEditValues: boolean; };
+
+export type DealCustomFieldStage = { id: string; name: string; position: number; type: string };
+
+export type DealCustomFieldDefinition = {
+  id: string;
+  key: string;
+  label: string;
+  type: DealCustomFieldType;
+  options: string[];
+  required: boolean;
+  active: boolean;
+  position: number;
+  sectionId?: string;
+  helpText?: string;
+  visibleRoles: DealCustomFieldRole[];
+  editableRoles: DealCustomFieldRole[];
+  requiredStageIds: string[];
+  showInSummary: boolean;
+  archivedAt?: string;
+  canEditValue: boolean;
+  typeLocked: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DealCustomFieldsQuality = {
+  completion: number;
+  totalFields: number;
+  filledFields: number;
+  requiredFields: number;
+  missingRequiredFieldIds: string[];
+};
+
+export type DealCustomFieldsState = {
+  definitions: DealCustomFieldDefinition[];
+  sections: DealCustomFieldSection[];
+  stages: DealCustomFieldStage[];
+  values: Record<string, unknown>;
+  currentRole: DealCustomFieldRole;
+  canManageFields: boolean;
+  canEditValues: boolean;
+  quality: DealCustomFieldsQuality;
+};
+
 export type DealWorkspacePayload = { activities: DealWorkspaceActivity[]; messages: DealWorkspaceMessage[]; calls: DealWorkspaceCall[]; stageEvents: DealWorkspaceStageEvent[]; conversations: DealWorkspaceConversation[]; users: DealWorkspaceUser[]; customFields: DealCustomFieldsState; };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -25,6 +75,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const fetchDealWorkspace = (dealId: string) => request<DealWorkspacePayload>(`/api/deal-workspace/${encodeURIComponent(dealId)}`);
 export const createDealWorkspaceActivity = (dealId: string, input: { type: DealWorkspaceActivityType; body: string; dueAt?: string | null }) => request<DealWorkspaceActivity>(`/api/deal-workspace/${encodeURIComponent(dealId)}/activities`, { method: 'POST', body: JSON.stringify(input) });
 export const updateDealWorkspaceActivity = (dealId: string, activityId: string, input: { body?: string; dueAt?: string | null; completed?: boolean }) => request<DealWorkspaceActivity>(`/api/deal-workspace/${encodeURIComponent(dealId)}/activities/${encodeURIComponent(activityId)}`, { method: 'PATCH', body: JSON.stringify(input) });
-export const createDealCustomField = (dealId: string, input: { label: string; type: DealCustomFieldType; options?: string[]; required?: boolean }) => request<DealCustomFieldDefinition>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-fields`, { method: 'POST', body: JSON.stringify(input) });
-export const updateDealCustomField = (dealId: string, fieldId: string, input: Partial<{ label: string; type: DealCustomFieldType; options: string[]; required: boolean; active: boolean; position: number }>) => request<DealCustomFieldDefinition>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-fields/${encodeURIComponent(fieldId)}`, { method: 'PATCH', body: JSON.stringify(input) });
+
+export type DealCustomFieldInput = {
+  label: string;
+  type: DealCustomFieldType;
+  options?: string[];
+  required?: boolean;
+  sectionId?: string | null;
+  helpText?: string | null;
+  visibleRoles?: DealCustomFieldRole[];
+  editableRoles?: DealCustomFieldRole[];
+  requiredStageIds?: string[];
+  showInSummary?: boolean;
+};
+
+export const createDealCustomField = (dealId: string, input: DealCustomFieldInput) => request<DealCustomFieldDefinition>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-fields`, { method: 'POST', body: JSON.stringify(input) });
+export const updateDealCustomField = (dealId: string, fieldId: string, input: Partial<Omit<DealCustomFieldInput, 'type'> & { active: boolean; position: number; archived: boolean }>) => request<DealCustomFieldDefinition>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-fields/${encodeURIComponent(fieldId)}`, { method: 'PATCH', body: JSON.stringify(input) });
 export const saveDealCustomFieldValues = (dealId: string, values: Record<string, unknown>) => request<{ values: Record<string, unknown> }>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-values`, { method: 'PATCH', body: JSON.stringify({ values }) });
+
+export const createDealCustomFieldSection = (dealId: string, input: { name: string; description?: string | null }) => request<DealCustomFieldSection>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-sections`, { method: 'POST', body: JSON.stringify(input) });
+export const updateDealCustomFieldSection = (dealId: string, sectionId: string, input: Partial<{ name: string; description: string | null; active: boolean; position: number }>) => request<DealCustomFieldSection>(`/api/deal-workspace/${encodeURIComponent(dealId)}/custom-sections/${encodeURIComponent(sectionId)}`, { method: 'PATCH', body: JSON.stringify(input) });
