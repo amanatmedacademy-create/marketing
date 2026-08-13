@@ -40,6 +40,9 @@ function checkbox(name: string, label: string, checked: boolean, value = '1'): H
 function selectedCheckboxValues(form: HTMLFormElement, name: string): string[] {
   return Array.from(form.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)).map((input) => input.value);
 }
+function hasDragType(event: DragEvent, type: string): boolean {
+  return Array.from(event.dataTransfer?.types || []).includes(type);
+}
 
 function fieldControl(field: DealCustomFieldDefinition, value: unknown, onSave: (value: unknown) => Promise<void>, onRefresh: () => Promise<void>): HTMLElement {
   const label = document.createElement('label');
@@ -141,15 +144,18 @@ function fieldSettings(dealId: string, field: DealCustomFieldDefinition, data: D
   sheet.addEventListener('submit', async (event) => {
     event.preventDefault(); save.disabled = true;
     try {
-      const visibleRoles = Array.from(new Set<DealCustomFieldRole>(['administrator', ...selectedCheckboxValues(sheet, 'visibleRoles') as DealCustomFieldRole[]]));
-      const editableRoles = Array.from(new Set<DealCustomFieldRole>(['administrator', ...selectedCheckboxValues(sheet, 'editableRoles') as DealCustomFieldRole[]])).filter((item) => visibleRoles.includes(item));
-      await updateDealCustomField(dealId, field.id, {
+      const selectedVisible = selectedCheckboxValues(sheet, 'visibleRoles') as DealCustomFieldRole[];
+      const selectedEditable = selectedCheckboxValues(sheet, 'editableRoles') as DealCustomFieldRole[];
+      const visibleRoles: DealCustomFieldRole[] = Array.from(new Set<DealCustomFieldRole>(['administrator', ...selectedVisible]));
+      const editableRoles: DealCustomFieldRole[] = Array.from(new Set<DealCustomFieldRole>(['administrator', ...selectedEditable])).filter((item) => visibleRoles.includes(item));
+      const input: Parameters<typeof updateDealCustomField>[2] = {
         label: name.value.trim(), sectionId: section.value || null, helpText: help.value.trim() || null,
-        options: field.type === 'select' ? ((sheet.elements.namedItem('options') as HTMLInputElement)?.value || '').split(',').map((item) => item.trim()).filter(Boolean) : undefined,
         required: (sheet.elements.namedItem('required') as HTMLInputElement).checked,
         requiredStageIds: selectedCheckboxValues(sheet, 'requiredStageIds'), visibleRoles, editableRoles,
         showInSummary: (sheet.elements.namedItem('showInSummary') as HTMLInputElement).checked,
-      });
+      };
+      if (field.type === 'select') input.options = ((sheet.elements.namedItem('options') as HTMLInputElement)?.value || '').split(',').map((item) => item.trim()).filter(Boolean);
+      await updateDealCustomField(dealId, field.id, input);
       await repaint();
     } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось сохранить настройки поля'); }
     finally { save.disabled = false; }
@@ -212,23 +218,23 @@ function sectionBlock(dealId: string, section: DealCustomFieldSection | null, fi
   }
   block.appendChild(head);
   const grid = document.createElement('div'); grid.className = 'crm-custom-fields-grid';
-  const visibleFields = fields.filter((field) => manageMode || (!field.archivedAt && field.active));
+  const visibleFields = fields.filter((field) => !field.archivedAt && (manageMode || field.active));
   for (const field of visibleFields) {
-    const row = document.createElement('div'); row.className = `crm-custom-field-row ${field.archivedAt ? 'is-archived' : ''} ${!field.active ? 'is-hidden' : ''}`; row.dataset.fieldId = field.id;
-    if (manageMode && !field.archivedAt) {
+    const row = document.createElement('div'); row.className = `crm-custom-field-row ${!field.active ? 'is-hidden' : ''}`; row.dataset.fieldId = field.id;
+    if (manageMode) {
       row.draggable = true; const handle = document.createElement('span'); handle.className = 'crm-field-drag-handle'; handle.textContent = '⠿'; handle.title = 'Перетащить поле'; row.appendChild(handle);
       row.addEventListener('dragstart', (event) => { event.stopPropagation(); event.dataTransfer?.setData('text/x-crm-field', field.id); row.classList.add('is-dragging'); }); row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
     }
     row.appendChild(fieldControl(field, data.customFields.values[field.id], async (value) => { await saveDealCustomFieldValues(dealId, { [field.id]: value }); }, repaint));
     if (manageMode) row.appendChild(fieldSettings(dealId, field, data, repaint));
-    row.addEventListener('dragover', (event) => { if (manageMode && event.dataTransfer?.types.includes('text/x-crm-field')) { event.preventDefault(); row.classList.add('is-drop-target'); } });
+    row.addEventListener('dragover', (event) => { if (manageMode && hasDragType(event, 'text/x-crm-field')) { event.preventDefault(); row.classList.add('is-drop-target'); } });
     row.addEventListener('dragleave', () => row.classList.remove('is-drop-target'));
     row.addEventListener('drop', (event) => { row.classList.remove('is-drop-target'); const movingId = event.dataTransfer?.getData('text/x-crm-field'); if (!movingId || movingId === field.id) return; event.preventDefault(); event.stopPropagation(); void reorderFields(dealId, data, movingId, field.id, section?.id || null, repaint); });
     grid.appendChild(row);
   }
   if (!visibleFields.length) { const empty = document.createElement('div'); empty.className = 'crm-field-section-empty'; empty.textContent = manageMode ? 'Перетащите поле сюда или создайте новое.' : 'Нет полей'; grid.appendChild(empty); }
   block.appendChild(grid);
-  block.addEventListener('dragover', (event) => { if (!manageMode) return; if (event.dataTransfer?.types.includes('text/x-crm-field') || event.dataTransfer?.types.includes('text/x-crm-section')) { event.preventDefault(); block.classList.add('is-drop-section'); } });
+  block.addEventListener('dragover', (event) => { if (!manageMode) return; if (hasDragType(event, 'text/x-crm-field') || hasDragType(event, 'text/x-crm-section')) { event.preventDefault(); block.classList.add('is-drop-section'); } });
   block.addEventListener('dragleave', (event) => { if (!block.contains(event.relatedTarget as Node | null)) block.classList.remove('is-drop-section'); });
   block.addEventListener('drop', (event) => {
     block.classList.remove('is-drop-section'); if (!manageMode) return;
@@ -266,8 +272,8 @@ async function renderPanel(details: HTMLElement, dealId: string): Promise<void> 
     if (manageMode) { const hint = document.createElement('div'); hint.className = 'crm-field-builder-hint'; hint.textContent = '⠿ Перетаскивайте поля между разделами и меняйте порядок. Тип поля после создания фиксируется, чтобы не повредить данные.'; panel.appendChild(hint); }
 
     const activeSections = data.customFields.sections.filter((section) => manageMode || section.active).slice().sort((a, b) => a.position - b.position);
-    const ungrouped = data.customFields.definitions.filter((field) => !field.sectionId);
-    if (ungrouped.length || (!activeSections.length && !data.customFields.definitions.length)) panel.appendChild(sectionBlock(dealId, null, ungrouped, data, manageMode, repaint));
+    const ungrouped = data.customFields.definitions.filter((field) => !field.sectionId && !field.archivedAt);
+    if (ungrouped.length || (!activeSections.length && !data.customFields.definitions.filter((field) => !field.archivedAt).length)) panel.appendChild(sectionBlock(dealId, null, ungrouped, data, manageMode, repaint));
     for (const section of activeSections) panel.appendChild(sectionBlock(dealId, section, data.customFields.definitions.filter((field) => field.sectionId === section.id), data, manageMode, repaint));
     if (manageMode) {
       const archived = data.customFields.definitions.filter((field) => field.archivedAt);
