@@ -29,6 +29,101 @@
   left: 10px;
 }
 
+/* Compact telephony command bar: dialer + workspace modes in one row. */
+.marketing-content:has(.telephony-v5) {
+  padding-top: 8px;
+}
+
+.marketing-shell .telephony-v5 {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  height: calc(100dvh - 82px);
+}
+
+.marketing-shell .telephony-v5__toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer,
+.marketing-shell .telephony-v5__toolbar .telephony-active-bar {
+  min-width: 0;
+  min-height: 44px;
+  height: 44px;
+  padding: 5px 7px;
+  border-radius: 10px;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer {
+  grid-template-columns: minmax(170px, 220px) minmax(240px, 1fr) 34px minmax(104px, 122px) 34px;
+  gap: 6px;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__line-wrap,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__target,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__icon-button,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__settings,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__call,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__keypad-anchor {
+  height: 32px;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__icon-button,
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__settings {
+  width: 34px;
+}
+
+.marketing-shell .telephony-v5__modes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: max-content;
+  min-width: 0;
+  height: 36px;
+  gap: 2px;
+  padding: 3px;
+  margin: 0;
+  border: 1px solid var(--imds-border);
+  border-radius: 9px;
+  background: var(--imds-glass-soft);
+  box-shadow: none;
+}
+
+.marketing-shell .telephony-v5__modes > button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  gap: 5px;
+  padding: 0 9px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--imds-muted);
+  font: inherit;
+  font-size: .61rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.marketing-shell .telephony-v5__modes > button.active {
+  background: var(--imds-primary-soft);
+  color: var(--imds-primary-strong);
+}
+
+.marketing-shell .telephony-v5__modes > button:disabled {
+  opacity: .56;
+}
+
 /* Keep the operator workspace dense and reference-like on wide screens. */
 @media (min-width: 1280px) {
   .marketing-shell .telephony-operator__grid {
@@ -41,5 +136,41 @@
 
   .marketing-shell .telephony-timeline__list {
     padding-bottom: 18px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .marketing-shell .telephony-v5__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .marketing-shell .telephony-v5__modes {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 760px) {
+  .marketing-shell .telephony-v5 {
+    height: auto;
+  }
+
+  .marketing-shell .telephony-v5__toolbar .telephony-dialer {
+    height: auto;
+    grid-template-columns: 1fr 34px 34px;
+  }
+
+  .marketing-shell .telephony-v5__toolbar .telephony-dialer__line-wrap,
+  .marketing-shell .telephony-v5__toolbar .telephony-dialer__target {
+    grid-column: 1 / -1;
+  }
+
+  .marketing-shell .telephony-v5__toolbar .telephony-dialer__call {
+    grid-column: 1 / 2;
+  }
+
+  .marketing-shell .telephony-v5__modes {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
   }
 }
