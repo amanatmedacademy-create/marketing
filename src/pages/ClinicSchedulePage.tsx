@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, LockKeyhole, Phone, Plus, RefreshCw, Search, X } from 'lucide-react';
 import '../clinic-schedule.css';
+import { matchScheduleCrmPatient, normalizeSchedulePhone, type ScheduleCrmContext } from './scheduleCrmContext';
 
 type Branch = { id: string; name: string; address?: string | null; active: boolean; sort_order: number };
 type Doctor = { id: string; branch_id: string; name: string; specialty?: string | null; active: boolean; sort_order: number };
 type Schedule = { id: string; doctor_id: string; weekday: number; start_time: string; end_time: string; slot_minutes: number; active: boolean };
-type Patient = { id: string; name: string; phone?: string | null; email?: string | null; last_visit_at?: string | null; next_visit_at?: string | null; source_system?: string | null; metadata?: Record<string, unknown> | null };
+type Patient = { id: string; crm_contact_id?: string | null; name: string; phone?: string | null; email?: string | null; last_visit_at?: string | null; next_visit_at?: string | null; source_system?: string | null; metadata?: Record<string, unknown> | null };
 type AppointmentStatus = 'BOOKED'|'CONFIRMED'|'ARRIVED'|'COMPLETED'|'CANCELLED'|'NO_SHOW';
-type Appointment = { id: string; branch_id: string; doctor_id: string; lead_id?: string | null; patient_id?: string | null; starts_at: string; ends_at: string; patient_name: string; phone: string; status: AppointmentStatus; source?: string | null; metadata?: Record<string, unknown> | null };
+type Appointment = { id: string; branch_id: string; doctor_id: string; contact_id?: string | null; lead_id?: string | null; patient_id?: string | null; starts_at: string; ends_at: string; patient_name: string; phone: string; status: AppointmentStatus; source?: string | null; metadata?: Record<string, unknown> | null };
 type BlockType = 'training'|'lunch'|'meeting'|'maintenance'|'personal'|'other';
 type ScheduleBlock = { id: string; doctor_id: string; starts_at: string; ends_at: string; block_type: BlockType; title: string; note?: string | null; metadata?: Record<string, unknown> | null };
 type Snapshot = { branches: Branch[]; doctors: Doctor[]; schedules: Schedule[]; appointments: Appointment[]; patients: Patient[]; blocks: ScheduleBlock[]; timezone: string };
-type Draft = { kind: 'appointment'|'block'; id?: string; doctorId: string; patientId: string; patientName: string; phone: string; date: string; time: string; duration: number; note: string; blockType: BlockType; blockTitle: string };
+type Draft = { kind: 'appointment'|'block'; id?: string; doctorId: string; patientId: string; patientName: string; phone: string; contactId?: string; leadId?: string; dealId?: string; date: string; time: string; duration: number; note: string; blockType: BlockType; blockTitle: string };
 type Toast = { id: number; message: string; tone: 'ok'|'warn'|'err' };
 type Tooltip = { appointment: Appointment; x: number; y: number } | null;
 
@@ -39,6 +40,7 @@ function appointmentDate(item: Appointment) { return new Date(item.starts_at).to
 function safePhone(value: string) { return value.replace(/\D/g,''); }
 function overlaps(startA:string,endA:string,startB:string,endB:string) { return new Date(startA)<new Date(endB) && new Date(endA)>new Date(startB); }
 function isExternalBusy(item: Appointment) { return String(item.source || '').toUpperCase() === 'MIS' || item.metadata?.external_busy === true; }
+function dealIdFrom(item: Appointment): string | undefined { const value=item.metadata?.crm_deal_id; return typeof value==='string'&&value ? value : undefined; }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache:'no-store', ...init, headers:{ accept:'application/json','content-type':'application/json',...init?.headers } });
@@ -54,11 +56,26 @@ function monthDays(current: string) {
   return Array.from({length:42},(_,i)=>{ const d=new Date(start); d.setDate(start.getDate()+i); return { key:dateKey(d), day:d.getDate(), other:d.getMonth()!==selected.getMonth() }; });
 }
 
-function blankDraft(doctorId:string,date:string,minute:number):Draft {
-  return { kind:'appointment', doctorId, patientId:'', patientName:'', phone:'', date, time:minuteLabel(minute), duration:30, note:'', blockType:'lunch', blockTitle:'Обед' };
+function blankDraft(doctorId:string,date:string,minute:number,crmContext?:ScheduleCrmContext,patient?:Patient):Draft {
+  return {
+    kind:'appointment',
+    doctorId,
+    patientId:patient?.id||'',
+    patientName:patient?.name||crmContext?.name||'',
+    phone:patient?.phone||crmContext?.phone||'',
+    contactId:patient?.crm_contact_id||crmContext?.contactId,
+    leadId:crmContext?.leadId,
+    dealId:crmContext?.dealId,
+    date,
+    time:minuteLabel(minute),
+    duration:30,
+    note:'',
+    blockType:'lunch',
+    blockTitle:'Обед',
+  };
 }
 
-export default function ClinicSchedulePage() {
+export default function ClinicSchedulePage({ crmContext }: { crmContext?: ScheduleCrmContext }) {
   const [selectedDate,setSelectedDate] = useState(dateKey(new Date()));
   const [data,setData] = useState<Snapshot>({branches:[],doctors:[],schedules:[],appointments:[],patients:[],blocks:[],timezone:'Asia/Almaty'});
   const [loading,setLoading] = useState(true);
@@ -96,6 +113,7 @@ export default function ClinicSchedulePage() {
   const marketingAppointments=useMemo(()=>data.appointments.filter((x)=>!isExternalBusy(x)),[data.appointments]);
   const appointments=useMemo(()=>data.appointments.filter((x)=>isExternalBusy(x) || !normalizedQuery || `${x.patient_name} ${x.phone}`.toLowerCase().includes(normalizedQuery)),[data.appointments,normalizedQuery]);
   const visiblePatients=useMemo(()=>data.patients.filter((p)=>String(p.source_system||'').toLowerCase()!=='mis'),[data.patients]);
+  const crmPatient=useMemo(()=>matchScheduleCrmPatient(visiblePatients,crmContext),[visiblePatients,crmContext]);
   const timeSlots=useMemo(()=>{ const out:number[]=[]; for(let m=WORKDAY_START;m<WORKDAY_END;m+=step) out.push(m); return out; },[step]);
   const dayAppointmentsByDoctor=useMemo(()=>new Map(activeDoctors.map((doctor)=>[doctor.id,appointments.filter((x)=>x.doctor_id===doctor.id)])),[activeDoctors,appointments]);
   const dayBlocksByDoctor=useMemo(()=>new Map(activeDoctors.map((doctor)=>[doctor.id,data.blocks.filter((x)=>x.doctor_id===doctor.id)])),[activeDoctors,data.blocks]);
@@ -112,9 +130,15 @@ export default function ClinicSchedulePage() {
   const selectedPatient=useMemo(()=>selected?.patient_id ? visiblePatients.find((x)=>x.id===selected.patient_id) : undefined,[visiblePatients,selected]);
   const patientAppointments=useMemo(()=>selected ? marketingAppointments.filter((item)=>item.id!==selected.id && ((selected.patient_id&&item.patient_id===selected.patient_id)||(!selected.patient_id&&selected.phone&&item.phone===selected.phone))).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime()) : [],[marketingAppointments,selected]);
 
-  const createDraft=(doctorId:string,minute:number)=>setDraft(blankDraft(doctorId,selectedDate,minute));
-  const editDraft=(item:Appointment)=>{ if(isExternalBusy(item)) return; setDraft({kind:'appointment',id:item.id,doctorId:item.doctor_id,patientId:item.patient_id||'',patientName:item.patient_name,phone:item.phone||'',date:dateKey(new Date(item.starts_at)),time:timeLabel(item.starts_at),duration:durationMinutes(item),note:typeof item.metadata?.note==='string'?item.metadata.note:'',blockType:'lunch',blockTitle:'Обед'}); };
-  const planNext=(item:Appointment)=>{ if(isExternalBusy(item)) return; const nextDoctor=item.doctor_id; const nextDate=addDays(selectedDate,1); setSelected(null); setSelectedDate(nextDate); window.setTimeout(()=>setDraft({...blankDraft(nextDoctor,nextDate,9*60),patientId:item.patient_id||'',patientName:item.patient_name,phone:item.phone||'',duration:durationMinutes(item),note:'Следующая запись'}),0); };
+  const createDraft=(doctorId:string,minute:number)=>setDraft(blankDraft(doctorId,selectedDate,minute,crmContext,crmPatient));
+  const editDraft=(item:Appointment)=>{ if(isExternalBusy(item)) return; setDraft({kind:'appointment',id:item.id,doctorId:item.doctor_id,patientId:item.patient_id||'',patientName:item.patient_name,phone:item.phone||'',contactId:item.contact_id||undefined,leadId:item.lead_id||undefined,dealId:dealIdFrom(item),date:dateKey(new Date(item.starts_at)),time:timeLabel(item.starts_at),duration:durationMinutes(item),note:typeof item.metadata?.note==='string'?item.metadata.note:'',blockType:'lunch',blockTitle:'Обед'}); };
+  const planNext=(item:Appointment)=>{ if(isExternalBusy(item)) return; const nextDoctor=item.doctor_id; const nextDate=addDays(selectedDate,1); setSelected(null); setSelectedDate(nextDate); window.setTimeout(()=>setDraft({...blankDraft(nextDoctor,nextDate,9*60),patientId:item.patient_id||'',patientName:item.patient_name,phone:item.phone||'',contactId:item.contact_id||undefined,leadId:item.lead_id||undefined,dealId:dealIdFrom(item),duration:durationMinutes(item),note:'Следующая запись'}),0); };
+  const applyPatientName=(value:string)=>setDraft((current)=>{
+    if(!current) return current;
+    const matched=visiblePatients.find((patient)=>patient.name===value);
+    if(!matched) return {...current,patientName:value,patientId:'',contactId:undefined,leadId:undefined,dealId:undefined};
+    return {...current,patientName:matched.name,patientId:matched.id,phone:matched.phone||current.phone,contactId:matched.crm_contact_id||undefined,leadId:matched.crm_contact_id===current.contactId?current.leadId:undefined,dealId:matched.crm_contact_id===current.contactId?current.dealId:undefined};
+  });
 
   const saveDraft=async()=>{
     if(!draft) return;
@@ -128,7 +152,7 @@ export default function ClinicSchedulePage() {
         setDraft(null); toast('Время закрыто'); if(draft.date!==selectedDate) setSelectedDate(draft.date); else await load(); return;
       }
       if(!draft.doctorId || !draft.patientName.trim()) throw new Error('Укажите специалиста и пациента');
-      await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify(draft.id ? {action:'update_appointment',id:draft.id,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,note:draft.note} : {action:'create_appointment',doctor_id:draft.doctorId,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,starts_at:startsAt,ends_at:endsAt,note:draft.note})});
+      await api('/api/clinic-schedule',{method:'POST',body:JSON.stringify(draft.id ? {action:'update_appointment',id:draft.id,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,contact_id:draft.contactId||null,lead_id:draft.leadId||null,deal_id:draft.dealId||null,note:draft.note} : {action:'create_appointment',doctor_id:draft.doctorId,patient_id:draft.patientId||null,patient_name:draft.patientName,phone:draft.phone,contact_id:draft.contactId||null,lead_id:draft.leadId||null,deal_id:draft.dealId||null,starts_at:startsAt,ends_at:endsAt,note:draft.note})});
       if(draft.id) {
         const original=data.appointments.find((x)=>x.id===draft.id);
         if(original && !isExternalBusy(original) && (original.doctor_id!==draft.doctorId || timeLabel(original.starts_at)!==draft.time || dateKey(new Date(original.starts_at))!==draft.date || durationMinutes(original)!==draft.duration)) {
@@ -188,7 +212,7 @@ export default function ClinicSchedulePage() {
 
     {selected && !isExternalBusy(selected) && <><button className="drawer-overlay" onClick={()=>setSelected(null)} aria-label="Закрыть"/><aside className="visit-drawer"><header><span className="avatar">{initials(selected.patient_name)}</span><div><h2>{selected.patient_name}</h2><p>{timeLabel(selected.starts_at)} · {appointmentDate(selected)}</p></div><button onClick={()=>setSelected(null)}>×</button></header><div className="visit-summary"><div className="visit-contact-row">{selected.phone&&<a href={`tel:${selected.phone}`}><Phone size={13}/>{selected.phone}</a>}{selectedPatient?.email&&<span>{selectedPatient.email}</span>}</div><dl><div><dt>Специалист</dt><dd>{data.doctors.find((x)=>x.id===selected.doctor_id)?.name||'—'}</dd></div><div><dt>Филиал</dt><dd>{data.branches.find((x)=>x.id===selected.branch_id)?.name||'—'}</dd></div><div><dt>Время</dt><dd>{timeLabel(selected.starts_at)}–{timeLabel(selected.ends_at)}</dd></div><div><dt>Длительность</dt><dd>{durationMinutes(selected)} минут</dd></div><div><dt>Статус</dt><dd>{STATUS_LABELS[selected.status]}</dd></div><div><dt>Источник</dt><dd>{selected.source||'—'}</dd></div></dl></div><div className="visit-status-actions"><button onClick={()=>void changeStatus(selected,'ARRIVED')}>Пришёл</button><button onClick={()=>void changeStatus(selected,'COMPLETED')}>Выполнено</button><button onClick={()=>void changeStatus(selected,'CANCELLED')}>Отменить</button><button onClick={()=>void changeStatus(selected,'NO_SHOW')}>Неявка</button></div><section><h3>Комментарий к визиту</h3><p>{typeof selected.metadata?.note==='string'&&selected.metadata.note?selected.metadata.note:'Нет комментария'}</p></section>{patientAppointments.length>0&&<section><h3>Другие записи пациента</h3><div className="visit-history-list">{patientAppointments.slice(0,6).map((item)=><button key={item.id} onClick={()=>setSelected(item)}><time>{timeLabel(item.starts_at)}</time><span>{STATUS_LABELS[item.status]}</span><small>{data.doctors.find((x)=>x.id===item.doctor_id)?.name||'Специалист'}</small></button>)}</div></section>}<footer><button className="primary" onClick={()=>editDraft(selected)}>Редактировать</button>{selected.phone&&<a href={`https://wa.me/${safePhone(selected.phone)}`} target="_blank" rel="noreferrer">WhatsApp</a>}<button className="next" onClick={()=>planNext(selected)}><CalendarDays size={14}/> Следующая запись</button><button className="delete" onClick={()=>void remove(selected)}>Удалить визит</button></footer></aside></>}
 
-    {draft && <div className="schedule-modal-overlay" onMouseDown={(e)=>{if(e.target===e.currentTarget&&!saving)setDraft(null)}}><div className="schedule-modal"><header><div><span>{draft.id?'Редактирование записи':draft.kind==='block'?'Закрыть время':'Новая запись'}</span><h2>{draft.kind==='block'?(draft.blockTitle||BLOCK_LABELS[draft.blockType]):draft.patientName||'Выберите пациента'}</h2></div><button onClick={()=>setDraft(null)}>×</button></header>{!draft.id&&<div className="schedule-modal-tabs"><button className={draft.kind==='appointment'?'active':''} onClick={()=>setDraft({...draft,kind:'appointment'})}>Запись пациента</button><button className={draft.kind==='block'?'active':''} onClick={()=>setDraft({...draft,kind:'block',blockTitle:draft.blockTitle||BLOCK_LABELS[draft.blockType]})}><LockKeyhole size={13}/> Закрыть время</button></div>}<div className="modal-body">{draft.kind==='appointment'?<><label className="full"><span>Пациент</span><input value={draft.patientName} onChange={(e)=>setDraft({...draft,patientName:e.target.value,patientId:''})} list="schedule-patients" placeholder="ФИО пациента"/><datalist id="schedule-patients">{visiblePatients.map((p)=><option key={p.id} value={p.name}>{p.phone||''}</option>)}</datalist></label><label><span>Телефон</span><input value={draft.phone} onChange={(e)=>setDraft({...draft,phone:e.target.value})}/></label></>:<><label><span>Тип блокировки</span><select value={draft.blockType} onChange={(e)=>{const blockType=e.target.value as BlockType;setDraft({...draft,blockType,blockTitle:BLOCK_LABELS[blockType]})}}>{Object.entries(BLOCK_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label><span>Название</span><input value={draft.blockTitle} onChange={(e)=>setDraft({...draft,blockTitle:e.target.value})} placeholder="Например, Обед"/></label></>}<label><span>Специалист</span><select value={draft.doctorId} onChange={(e)=>setDraft({...draft,doctorId:e.target.value})}>{data.doctors.filter((x)=>x.active).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label><span>Дата</span><input type="date" value={draft.date} onChange={(e)=>setDraft({...draft,date:e.target.value})}/></label><label><span>Время</span><input type="time" value={draft.time} step={step*60} onChange={(e)=>setDraft({...draft,time:e.target.value})}/></label><label><span>Длительность</span><select value={draft.duration} onChange={(e)=>setDraft({...draft,duration:Number(e.target.value)})}>{[15,30,45,60,90,120,180,240].map((x)=><option key={x} value={x}>{x} минут</option>)}</select></label><label className="full"><span>Комментарий</span><textarea value={draft.note} onChange={(e)=>setDraft({...draft,note:e.target.value})} placeholder={draft.kind==='block'?'Причина, участники, кабинет...':'Причина визита, указания, кабинет...'}/></label></div><footer><button onClick={()=>setDraft(null)}>Отмена</button><button className="primary" disabled={saving} onClick={()=>void saveDraft()}>{saving?'Сохраняем…':draft.id?'Сохранить изменения':draft.kind==='block'?'Закрыть время':'Создать запись'}</button></footer></div></div>}
+    {draft && <div className="schedule-modal-overlay" onMouseDown={(e)=>{if(e.target===e.currentTarget&&!saving)setDraft(null)}}><div className="schedule-modal"><header><div><span>{draft.id?'Редактирование записи':draft.kind==='block'?'Закрыть время':'Новая запись'}</span><h2>{draft.kind==='block'?(draft.blockTitle||BLOCK_LABELS[draft.blockType]):draft.patientName||'Выберите пациента'}</h2></div><button onClick={()=>setDraft(null)}>×</button></header>{!draft.id&&<div className="schedule-modal-tabs"><button className={draft.kind==='appointment'?'active':''} onClick={()=>setDraft({...draft,kind:'appointment'})}>Запись пациента</button><button className={draft.kind==='block'?'active':''} onClick={()=>setDraft({...draft,kind:'block',blockTitle:draft.blockTitle||BLOCK_LABELS[draft.blockType]})}><LockKeyhole size={13}/> Закрыть время</button></div>}<div className="modal-body">{draft.kind==='appointment'?<><label className="full"><span>Пациент</span><input value={draft.patientName} onChange={(e)=>applyPatientName(e.target.value)} list="schedule-patients" placeholder="ФИО пациента"/><datalist id="schedule-patients">{visiblePatients.map((p)=><option key={p.id} value={p.name}>{p.phone||''}</option>)}</datalist></label><label><span>Телефон</span><input value={draft.phone} onChange={(e)=>setDraft({...draft,phone:e.target.value,patientId:normalizeSchedulePhone(e.target.value)===normalizeSchedulePhone(visiblePatients.find((p)=>p.id===draft.patientId)?.phone)?draft.patientId:''})}/></label></>:<><label><span>Тип блокировки</span><select value={draft.blockType} onChange={(e)=>{const blockType=e.target.value as BlockType;setDraft({...draft,blockType,blockTitle:BLOCK_LABELS[blockType]})}}>{Object.entries(BLOCK_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label><span>Название</span><input value={draft.blockTitle} onChange={(e)=>setDraft({...draft,blockTitle:e.target.value})} placeholder="Например, Обед"/></label></>}<label><span>Специалист</span><select value={draft.doctorId} onChange={(e)=>setDraft({...draft,doctorId:e.target.value})}>{data.doctors.filter((x)=>x.active).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label><span>Дата</span><input type="date" value={draft.date} onChange={(e)=>setDraft({...draft,date:e.target.value})}/></label><label><span>Время</span><input type="time" value={draft.time} step={step*60} onChange={(e)=>setDraft({...draft,time:e.target.value})}/></label><label><span>Длительность</span><select value={draft.duration} onChange={(e)=>setDraft({...draft,duration:Number(e.target.value)})}>{[15,30,45,60,90,120,180,240].map((x)=><option key={x} value={x}>{x} минут</option>)}</select></label><label className="full"><span>Комментарий</span><textarea value={draft.note} onChange={(e)=>setDraft({...draft,note:e.target.value})} placeholder={draft.kind==='block'?'Причина, участники, кабинет...':'Причина визита, указания, кабинет...'}/></label></div><footer><button onClick={()=>setDraft(null)}>Отмена</button><button className="primary" disabled={saving} onClick={()=>void saveDraft()}>{saving?'Сохраняем…':draft.id?'Сохранить изменения':draft.kind==='block'?'Закрыть время':'Создать запись'}</button></footer></div></div>}
 
     <div className="schedule-toasts">{toasts.map((t)=><div key={t.id} className={t.tone}>{t.message}</div>)}</div>
   </div>;
