@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowUpRight, BarChart3, Cable, CalendarDays, CheckCircle2, FileText, Goal, LayoutDashboard, Megaphone, MousePointerClick, RefreshCw, Sparkles, Target, UsersRound, Workflow, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, BarChart3, Cable, CalendarDays, CheckCircle2, FileText, Goal, Images, LayoutDashboard, Megaphone, MousePointerClick, RefreshCw, Sparkles, Target, UsersRound, Workflow, Zap } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdCreativeGallery from '../components/AdCreativeGallery';
 import AdsManagerPage from '../components/AdsManagerPage';
@@ -9,7 +9,7 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './Grow
 import JourneyAutomationPage from './JourneyAutomationPage';
 import '../marketing-hub.css';
 
-type MarketingView = 'overview' | 'ads' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
+type MarketingView = 'overview' | 'ads' | 'creatives' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
 type AdsRow = { platform?: string; source?: string; account_id?: string; leads?: number; sales?: number; revenue?: number };
 type AdsResponse = { accounts?: Array<{ id: string; name: string; platform?: string }>; rows?: AdsRow[] };
 type PlatformKey = 'Meta' | 'TikTok' | 'Google' | 'Yandex';
@@ -49,6 +49,7 @@ export default function MarketingOS() {
   const tabs = useMemo(() => [
     { id: 'overview' as const, label: 'Обзор', icon: LayoutDashboard, modules: ['dashboard'] },
     { id: 'ads' as const, label: 'Реклама', icon: Megaphone, modules: ['advertising'] },
+    { id: 'creatives' as const, label: 'Креативы', icon: Images, modules: ['advertising'] },
     { id: 'content' as const, label: 'Контент', icon: FileText, modules: ['dashboard'] },
     { id: 'media-plan' as const, label: 'Медиаплан', icon: Goal, modules: ['dashboard'] },
     { id: 'leads' as const, label: 'Лиды', icon: UsersRound, modules: ['crm.leads'] },
@@ -130,7 +131,7 @@ export default function MarketingOS() {
       <div>
         <span className="marketing-hub-eyebrow"><Sparkles size={15}/> IMDS MARKETING HUB</span>
         <h1>Центр маркетинга</h1>
-        <p>Операционная работа с рекламой, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
+        <p>Операционная работа с рекламой, креативами, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
       </div>
       <button className="button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} size={16}/>{loading ? 'Обновляем…' : 'Обновить'}</button>
     </header>
@@ -141,20 +142,9 @@ export default function MarketingOS() {
 
     {error && <div className="marketing-hub-error">{error}</div>}
 
-    {view === 'overview' && <Overview
-      loading={loading}
-      campaigns={campaigns}
-      content={content}
-      activeCampaigns={activeCampaigns}
-      openTasks={openTasks}
-      readyContent={readyContent}
-      totalAdLeads={totalAdLeads}
-      totalAdSales={totalAdSales}
-      platformStats={platformStats}
-      canView={canView}
-      changeView={changeView}
-    />}
-    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Здесь — операционная работа с кабинетами, кампаниями, группами и объявлениями. Подключения и аналитика остаются в своих модулях."/><MarketingBoundaryLinks canView={canView}/><AdCreativeGallery/><AdsManagerPage/></section>}
+    {view === 'overview' && <Overview loading={loading} campaigns={campaigns} content={content} activeCampaigns={activeCampaigns} openTasks={openTasks} readyContent={readyContent} totalAdLeads={totalAdLeads} totalAdSales={totalAdSales} platformStats={platformStats} canView={canView} changeView={changeView}/>} 
+    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Операционная работа с кабинетами, кампаниями, группами и объявлениями. Креативы вынесены в отдельную верхнюю вкладку."/><MarketingBoundaryLinks canView={canView}/><AdsManagerPage/></section>}
+    {view === 'creatives' && <section className="marketing-hub-module"><ModuleHeading title="Креативы" text="Визуальная библиотека реальных рекламных объявлений с нативной валютой кабинета и быстрым preview."/><AdCreativeGallery/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
     {view === 'leads' && <section className="marketing-hub-module"><ModuleHeading title="Лиды и формы" text="Формы захвата и точки входа лидов. Операционная CRM остаётся связанной с этим разделом."/><SafeLeadFormsPage/></section>}
@@ -189,6 +179,7 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
     <section className="marketing-hub-section">
       <div className="marketing-hub-section-head"><div><span>РАБОЧИЕ МОДУЛИ</span><h2>Маркетинг без дублирования платформы</h2><p>В Центре маркетинга остаются только рабочие маркетинговые процессы.</p></div></div>
       <div className="marketing-module-grid">
+        {canView('advertising') && <PreviewCard icon={<Images size={20}/>} title="Креативы" text="Реальные изображения и видео рекламных объявлений" onClick={() => changeView('creatives')}/>} 
         {canView('dashboard') && <PreviewCard icon={<FileText size={20}/>} title="Контент" text={`${content.length} материалов · ${readyContent} готовы / сегодня`} onClick={() => changeView('content')}/>} 
         {canView('dashboard') && <PreviewCard icon={<Goal size={20}/>} title="Медиаплан" text="Бюджеты, каналы, периоды и план-факт" onClick={() => changeView('media-plan')}/>} 
         {canView('crm.leads') && <PreviewCard icon={<UsersRound size={20}/>} title="Лиды" text="Формы захвата и точки входа в CRM" onClick={() => changeView('leads')}/>} 
