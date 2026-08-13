@@ -16,6 +16,7 @@ import {
   type ChatStatus,
   type ChatThread,
   type ChatUser,
+  type ChatWorkspaceScope,
   type WhatsAppTemplate
 } from '../services/callCenterChat';
 import '../call-center-chat.css';
@@ -40,9 +41,10 @@ const QUICK_REPLIES = [
 ];
 const LIVE_REFRESH_VISIBLE_MS = 2500;
 const LIVE_REFRESH_HIDDEN_MS = 12000;
+const SEARCH_DEBOUNCE_MS = 300;
 
 type ChannelFilter = 'ALL' | 'WHATSAPP' | 'INSTAGRAM' | 'WEB' | 'PHONE' | 'OTHER';
-type QueueFilter = 'ALL' | 'UNREAD' | 'WAITING';
+type QueueFilter = 'ALL' | 'MINE' | 'UNREAD' | 'WAITING';
 type MobilePanel = 'list' | 'chat' | 'crm';
 
 type NewThreadDraft = {
@@ -115,6 +117,13 @@ function waitLabel(minutes: number | null): string {
   return `${hours}ч ${rest}м`;
 }
 
+function queueScope(filter: QueueFilter): ChatWorkspaceScope {
+  if (filter === 'MINE') return 'mine';
+  if (filter === 'UNREAD') return 'unread';
+  if (filter === 'WAITING') return 'waiting';
+  return 'all';
+}
+
 async function fileToAttachment(file: File): Promise<ChatAttachmentInput> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -138,6 +147,7 @@ export function CallCenterChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [query, setQuery] = useState('');
+  const [serverQuery, setServerQuery] = useState('');
   const [channel, setChannel] = useState<ChannelFilter>('ALL');
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('ALL');
   const [status, setStatus] = useState<ChatStatus | ''>('');
@@ -164,33 +174,49 @@ export function CallCenterChatPage() {
   const selectedContact = selected?.contact;
   const activeUsers = useMemo(() => users.filter((user) => user.active), [users]);
 
+  const workspaceOptions = useMemo(() => ({
+    scope: queueScope(queueFilter),
+    q: serverQuery || undefined,
+    channel: channel === 'ALL' ? undefined : channel,
+    status: status || undefined,
+    limit: 200
+  }), [queueFilter, serverQuery, channel, status]);
+
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setServerQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const applyWorkspace = useCallback((workspace: Awaited<ReturnType<typeof fetchChatWorkspace>>) => {
+    setThreads(workspace.threads);
+    setUsers(workspace.users);
+    setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current)
+      ? current
+      : workspace.threads[0]?.id ?? '');
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const workspace = await fetchChatWorkspace();
-      setThreads(workspace.threads);
-      setUsers(workspace.users);
-      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current) ? current : workspace.threads[0]?.id ?? '');
+      applyWorkspace(await fetchChatWorkspace(workspaceOptions));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить колл-центр');
+      setError(nextError instanceof Error ? nextError.message : 'Не удалось загрузить IMDS Messaging');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyWorkspace, workspaceOptions]);
 
   const refreshLive = useCallback(async () => {
     if (liveRefreshInFlightRef.current) return;
     liveRefreshInFlightRef.current = true;
     try {
-      const workspace = await fetchChatWorkspace();
+      const workspace = await fetchChatWorkspace(workspaceOptions);
       const activeId = selectedIdRef.current;
       const activeThread = workspace.threads.find((thread) => thread.id === activeId);
-      setThreads(workspace.threads);
-      setUsers(workspace.users);
-      setSelectedId((current) => current && workspace.threads.some((thread) => thread.id === current) ? current : workspace.threads[0]?.id ?? '');
+      applyWorkspace(workspace);
       if (activeId && activeThread) {
         const nextMessages = await fetchChatMessages(activeId);
         setMessages((current) => messagesAreEqual(current, nextMessages) ? current : nextMessages);
@@ -204,7 +230,7 @@ export function CallCenterChatPage() {
     } finally {
       liveRefreshInFlightRef.current = false;
     }
-  }, []);
+  }, [applyWorkspace, workspaceOptions]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -254,19 +280,6 @@ export function CallCenterChatPage() {
   const unassignedTotal = threads.filter((thread) => !thread.assignedUserId && thread.status !== 'CLOSED').length;
   const pipelineAmount = threads.reduce((sum, thread) => sum + (thread.funnelLead?.amount || 0), 0);
   const selectedWait = selected?.lastMessage?.direction === 'INBOUND' ? minutesSince(selected.lastMessage.sentAt) : null;
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return threads.filter((thread) => {
-      if (queueFilter === 'UNREAD' && !(thread.unreadCount ?? 0)) return false;
-      if (queueFilter === 'WAITING' && thread.status !== 'PENDING') return false;
-      if (channel !== 'ALL' && thread.channel !== channel) return false;
-      if (status && thread.status !== status) return false;
-      if (!normalized) return true;
-      return [thread.title, thread.phone, thread.channel, thread.contact?.fullName, thread.contact?.source, thread.contact?.firstMessage, thread.lastMessage?.body]
-        .some((value) => value?.toLowerCase().includes(normalized));
-    });
-  }, [channel, query, queueFilter, status, threads]);
 
   useEffect(() => {
     const previous = document.title;
@@ -340,6 +353,7 @@ export function CallCenterChatPage() {
     try {
       const saved = await updateChatThread(selected.id, { status: next });
       setThreads((current) => current.map((thread) => thread.id === saved.id ? { ...thread, ...saved, contact: thread.contact, funnelLead: thread.funnelLead, assignedUser: thread.assignedUser, lastMessage: thread.lastMessage, unreadCount: thread.unreadCount } : thread));
+      void refreshLive();
     } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось изменить статус'); }
   };
 
@@ -350,6 +364,7 @@ export function CallCenterChatPage() {
       const saved = await updateChatThread(selected.id, { assignedUserId: assignedUserId || null });
       const assignedUser = users.find((user) => user.id === assignedUserId);
       setThreads((current) => current.map((thread) => thread.id === saved.id ? { ...thread, ...saved, contact: thread.contact, funnelLead: thread.funnelLead, lastMessage: thread.lastMessage, unreadCount: thread.unreadCount, assignedUser } : thread));
+      void refreshLive();
     } catch (nextError) { setActionError(nextError instanceof Error ? nextError.message : 'Не удалось назначить сотрудника'); }
   };
 
@@ -360,7 +375,13 @@ export function CallCenterChatPage() {
     setActionError('');
     try {
       const saved = await createChatThread({ channel: newThread.channel, title: newThread.title.trim() || undefined, phone: newThread.phone.trim() || undefined, assignedUserId: newThread.assignedUserId || undefined });
-      await load();
+      const workspace = await fetchChatWorkspace({ scope: 'all', limit: 200 });
+      applyWorkspace(workspace);
+      setQueueFilter('ALL');
+      setQuery('');
+      setServerQuery('');
+      setChannel('ALL');
+      setStatus('');
       setSelectedId(saved.id);
       setCreating(false);
       setNewThread(emptyThreadDraft());
@@ -395,12 +416,12 @@ export function CallCenterChatPage() {
       <div className="callcenter-toolbar"><span className="inbox-unread-pill">{unreadTotal} непрочитано</span><button className="button button-primary" type="button" onClick={() => { setCreating(true); setActionError(''); }}>+ Новый диалог</button></div>
     </header>
 
-    <section className="messaging-kpis" aria-label="Показатели Inbox">
+    <section className="messaging-kpis" aria-label="Показатели текущей выборки Inbox">
       <article><span className="kpi-icon"><MessageCircle size={17}/></span><div><small>Непрочитано</small><strong>{unreadTotal}</strong></div></article>
       <article><span className="kpi-icon waiting"><Clock3 size={17}/></span><div><small>Ожидают</small><strong>{pendingTotal}</strong></div></article>
       <article><span className="kpi-icon active"><Activity size={17}/></span><div><small>Активные чаты</small><strong>{openTotal}</strong></div></article>
       <article><span className="kpi-icon unassigned"><UsersRound size={17}/></span><div><small>Без менеджера</small><strong>{unassignedTotal}</strong></div></article>
-      <article className="wide"><div><small>Потенциал воронки</small><strong>{money.format(pipelineAmount)}</strong><em>по сделкам из текущего Inbox</em></div></article>
+      <article className="wide"><div><small>Потенциал выборки</small><strong>{money.format(pipelineAmount)}</strong><em>по сделкам в текущей очереди</em></div></article>
     </section>
 
     <section className={`inbox-workspace mobile-${mobilePanel}`}>
@@ -410,20 +431,20 @@ export function CallCenterChatPage() {
 
       {!loading && error === null && <main className="inbox-layout">
         <aside className="inbox-left">
-          <header className="inbox-panel-title"><div><span>Unified Inbox</span><small>{threads.length} диалогов</small></div><button type="button" title="Обновить" onClick={() => void refreshLive()}>↻</button></header>
+          <header className="inbox-panel-title"><div><span>Unified Inbox</span><small>{threads.length} диалогов в выборке</small></div><button type="button" title="Обновить" onClick={() => void refreshLive()}>↻</button></header>
           <div className="inbox-left-top">
-            <label className="inbox-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по чатам" />{query && <button type="button" onClick={() => setQuery('')}>×</button>}</label>
+            <label className="inbox-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по имени или телефону" />{query && <button type="button" onClick={() => setQuery('')}>×</button>}</label>
             <div className="inbox-queue-tabs">
               <button type="button" className={queueFilter === 'ALL' ? 'active' : ''} onClick={() => setQueueFilter('ALL')}>Все</button>
-              <button type="button" title="Фильтр по текущему сотруднику подключим после публикации client identity в Inbox API">Мои</button>
-              <button type="button" className={queueFilter === 'UNREAD' ? 'active' : ''} onClick={() => setQueueFilter('UNREAD')}>Непрочитанные <b>{unreadTotal}</b></button>
-              <button type="button" className={queueFilter === 'WAITING' ? 'active' : ''} onClick={() => setQueueFilter('WAITING')}>Ожидают <b>{pendingTotal}</b></button>
+              <button type="button" className={queueFilter === 'MINE' ? 'active' : ''} onClick={() => setQueueFilter('MINE')}>Мои</button>
+              <button type="button" className={queueFilter === 'UNREAD' ? 'active' : ''} onClick={() => setQueueFilter('UNREAD')}>Непрочитанные</button>
+              <button type="button" className={queueFilter === 'WAITING' ? 'active' : ''} onClick={() => setQueueFilter('WAITING')}>Ожидают</button>
             </div>
             <div className="inbox-channel-tabs">{(['ALL', 'WHATSAPP', 'INSTAGRAM', 'WEB', 'PHONE'] as ChannelFilter[]).map((value) => <button type="button" key={value} className={channel === value ? 'active' : ''} onClick={() => setChannel(value)}>{value === 'ALL' ? 'Все каналы' : CHANNEL_LABELS[value]}</button>)}</div>
             <label className="inbox-status-filter"><span>Статус</span><select value={status} onChange={(event) => setStatus(event.target.value as ChatStatus | '')}><option value="">Все</option><option value="OPEN">Открытые</option><option value="PENDING">Ожидают</option><option value="CLOSED">Закрытые</option></select></label>
           </div>
           <div className="inbox-thread-list">
-            {filtered.map((thread) => {
+            {threads.map((thread) => {
               const name = thread.contact?.fullName || thread.title || thread.phone || 'Без имени';
               const preview = thread.lastMessage?.body || thread.contact?.firstMessage || 'Новый диалог';
               return <button type="button" className={`inbox-thread ${thread.id === selectedId ? 'active' : ''}`} key={thread.id} onClick={() => selectThread(thread.id)}>
@@ -432,7 +453,7 @@ export function CallCenterChatPage() {
                 <span className="inbox-thread-meta"><time>{formatTime(thread.lastMessageAt)}</time>{Boolean(thread.unreadCount) && <b>{thread.unreadCount}</b>}</span>
               </button>;
             })}
-            {!filtered.length && <div className="inbox-empty">Диалогов по выбранным фильтрам нет</div>}
+            {!threads.length && <div className="inbox-empty">Диалогов по выбранным фильтрам нет</div>}
           </div>
         </aside>
 
