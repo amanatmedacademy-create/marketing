@@ -1,0 +1,73 @@
+/* IMDS Messaging v2 — structure added on top of the existing inbox styles. */
+.messaging-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:2px 2px 0}
+.messaging-hero>div:first-child span{display:block;color:var(--im-msg-primary);font-size:.67rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+.messaging-hero h1{margin:5px 0 4px;color:var(--im-msg-text);font-size:1.4rem;letter-spacing:-.035em}
+.messaging-hero p{margin:0;max-width:720px;color:var(--im-msg-muted);font-size:.74rem;line-height:1.5}
+
+.messaging-kpis{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr)) minmax(180px,1.4fr);gap:9px}
+.messaging-kpis article{min-height:68px;padding:11px 13px;display:flex;align-items:center;gap:10px;border:1px solid var(--im-msg-border);border-radius:12px;background:var(--im-msg-panel);box-shadow:0 4px 14px rgba(22,64,70,.035)}
+.messaging-kpis article>div{min-width:0;display:flex;flex-direction:column;gap:3px}
+.messaging-kpis small{color:var(--im-msg-muted);font-size:.58rem;font-weight:750}
+.messaging-kpis strong{color:var(--im-msg-text);font-size:1.05rem;letter-spacing:-.025em}
+.messaging-kpis em{color:var(--im-msg-muted);font-size:.54rem;font-style:normal}
+.messaging-kpis .kpi-icon{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:10px;background:var(--im-msg-primary-soft);color:var(--im-msg-primary)}
+.messaging-kpis .kpi-icon.waiting{background:#fff5e8;color:var(--im-msg-warning)}
+.messaging-kpis .kpi-icon.active{background:#edf9f2;color:var(--im-msg-success)}
+.messaging-kpis .kpi-icon.unassigned{background:#eef4fb;color:var(--im-msg-info)}
+html[data-theme='dark'] .messaging-kpis .kpi-icon.waiting{background:#3a2b19}
+html[data-theme='dark'] .messaging-kpis .kpi-icon.active{background:#173326}
+html[data-theme='dark'] .messaging-kpis .kpi-icon.unassigned{background:#172b3e}
+
+.inbox-panel-title{min-height:54px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--im-msg-border);background:var(--im-msg-panel)}
+.inbox-panel-title>div{display:flex;flex-direction:column;gap:2px}
+.inbox-panel-title span{color:var(--im-msg-text);font-size:.76rem;font-weight:900}
+.inbox-panel-title small{color:var(--im-msg-muted);font-size:.56rem}
+.inbox-panel-title button{width:30px;height:30px;border:1px solid var(--im-msg-border);border-radius:8px;background:var(--im-msg-panel-soft);color:var(--im-msg-primary);cursor:pointer}
+
+.inbox-queue-tabs{display:grid;grid-template-columns:repeat(4,max-content);gap:4px;overflow-x:auto;scrollbar-width:none}
+.inbox-queue-tabs::-webkit-scrollbar{display:none}
+.inbox-queue-tabs button{min-height:29px;padding:0 8px;display:flex;align-items:center;gap:5px;border:0;border-radius:7px;background:transparent;color:var(--im-msg-muted);font-size:.61rem;font-weight:800;white-space:nowrap;cursor:pointer}
+.inbox-queue-tabs button:hover{background:var(--im-msg-panel-soft);color:var(--im-msg-primary)}
+.inbox-queue-tabs button.active{background:var(--im-msg-primary-soft);color:var(--im-msg-primary-strong)}
+.inbox-queue-tabs button b{min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;border-radius:999px;background:var(--im-msg-primary);color:#fff;font-size:.54rem}
+
+.inbox-sla{min-height:30px;padding:6px 13px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--im-msg-border);background:#f0faf6;color:var(--im-msg-success);font-size:.6rem}
+.inbox-sla span{flex:1}
+.inbox-sla b{font-size:.55rem}
+.inbox-sla.late{background:#fff5ea;color:var(--im-msg-warning)}
+html[data-theme='dark'] .inbox-sla{background:#153226}
+html[data-theme='dark'] .inbox-sla.late{background:#382819}
+
+.inbox-ai-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+.inbox-send-button{display:grid;place-items:center}
+
+.inbox-crm-profile a{display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.inbox-pipeline-track{margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.inbox-pipeline-track i{height:5px;border-radius:999px;background:var(--im-msg-border);overflow:hidden}
+.inbox-pipeline-track i.done{background:var(--im-msg-primary)}
+
+.inbox-linked-module{padding:9px;display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;border:1px solid var(--im-msg-border);border-radius:9px;background:var(--im-msg-panel-soft)}
+.inbox-linked-module>svg{color:var(--im-msg-primary)}
+.inbox-linked-module div{min-width:0;display:flex;flex-direction:column;gap:2px}
+.inbox-linked-module strong{color:var(--im-msg-text);font-size:.64rem}
+.inbox-linked-module span{color:var(--im-msg-muted);font-size:.55rem;line-height:1.35}
+.inbox-linked-module>a{padding:6px 8px;border:1px solid var(--im-msg-border);border-radius:7px;background:var(--im-msg-panel);color:var(--im-msg-primary);font-size:.56rem;font-weight:750;text-decoration:none}
+
+.inbox-crm-buttons a,.inbox-crm-buttons button{padding:8px 10px;display:flex;align-items:center;gap:7px;border:1px solid var(--im-msg-border);border-radius:8px;background:var(--im-msg-panel-soft);color:var(--im-msg-text-2);font:700 .63rem/1 Inter,sans-serif;text-align:left;text-decoration:none;cursor:pointer}
+.inbox-crm-buttons a:hover,.inbox-crm-buttons button:hover{border-color:var(--im-msg-primary);color:var(--im-msg-primary)}
+
+@media(max-width:1320px){
+  .messaging-kpis{grid-template-columns:repeat(4,1fr)}
+  .messaging-kpis article.wide{grid-column:1/-1}
+}
+@media(max-width:900px){
+  .messaging-kpis{grid-template-columns:repeat(2,1fr)}
+  .messaging-kpis article.wide{grid-column:1/-1}
+}
+@media(max-width:760px){
+  .messaging-hero{align-items:stretch;flex-direction:column}
+  .messaging-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .messaging-kpis article{min-height:62px;padding:9px 10px}
+  .messaging-kpis article.wide{grid-column:1/-1}
+  .inbox-queue-tabs{grid-template-columns:repeat(4,max-content)}
+}
