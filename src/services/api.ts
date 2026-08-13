@@ -106,6 +106,30 @@ export interface MarketingCallOperatorSummary {
   lost_calls: number;
 }
 
+export interface TelephonyAnalyticsMetric {
+  name: string;
+  calls: number;
+  completed: number;
+  appointments: number;
+  followUps: number;
+  scored: number;
+  averageQuality: number | null;
+  averageDuration: number;
+  linkedLeads: number;
+  funnelAppointments: number;
+  arrived: number;
+  sales: number;
+  revenue: number;
+}
+
+export interface TelephonyAnalyticsResponse {
+  overall: TelephonyAnalyticsMetric;
+  selected: TelephonyAnalyticsMetric;
+  operators: TelephonyAnalyticsMetric[];
+  recent: MarketingCall[];
+  range: { from?: string | null; to?: string | null; operator?: string | null };
+}
+
 export interface DashboardDailyRow { date: string; leads: number; target_leads: number; arrived: number; sales: number; spend: number; revenue: number; }
 export interface SourceSummaryRow { source: string; platform: string; leads: number; target_leads: number; arrived: number; sales: number; spend: number; revenue: number; }
 export interface AdSummaryRow { row_key: string; source?: string | null; platform: string; account_id?: string | null; account_name?: string | null; campaign_id?: string | null; campaign_name: string; adset_id?: string | null; adset_name?: string | null; ad_id?: string | null; creative_name?: string | null; creative_type?: string | null; status?: string | null; impressions: number; clicks: number; spend: number; leads: number; target_leads: number; arrived: number; sales: number; revenue: number; date_from?: string | null; date_to?: string | null; }
@@ -140,11 +164,20 @@ export const marketingApi = {
   createLead: (lead: Partial<MarketingLead>) => apiRequest<MarketingLead[]>('/leads', { method: 'POST', body: JSON.stringify(lead) }),
   updateLead: (id: string, patch: Partial<MarketingLead>) => apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteLead: (id: string) => apiRequest<MarketingLead[]>(`/leads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  calls: (filters?: { operator?: string; limit?: number }) => {
+  calls: (filters?: { operator?: string; limit?: number; from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (filters?.operator) params.set('operator', filters.operator);
     if (filters?.limit) params.set('limit', String(filters.limit));
+    if (filters?.from) params.set('from', filters.from);
+    if (filters?.to) params.set('to', filters.to);
     return apiRequest<MarketingCall[]>(`/calls${params.size ? `?${params}` : ''}`);
+  },
+  callAnalytics: (filters?: { operator?: string; from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.operator) params.set('operator', filters.operator);
+    if (filters?.from) params.set('from', filters.from);
+    if (filters?.to) params.set('to', filters.to);
+    return apiRequest<TelephonyAnalyticsResponse>(`/calls/analytics${params.size ? `?${params}` : ''}`);
   },
   callOperators: () => apiRequest<MarketingCallOperatorSummary[]>('/calls/operators'),
   dashboard: (filters?: { from?: string; to?: string }) => {

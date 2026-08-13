@@ -1,0 +1,29 @@
+/* The dial keypad must render above the operator/supervisor workspace, not under it. */
+.marketing-shell .telephony-v5__toolbar {
+  position: relative;
+  z-index: 600;
+  overflow: visible;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer {
+  position: relative;
+  z-index: 610;
+  overflow: visible;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-dialer__keypad-anchor {
+  position: relative;
+  z-index: 620;
+  overflow: visible;
+}
+
+.marketing-shell .telephony-v5__toolbar .telephony-keypad-popover {
+  z-index: 700;
+  isolation: isolate;
+}
+
+.marketing-shell .telephony-operator,
+.marketing-shell .telephony-management {
+  position: relative;
+  z-index: 1;
+}

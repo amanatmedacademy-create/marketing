@@ -7,6 +7,7 @@ import '../telephony-page.css';
 import '../telephony-layout-hotfix.css';
 import '../telephony-data-inspector-fix.css';
 import '../telephony-management-filters.css';
+import '../telephony-keypad-overlay-fix.css';
 
 type TelephonyMode = 'operator' | 'supervisor' | 'analytics';
 
