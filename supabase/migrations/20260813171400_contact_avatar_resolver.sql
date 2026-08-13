@@ -1,0 +1,2 @@
+-- Contact Avatar Resolver schema applied through the connected Supabase migration workflow on 2026-08-13.
+-- The production schema adds crm_contact_avatars and the private contact-avatars Storage bucket.
