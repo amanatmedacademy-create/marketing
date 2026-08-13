@@ -23,6 +23,7 @@ import { handleMetaSdkRequest, type MetaSdkEnv } from './metaSdk';
 import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelection';
 import { guardMetaSignedWebhook } from './metaWebhookGuard';
 import { handleOperationsRequest } from './operations';
+import { handlePlatformOAuth } from './platformOAuth';
 import { handleSalesFunnel } from './salesFunnel';
 import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
@@ -69,6 +70,8 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname === '/api/integrations/meta/start'
     || pathname === '/api/integrations/meta/connect'
     || pathname === '/api/integrations/meta/oauth-config'
+    || pathname === '/api/integrations/google/oauth/start'
+    || pathname === '/api/integrations/tiktok/oauth/start'
     || pathname === '/api/integrations/meta/sdk-config'
     || pathname === '/api/integrations/meta/sdk-connect'
     || pathname === '/api/integrations/meta/catalog'
@@ -141,8 +144,6 @@ export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
-    // Keep routing on an independent clone. Never reconstruct from the original request before
-    // audit/pre-route handlers have had a chance to clone or consume their own body stream.
     const forwardingSource = request.clone() as Request;
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
@@ -153,6 +154,10 @@ export default {
 
       if (url.pathname === '/api/integrations/meta/callback') {
         const callbackResponse = await handleMetaOAuthRequest(request, env, url, ctx);
+        if (callbackResponse) return callbackResponse;
+      }
+      if (url.pathname === '/api/integrations/google/oauth/callback' || url.pathname === '/api/integrations/tiktok/oauth/callback') {
+        const callbackResponse = await handlePlatformOAuth(request, env, url);
         if (callbackResponse) return callbackResponse;
       }
 
@@ -196,6 +201,8 @@ export default {
       const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
       if (webhookGuard) return webhookGuard;
 
+      const platformOAuth = await handlePlatformOAuth(forwardedRequest, runtimeEnv, url);
+      if (platformOAuth) return platformOAuth;
       const clinicSchedule = await handleClinicSchedule(forwardedRequest, runtimeEnv, url);
       if (clinicSchedule) return clinicSchedule;
       const callTranscription = await handleCallTranscription(forwardedRequest, runtimeEnv, url);
