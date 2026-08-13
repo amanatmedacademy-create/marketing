@@ -2,6 +2,7 @@ import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
 import { resolveCompanyId } from './companyContext';
+import { handleContactAvatars } from './contactAvatars';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import { runMessagingSlaScan } from './messagingSla';
 import type { RecoveryEnv } from './recoveryEngine';
@@ -99,6 +100,14 @@ export default {
         const denied = await authorizeApplicationRequest(request, env, user);
         if (denied) return denied;
         forwardedRequest = trustedRequest(request, user.role, user.id);
+
+        if (url.pathname.startsWith('/api/contact-avatars/')) {
+          const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
+          const avatarCompanyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
+          const avatarResponse = await handleContactAvatars(forwardedRequest, { ...env, CURRENT_COMPANY_ID: avatarCompanyId } as unknown as Env, url);
+          if (avatarResponse) return avatarResponse;
+        }
+
         if (url.pathname.startsWith('/api/tasks')) {
           if (url.pathname.startsWith('/api/tasks/notifications')) {
             const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
