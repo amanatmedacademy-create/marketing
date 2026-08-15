@@ -1,0 +1,243 @@
+/* IMDS Intelligence must use the same visual language as the rest of IMDS Marketing.
+   This file is loaded after legacy/module CSS and intentionally overrides the first
+   standalone Intelligence mock palette with the canonical --imds-* design tokens. */
+
+.intelligence-page{
+  color:var(--imds-text)!important;
+  background:transparent!important;
+  border:1px solid var(--imds-border)!important;
+  border-radius:14px!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  overflow:hidden!important;
+}
+
+.intelligence-sidebar{
+  background:var(--imds-sidebar)!important;
+  color:var(--imds-text)!important;
+  border-right:1px solid var(--imds-border)!important;
+  backdrop-filter:blur(24px) saturate(120%)!important;
+}
+
+.intelligence-main{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+}
+
+.intelligence-brand-mark,
+.intelligence-welcome-icon,
+.intelligence-assistant-avatar,
+.intelligence-avatar{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+  box-shadow:none!important;
+}
+
+.intelligence-brand h2,
+.intelligence-title h1,
+.intelligence-welcome h2,
+.intelligence-chat-row strong,
+.intelligence-context-card strong,
+.intelligence-user strong,
+.intelligence-answer-text h3{
+  color:var(--imds-text)!important;
+}
+
+.intelligence-brand p,
+.intelligence-title p,
+.intelligence-history-label,
+.intelligence-chat-row small,
+.intelligence-user small,
+.intelligence-live,
+.intelligence-message-meta,
+.intelligence-hint,
+.intelligence-welcome>p{
+  color:var(--imds-muted)!important;
+}
+
+.intelligence-new-chat{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+  border:1px solid var(--imds-primary)!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+}
+.intelligence-new-chat:hover{
+  background:var(--imds-primary-strong)!important;
+  border-color:var(--imds-primary-strong)!important;
+}
+
+.intelligence-chat-row{
+  color:var(--imds-text-soft)!important;
+  background:transparent!important;
+  border:1px solid transparent!important;
+  border-radius:10px!important;
+}
+.intelligence-chat-row:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--imds-border)!important;
+}
+.intelligence-chat-row.active{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+  border-color:color-mix(in srgb,var(--imds-primary) 20%,transparent)!important;
+  box-shadow:inset 3px 0 0 var(--imds-primary)!important;
+}
+.intelligence-chat-row.active strong,
+.intelligence-chat-row.active>span:first-child{
+  color:var(--imds-primary-strong)!important;
+}
+.intelligence-chat-row>span:first-child{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+  border:1px solid var(--imds-border)!important;
+}
+.intelligence-row-actions button{
+  color:var(--imds-muted)!important;
+  background:transparent!important;
+}
+.intelligence-row-actions button:hover{
+  color:var(--imds-danger)!important;
+  background:color-mix(in srgb,var(--imds-danger) 10%,transparent)!important;
+}
+.intelligence-sidebar-foot{
+  border-color:var(--imds-border)!important;
+}
+
+.intelligence-top{
+  background:var(--imds-topbar)!important;
+  border-bottom:1px solid var(--imds-border)!important;
+  backdrop-filter:blur(20px) saturate(120%)!important;
+}
+.intelligence-title span{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+  border:1px solid color-mix(in srgb,var(--imds-primary) 18%,var(--imds-border))!important;
+}
+.intelligence-live i{
+  background:var(--imds-success)!important;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--imds-success) 12%,transparent)!important;
+}
+
+.intelligence-context{
+  background:transparent!important;
+}
+.intelligence-context-card{
+  background:var(--imds-glass)!important;
+  color:var(--imds-text)!important;
+  border:1px solid var(--imds-border)!important;
+  border-radius:13px!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+}
+.intelligence-context-card div{
+  color:var(--imds-muted)!important;
+}
+.intelligence-context-card svg{
+  color:var(--imds-primary)!important;
+}
+.intelligence-context-card small{
+  color:var(--imds-success)!important;
+}
+
+.intelligence-messages{
+  background:transparent!important;
+}
+.intelligence-prompt{
+  background:var(--imds-glass)!important;
+  color:var(--imds-text-soft)!important;
+  border:1px solid var(--imds-border)!important;
+  border-radius:12px!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+.intelligence-prompt:hover{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+  border-color:var(--imds-border-strong)!important;
+}
+
+.intelligence-user-bubble{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+  border:1px solid var(--imds-primary)!important;
+  border-radius:14px 14px 4px 14px!important;
+  box-shadow:none!important;
+}
+.intelligence-user-bubble p,
+.intelligence-user-bubble small{
+  color:#fff!important;
+}
+
+.intelligence-assistant-card{
+  background:var(--imds-glass)!important;
+  color:var(--imds-text)!important;
+  border:1px solid var(--imds-border)!important;
+  border-radius:14px!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(18px) saturate(110%)!important;
+}
+.intelligence-answer-text,
+.intelligence-answer-text p{
+  color:var(--imds-text-soft)!important;
+}
+.intelligence-bullet span{
+  color:var(--imds-primary)!important;
+}
+.intelligence-loading i{
+  background:var(--imds-primary)!important;
+}
+
+.intelligence-composer-wrap{
+  background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--imds-surface-2) 92%,transparent) 34%)!important;
+}
+.intelligence-composer{
+  background:var(--imds-glass-strong)!important;
+  border:1px solid var(--imds-border)!important;
+  border-radius:14px!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(20px) saturate(115%)!important;
+}
+.intelligence-composer:focus-within{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--imds-primary) 13%,transparent)!important;
+}
+.intelligence-composer textarea{
+  background:transparent!important;
+  color:var(--imds-text)!important;
+  border:0!important;
+  box-shadow:none!important;
+}
+.intelligence-composer textarea:focus{
+  border:0!important;
+  box-shadow:none!important;
+}
+.intelligence-composer textarea::placeholder{
+  color:var(--imds-muted)!important;
+}
+.intelligence-send{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+  border:1px solid var(--imds-primary)!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+}
+.intelligence-send:hover:not(:disabled){
+  background:var(--imds-primary-strong)!important;
+  border-color:var(--imds-primary-strong)!important;
+}
+
+/* Match the platform's density and radius scale. */
+.intelligence-page button,
+.intelligence-page textarea{
+  font-family:inherit!important;
+}
+
+@media(max-width:800px){
+  .intelligence-page{
+    border-radius:12px!important;
+  }
+  .intelligence-main{
+    background:transparent!important;
+  }
+}
