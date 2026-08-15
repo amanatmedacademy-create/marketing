@@ -21,4 +21,4 @@ META_GRAPH_VERSION = "v23.0"
 META_OAUTH_REDIRECT_URI = "https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback"
 META_WABA_CONFIG_ID = "2140462206866016"
 
-# Deployment marker: Supabase light/dark theme backgrounds
+# Deployment marker: IMDS Intelligence OpenAI secret rollout 2026-08-15
