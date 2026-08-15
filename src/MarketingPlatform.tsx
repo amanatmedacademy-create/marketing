@@ -24,7 +24,7 @@ import { WhatsAppCampaignsPage } from './pages/MarketingSuitePages';
 import { SafeDataQualityPage, SafeWhatsAppTemplatesPage } from './pages/PlatformQualitySafePages';
 import Customer360Page from './pages/Customer360Page';
 import GrowthEnginePage from './pages/GrowthEnginePage';
-import { MarketingAiPage } from './pages/StrategicPlatformPages';
+import MarketingAiPage from './pages/MarketingAiPage';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import ContextualTasksPage from './pages/ContextualTasksPage';
 import { useAuth } from './components/AuthGate';
@@ -57,7 +57,7 @@ const navigation: NavGroup[] = [
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
     { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports' },
-    { to: '/assistant', label: 'IMDS AI', icon: Bot, moduleId: 'analytics.reports' },
+    { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
