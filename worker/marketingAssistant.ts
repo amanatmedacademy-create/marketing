@@ -70,16 +70,96 @@ function aggregateSources(rows: Row[]): Row[] {
   return [...grouped.values()].sort((a, b) => number(b.revenue) - number(a.revenue)).slice(0, 30);
 }
 
+function aggregateCalls(rows: Row[]): Row {
+  const statusCounts: Record<string, number> = {};
+  const resultCounts: Record<string, number> = {};
+  const operatorCounts: Record<string, number> = {};
+  let appointments = 0;
+  let totalDuration = 0;
+  let completedDurationCount = 0;
+  let qualityTotal = 0;
+  let qualityCount = 0;
+  let withoutNextAction = 0;
+  let lostCalls = 0;
+
+  for (const row of rows) {
+    const status = text(row.call_status) || 'UNKNOWN';
+    const result = text(row.call_result) || 'Не указан';
+    const operator = text(row.operator_name) || 'Не назначен';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+    resultCounts[result] = (resultCounts[result] || 0) + 1;
+    operatorCounts[operator] = (operatorCounts[operator] || 0) + 1;
+    if (row.appointment_created === true) appointments += 1;
+    const duration = number(row.duration_seconds);
+    if (duration > 0) { totalDuration += duration; completedDurationCount += 1; }
+    const quality = Number(row.quality_score);
+    if (Number.isFinite(quality) && quality > 0) { qualityTotal += quality; qualityCount += 1; }
+    if (!text(row.next_action)) withoutNextAction += 1;
+    if (text(row.loss_reason)) lostCalls += 1;
+  }
+
+  return {
+    total: rows.length,
+    statusCounts,
+    resultCounts,
+    appointments,
+    appointmentRate: rows.length ? Number((appointments / rows.length * 100).toFixed(1)) : 0,
+    averageDurationSeconds: completedDurationCount ? Math.round(totalDuration / completedDurationCount) : 0,
+    averageQualityScore: qualityCount ? Number((qualityTotal / qualityCount).toFixed(1)) : null,
+    withoutNextAction,
+    lostCalls,
+    topOperators: Object.entries(operatorCounts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([operator, calls]) => ({ operator, calls })),
+  };
+}
+
+function aggregateErrors(rows: Row[]): Row {
+  const statusCounts: Record<string, number> = {};
+  const sourceCounts: Record<string, number> = {};
+  let repeats = 0;
+  for (const row of rows) {
+    const status = text(row.status) || 'UNKNOWN';
+    const source = text(row.source) || 'unknown';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+    repeats += number(row.repeat_count);
+  }
+  return {
+    total: rows.length,
+    open: statusCounts.OPEN || 0,
+    retrying: statusCounts.RETRYING || 0,
+    resolved: statusCounts.RESOLVED || 0,
+    repeats,
+    bySource: Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([source, count]) => ({ source, count })),
+    recent: rows.slice(0, 30).map((row) => ({ source: text(row.source), endpoint: text(row.endpoint), code: text(row.code), status: text(row.status), repeatCount: number(row.repeat_count), lastSeenAt: text(row.last_seen_at) })),
+  };
+}
+
+function aggregateAudit(rows: Row[]): Row {
+  const actionCounts: Record<string, number> = {};
+  for (const row of rows) {
+    const action = text(row.action) || 'unknown';
+    actionCounts[action] = (actionCounts[action] || 0) + 1;
+  }
+  return {
+    total: rows.length,
+    actions: Object.entries(actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([action, count]) => ({ action, count })),
+    recent: rows.slice(0, 40).map((row) => ({ action: text(row.action), entityType: text(row.entity_type), createdAt: text(row.created_at) })),
+  };
+}
+
 async function businessContext(env: MarketingAssistantEnv): Promise<Row> {
   const companyId = text(env.CURRENT_COMPANY_ID);
   if (!companyId) throw new Error('Текущая клиника не определена для IMDS AI');
   const companyFilter = `company_id=eq.${encodeURIComponent(companyId)}`;
 
-  const [dailyMetrics, leads, ads, runs] = await Promise.all([
+  const [dailyMetrics, leads, ads, runs, calls, errors, auditRows] = await Promise.all([
     db<Row[]>(env, `marketing_daily_metrics?select=date,source,platform,leads,target_leads,arrived,sales,spend,revenue&${companyFilter}&order=date.desc&limit=3000`).catch(() => []),
     db<Row[]>(env, `marketing_leads?select=stage,source,platform,manager,sale_amount,created_at,utm_source,utm_campaign&${companyFilter}&order=created_at.desc&limit=1000`).catch(() => []),
     db<Row[]>(env, `marketing_ads?select=platform,campaign_name,spend,leads,sales,revenue,impressions,clicks&${companyFilter}&order=spend.desc&limit=100`).catch(() => []),
-    db<Row[]>(env, `integration_runs?select=source,status,fetched,written,error,started_at,finished_at&${companyFilter}&order=started_at.desc&limit=30`).catch(() => []),
+    db<Row[]>(env, `integration_runs?select=source,status,fetched,written,error,started_at,finished_at&${companyFilter}&order=started_at.desc&limit=50`).catch(() => []),
+    db<Row[]>(env, `marketing_calls?select=call_status,call_result,appointment_created,duration_seconds,quality_score,next_action,loss_reason,operator_name,started_at&${companyFilter}&order=started_at.desc&limit=1000`).catch(() => []),
+    db<Row[]>(env, `error_logs?select=source,endpoint,code,status,repeat_count,last_seen_at&${companyFilter}&order=last_seen_at.desc&limit=200`).catch(() => []),
+    db<Row[]>(env, `audit_logs?select=action,entity_type,created_at&${companyFilter}&order=created_at.desc&limit=300`).catch(() => []),
   ]);
 
   const stageCounts: Record<string, number> = {};
@@ -99,6 +179,9 @@ async function businessContext(env: MarketingAssistantEnv): Promise<Row> {
     sources: aggregateSources(dailyMetrics),
     topAds: ads.slice(0, 30),
     integrations: runs,
+    telephony: aggregateCalls(calls),
+    systemErrors: aggregateErrors(errors),
+    audit: aggregateAudit(auditRows),
     webAnalytics: { available: false, reason: 'Источник web analytics пока не имеет подтверждённого tenant scope и не передаётся в AI.' },
     crm: { leadCount: leads.length, leadRevenue, stageCounts, dataQuality: { missingUtm, unassigned } },
   };
@@ -121,7 +204,7 @@ export async function handleMarketingAssistantRequest(request: Request, env: Mar
       body: JSON.stringify({
         model: text(env.OPENAI_MODEL) || 'gpt-5',
         input: [
-          { role: 'system', content: 'Ты IMDS Marketing AI. Анализируй только переданные агрегированные данные текущей клиники. Отвечай по-русски, кратко и предметно. Не выдумывай отсутствующие показатели. Отделяй факт от рекомендации. Для рекомендаций указывай конкретный следующий шаг.' },
+          { role: 'system', content: 'Ты IMDS Intelligence — AI Marketing Assistant внутри IMDS Marketing. Анализируй только переданные данные текущей клиники. Ты можешь проводить аудит маркетинга, CRM, рекламы, телефонии, интеграций, системных ошибок и журнала аудита. Отвечай по-русски, структурированно и предметно. Не выдумывай отсутствующие показатели. Явно отделяй подтверждённые факты от гипотез и рекомендаций. Если данных недостаточно — так и скажи. Для проблем указывай приоритет, влияние и конкретный следующий шаг. Никогда не раскрывай секреты, токены или персональные данные.' },
           { role: 'user', content: `Вопрос: ${question}\n\nТекущие данные IMDS Marketing:\n${JSON.stringify(context)}` },
         ],
       }),
