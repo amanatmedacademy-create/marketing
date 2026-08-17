@@ -1,4 +1,4 @@
-name: VPS Auth Inspect
+name: VPS Auth Repair
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  repair:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -28,7 +28,7 @@ jobs:
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      - name: Inspect password hash format
+      - name: Repair admin credential and verify login
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -38,5 +38,14 @@ jobs:
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
-            docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select split_part(p.password_hash,\$\$\$\$,1),split_part(p.password_hash,\$\$\$\$,2),length(split_part(p.password_hash,\$\$\$\$,3)),length(split_part(p.password_hash,\$\$\$\$,4)),array_length(string_to_array(p.password_hash,\$\$\$\$),1) from imds_auth_passwords p join imds_auth_users u on u.id=p.user_id where lower(u.email)=lower(\$\$admin@imds.kz\$\$);"
+            TEMP_ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc A-Za-z0-9 | head -c 20)"
+            export TEMP_ADMIN_PASSWORD
+            HASH="$(python3 -c "import os,hashlib,base64; p=os.environ.get(\"TEMP_ADMIN_PASSWORD\").encode(); s=os.urandom(24); b=lambda x: base64.urlsafe_b64encode(x).decode().rstrip(\"=\"); print(\"pbkdf2_sha256\$600000\$\"+b(s)+\"\$\"+b(hashlib.pbkdf2_hmac(\"sha256\",p,s,600000,32)))")"
+            test -n "$HASH"
+            docker exec imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing -c "update imds_auth_passwords set password_hash=\$\$${HASH}\$\$, updated_at=now() where user_id=(select id from imds_auth_users where lower(email)=lower(\$\$admin@imds.kz\$\$)); insert into imds_auth_identities(user_id,provider,provider_subject,email,metadata) select id,\$\$password\$\$,\$\$admin@imds.kz\$\$,\$\$admin@imds.kz\$\$,\$\${}\$\$::jsonb from imds_auth_users where lower(email)=lower(\$\$admin@imds.kz\$\$) on conflict (provider,provider_subject) do update set user_id=excluded.user_id,email=excluded.email,updated_at=now();"
+            PAYLOAD="$(printf "{\"email\":\"admin@imds.kz\",\"password\":\"%s\",\"remember\":true}" "$TEMP_ADMIN_PASSWORD")"
+            RESPONSE="$(curl --fail --silent --show-error --max-time 20 -H "content-type: application/json" -d "$PAYLOAD" http://127.0.0.1:8787/api/auth/login)"
+            echo "$RESPONSE" | grep -q "access_token"
+            echo "ADMIN_LOGIN_VERIFIED=true"
+            echo "TEMP_ADMIN_PASSWORD=$TEMP_ADMIN_PASSWORD"
           '
