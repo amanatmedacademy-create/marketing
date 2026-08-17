@@ -23,6 +23,7 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Validate deployment access
         shell: bash
@@ -31,11 +32,12 @@ jobs:
           test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
           test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
           test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          test -n "$DEPLOY_SHA" || { echo 'DEPLOY_SHA is missing'; exit 1; }
 
-      - name: Checkout
+      - name: Checkout tested revision
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -98,7 +100,7 @@ jobs:
           set -euo pipefail
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           export SSHPASS
-          RELEASE_ID="${GITHUB_SHA:0:12}"
+          RELEASE_ID="${DEPLOY_SHA:0:12}"
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "/tmp/imds-install-release.sh /tmp/imds-marketing-release.tgz '$RELEASE_ID'"
 
       - name: Verify production health
