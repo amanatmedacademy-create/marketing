@@ -102,7 +102,7 @@ function AssistantText({ content }: { content: string }) {
 }
 
 const quickPrompts = [
-  'Проведи полный аудит IMDS Marketing и назови критические проблемы.',
+  'Проведи полный аудит BELES и назови критические проблемы.',
   'Почему могла снизиться эффективность рекламы за последний период?',
   'Проверь CRM: где мы теряем лиды и что исправить первым?',
   'Проверь звонки и скорость обработки лидов.',
@@ -270,7 +270,7 @@ export function MarketingAiPage() {
         <div className="intelligence-messages" ref={scrollRef}>
           {!active?.messages.length && <div className="intelligence-welcome">
             <div className="intelligence-welcome-icon"><Sparkles size={25} /></div>
-            <h2>Что проверить в IMDS Marketing?</h2>
+            <h2>Что проверить в BELES?</h2>
             <p>Задавайте вопросы по маркетингу, CRM, рекламе, аналитике, интеграциям и работе системы. IMDS Intelligence использует только данные текущей клиники, доступные серверному AI-контексту.</p>
             <div className="intelligence-prompts">{quickPrompts.map((prompt) => <button type="button" className="intelligence-prompt" key={prompt} onClick={() => void ask(prompt)}>{prompt}</button>)}</div>
           </div>}

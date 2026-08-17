@@ -183,7 +183,7 @@ export default function MarketingDashboardSummary() {
   return <div className="imds-dashboard">
     <header className="imds-dashboard-hero">
       <div>
-        <span className="imds-dashboard-eyebrow">IMDS MARKETING</span>
+        <span className="imds-dashboard-eyebrow">BELES</span>
         <h1>Dashboard</h1>
         <p>Единая картина маркетинга, воронки и выручки. Все денежные показатели — в {displayCurrency}.</p>
       </div>

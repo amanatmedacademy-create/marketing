@@ -72,6 +72,6 @@ export default function SubscriptionStatusLayer({ children }: { children: ReactN
       {billing.paymentMethods.length > 0 && <span className="subscription-state-banner__payment"><CreditCard size={14}/>{billing.paymentMethods[0].displayName}</span>}
     </div>}
     {paymentWarning && billing && <div className="subscription-state-banner subscription-state-banner--warning" role="status"><TriangleAlert size={17}/><div><strong>Требуется оплата</strong><span>Есть задолженность по подписке. Проверьте Billing Center до окончания льготного периода.</span></div></div>}
-    {statusText && !readOnly && !paymentWarning && <div title="Статус подписки IMDS Marketing" className="subscription-status-pill"><TimerReset size={15}/><span>{statusText}</span></div>}
+    {statusText && !readOnly && !paymentWarning && <div title="Статус подписки BELES" className="subscription-status-pill"><TimerReset size={15}/><span>{statusText}</span></div>}
   </>;
 }

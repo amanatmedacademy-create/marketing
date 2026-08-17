@@ -601,7 +601,7 @@ export default function IntegrationManager({ children }: IntegrationManagerProps
         </header>
         <div className="iv2-history">
           <div className="iv2-history-head">
-            <div><strong>Синхронизация данных</strong><span>После сохранения credentials выберите период и загрузите данные в общий контур IMDS Marketing.</span></div>
+            <div><strong>Синхронизация данных</strong><span>После сохранения credentials выберите период и загрузите данные в общий контур BELES.</span></div>
             <Database size={20}/>
           </div>
           <div className="iv2-history-periods">
