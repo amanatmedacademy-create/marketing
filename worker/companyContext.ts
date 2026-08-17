@@ -1,8 +1,6 @@
-export interface CompanyContextEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  IMDS_LOCAL_DB_URL?: string;
-  IMDS_LOCAL_SERVICE_ROLE_KEY?: string;
+import { localDataBase, localDataHeaders, type LocalDataEnv } from './localData';
+
+export interface CompanyContextEnv extends LocalDataEnv {
   DEFAULT_COMPANY_ID?: string;
   CURRENT_COMPANY_ID?: string;
 }
@@ -26,28 +24,11 @@ function assertUuid(value: string, label: string): string {
   return value;
 }
 
-function dataBase(env: CompanyContextEnv): string {
-  return (text(env.IMDS_LOCAL_DB_URL) || text(env.SUPABASE_URL)).replace(/\/$/, '');
-}
-
-function dataKey(env: CompanyContextEnv): string {
-  return text(env.IMDS_LOCAL_SERVICE_ROLE_KEY) || text(env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-function headers(env: CompanyContextEnv): HeadersInit {
-  const key = dataKey(env);
-  return {
-    apikey: key,
-    authorization: `Bearer ${key}`,
-    accept: 'application/json',
-  };
-}
-
 async function activeMemberships(env: CompanyContextEnv, userId: string): Promise<MembershipRow[]> {
   assertUuid(userId, 'User ID');
   const response = await fetch(
-    `${dataBase(env)}/rest/v1/crm_company_members?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=company_id,role,status&order=created_at.asc&limit=100`,
-    { headers: headers(env) },
+    `${localDataBase(env)}/rest/v1/crm_company_members?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=company_id,role,status&order=created_at.asc&limit=100`,
+    { headers: localDataHeaders(env) },
   );
   const body = await response.text();
   if (!response.ok) throw new Error(`Company membership context: ${response.status} ${body}`);
@@ -64,8 +45,8 @@ export async function listUserCompanies(env: CompanyContextEnv, userId: string):
   const ids = [...new Set(memberships.map((row) => text(row.company_id)).filter((id) => UUID_PATTERN.test(id)))];
   if (!ids.length) return [];
   const response = await fetch(
-    `${dataBase(env)}/rest/v1/crm_companies?id=in.(${ids.map(encodeURIComponent).join(',')})&select=id,name,slug&order=name.asc`,
-    { headers: headers(env) },
+    `${localDataBase(env)}/rest/v1/crm_companies?id=in.(${ids.map(encodeURIComponent).join(',')})&select=id,name,slug&order=name.asc`,
+    { headers: localDataHeaders(env) },
   );
   const body = await response.text();
   if (!response.ok) throw new Error(`Company list context: ${response.status} ${body}`);
@@ -100,7 +81,7 @@ export async function resolveCompanyId(env: CompanyContextEnv, userId?: string):
   const configured = text(env.DEFAULT_COMPANY_ID);
   if (configured) return assertUuid(configured, 'DEFAULT_COMPANY_ID');
 
-  const response = await fetch(`${dataBase(env)}/rest/v1/crm_companies?select=id&order=created_at.asc&limit=2`, { headers: headers(env) });
+  const response = await fetch(`${localDataBase(env)}/rest/v1/crm_companies?select=id&order=created_at.asc&limit=2`, { headers: localDataHeaders(env) });
   const body = await response.text();
   if (!response.ok) throw new Error(`Company context: ${response.status} ${body}`);
 
