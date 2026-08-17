@@ -36,7 +36,7 @@ function sanitizedRequest(request: Request): Request {
 }
 
 function effectiveRole(user: { role: string; platformRole?: string }): string {
-  return user.platformRole === 'super_admin' ? 'super_admin' : user.role;
+  return user.platformRole === 'super_admin' ? 'administrator' : user.role;
 }
 
 function trustedRequest(request: Request, role: string, userId: string): Request {
@@ -82,10 +82,11 @@ export default {
         if (!user) return json({ error: 'Необходим вход в систему', code: 'AUTH_REQUIRED' }, 401);
         if (user.status !== 'active') return json({ error: 'Пользователь не активен', code: 'USER_INACTIVE' }, 403);
 
-        const denied = await authorizeApplicationRequest(cleanRequest, env, user);
+        const role = effectiveRole(user);
+        const denied = await authorizeApplicationRequest(cleanRequest, env, { ...user, role });
         if (denied) return denied;
 
-        forwardedRequest = trustedRequest(cleanRequest, effectiveRole(user), user.id);
+        forwardedRequest = trustedRequest(cleanRequest, role, user.id);
 
         if (url.pathname.startsWith('/api/contact-avatars/')) {
           const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();

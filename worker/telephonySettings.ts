@@ -11,7 +11,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const role = (request: Request) => text(request.headers.get('x-amanat-auth-role')).toLowerCase();
-const isAdmin = (request: Request) => role(request) === 'administrator';
+const isAdmin = (request: Request) => ['administrator', 'super_admin'].includes(role(request));
 const asBool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
 const asInt = (value: unknown, fallback: number, min: number, max: number) => {
   const parsed = Number(value);
