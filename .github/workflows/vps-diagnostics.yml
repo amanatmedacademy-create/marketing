@@ -28,7 +28,7 @@ jobs:
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      - name: Inspect PostgREST
+      - name: Recover PostgREST
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -37,24 +37,69 @@ jobs:
           export SSHPASS
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
-            set -u
+            set -euo pipefail
+            echo "=== host resource limits ==="
+            free -h || true
+            printf "threads="; ps -eLf | wc -l || true
+            printf "ulimit_nproc="; ulimit -u || true
+            printf "kernel_threads_max="; cat /proc/sys/kernel/threads-max || true
+            printf "cgroup_pids_max="; cat /sys/fs/cgroup/pids.max 2>/dev/null || true
+            printf "docker_tasks_max="; systemctl show docker -p TasksMax --value || true
+
             set -a
             . /etc/imds-postgres.env
             set +a
-            echo "=== containers ==="
-            docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|imds-postgres|imds-postgrest" || true
-            echo "=== postgrest logs ==="
-            docker logs --tail 160 imds-postgrest 2>&1 || true
-            echo "=== port 3001 ==="
-            ss -ltnp | grep ':3001' || true
-            echo "=== direct 3001 ==="
-            curl -sS -D - -o /tmp/pgrst-body -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3001/ || true
-            cat /tmp/pgrst-body 2>/dev/null || true
-            echo
-            echo "=== compatibility 3002 ==="
-            curl -sS -D - -o /tmp/compat-body -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" "http://127.0.0.1:3002/rest/v1/imds_auth_users?select=id&limit=1" || true
-            cat /tmp/compat-body 2>/dev/null || true
-            echo
-            echo "=== postgres role check ==="
-            docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select rolname,rolcanlogin from pg_roles where rolname in ('imds_api','service_role') order by rolname" || true
+            test -n "${POSTGRES_PASSWORD:-}"
+            test -n "${IMDS_API_PASSWORD:-}"
+            test -n "${PGRST_JWT_SECRET:-}"
+            test -n "${LOCAL_SERVICE_ROLE_KEY:-}"
+
+            cd /opt/imds-db
+            if grep -q "GHCRTS:" docker-compose.yml; then
+              sed -i "s/^[[:space:]]*GHCRTS:.*/      GHCRTS: -N1/" docker-compose.yml
+            else
+              sed -i "/PGRST_SERVER_PORT: 3000/a\      GHCRTS: -N1" docker-compose.yml
+            fi
+
+            if docker compose version >/dev/null 2>&1; then
+              docker compose up -d postgres
+              docker compose up -d --force-recreate postgrest
+            else
+              docker-compose up -d postgres
+              docker-compose up -d --force-recreate postgrest
+            fi
+
+            for attempt in $(seq 1 30); do
+              if curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3001/ >/dev/null 2>&1; then
+                break
+              fi
+              if [ "$attempt" -eq 30 ]; then
+                echo "=== postgrest logs after constrained restart ==="
+                docker logs --tail 160 imds-postgrest 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "=== direct PostgREST OK ==="
+            curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3001/ >/dev/null
+            echo "=== compatibility proxy OK ==="
+            curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" "http://127.0.0.1:3002/rest/v1/imds_auth_users?select=id&limit=1" >/dev/null
+
+            systemctl restart imds-marketing.service
+            sleep 4
+            systemctl is-active --quiet imds-marketing.service
+            curl -fsS http://127.0.0.1:8787/api/auth/config | grep -q '"nativeAuth":true'
+            echo "PostgREST and native auth runtime recovered."
           '
+
+      - name: Verify native admin login through nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 15 \
+            -H 'content-type: application/json' \
+            -d '{"email":"admin@imds.kz","password":"Admin12345","remember":true}' \
+            "http://$VPS_HOST/api/auth/login")"
+          echo "$BODY" | grep -q '"access_token"'
+          echo "Native admin login works through nginx."
