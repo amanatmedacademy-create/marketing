@@ -28,6 +28,12 @@ jobs:
             cd /opt/imds-db 2>/dev/null && (docker compose ps 2>/dev/null || docker-compose ps 2>/dev/null || true)
             echo "=== migrations ==="
             docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select count(*), coalesce(max(filename), chr(45)) from public.imds_schema_migrations" 2>/dev/null || true
-            echo "=== bootstrap processes ==="
-            ps -ef | grep -E "bootstrap-db|apt-get|docker|psql" | grep -v grep || true
+            echo "=== apt/dpkg processes ==="
+            ps -eo pid,ppid,stat,etime,cmd | grep -E "apt|dpkg|unattended|bootstrap-db" | grep -v grep || true
+            echo "=== lock owners ==="
+            fuser -v /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>&1 || true
+            echo "=== apt timers/services ==="
+            systemctl --no-pager --full status apt-daily.service apt-daily-upgrade.service 2>/dev/null | tail -n 40 || true
+            echo "=== dpkg audit ==="
+            dpkg --audit || true
           '
