@@ -62,7 +62,18 @@ const assets: AssetFetcher = {
   },
 };
 
-const env: RuntimeEnv = { ...process.env, ASSETS: assets };
+const runtimeValues: Record<string, string | undefined> = { ...process.env };
+const localDbUrl = (runtimeValues.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
+const localServiceKey = (runtimeValues.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
+
+// Compatibility for modules that still use the historical Supabase variable names.
+// On VPS these aliases always point to our self-hosted PostgREST and never to Supabase Cloud.
+if (localDbUrl && localServiceKey) {
+  runtimeValues.SUPABASE_URL = localDbUrl;
+  runtimeValues.SUPABASE_SERVICE_ROLE_KEY = localServiceKey;
+}
+
+const env: RuntimeEnv = { ...runtimeValues, ASSETS: assets };
 
 function executionContext(): WorkerExecutionContext {
   return {
