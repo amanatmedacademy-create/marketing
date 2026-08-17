@@ -18,7 +18,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
     steps:
-      - name: Inspect safe Marketing recovery metadata
+      - name: Probe legacy source without exposing credentials
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -29,38 +29,54 @@ jobs:
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
           set -euo pipefail
-          DB=(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At)
-          COMPANY_ID='4cd22020-6f1d-4afb-9266-b01c96e4a927'
+          SOURCE='https://kysdtmgijkffwtzugonv.supabase.co'
+          TMP="$(mktemp)"
+          trap 'rm -f "$TMP" /tmp/imds-anon-key' EXIT
 
-          echo "RELEASE=$(readlink -f /var/www/imds-marketing/current 2>/dev/null || true)"
-          echo 'ENV_NAMES:'
-          sed -n 's/^\([A-Z0-9_][A-Z0-9_]*\)=.*/\1/p' /etc/imds-marketing.env | sort | grep -E '^(APP_ORIGIN|DEFAULT_COMPANY_ID|IMDS_|INTEGRATION_|META_|SUPABASE_|VITE_SUPABASE_)' || true
+          find /var/www/imds-marketing /opt/imds-marketing -type f -name '*.js' -size -20M -print0 2>/dev/null \
+            | xargs -0 grep -hoE 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' 2>/dev/null \
+            | sort -u > "$TMP" || true
 
-          echo 'TABLE_COUNTS:'
-          for table in marketing_ads marketing_campaigns marketing_tasks marketing_content_plan marketing_automations marketing_automation_runs marketing_lead_forms marketing_tracking_links marketing_media_plan marketing_activity_log marketing_leads marketing_daily_metrics marketing_calls integration_credentials integration_runs; do
-            exists="$("${DB[@]}" -c "select case when to_regclass('public.$table') is null then 0 else 1 end")"
-            if [ "$exists" = '1' ]; then
-              count="$("${DB[@]}" -c "select count(*) from public.$table")"
-              echo "$table=$count"
+          python3 - "$TMP" /tmp/imds-anon-key <<'PY'
+          import base64, json, sys
+          source, out = sys.argv[1:]
+          found = None
+          for line in open(source, encoding='utf-8', errors='ignore'):
+              token = line.strip()
+              try:
+                  payload = token.split('.')[1]
+                  payload += '=' * (-len(payload) % 4)
+                  data = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
+              except Exception:
+                  continue
+              if data.get('role') == 'anon' and data.get('ref') == 'kysdtmgijkffwtzugonv':
+                  found = token
+                  break
+          if found:
+              with open(out, 'w', encoding='utf-8') as stream:
+                  stream.write(found)
+              print('LEGACY_ANON_KEY_FOUND=yes')
+          else:
+              print('LEGACY_ANON_KEY_FOUND=no')
+          PY
+
+          if [ ! -s /tmp/imds-anon-key ]; then
+            exit 0
+          fi
+
+          KEY="$(cat /tmp/imds-anon-key)"
+          headers=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H 'Prefer: count=exact')
+          echo 'LEGACY_SOURCE_COUNTS:'
+          for table in marketing_ads marketing_leads marketing_daily_metrics marketing_calls marketing_campaigns marketing_tasks marketing_content_plan marketing_automations marketing_lead_forms marketing_tracking_links marketing_media_plan integration_credentials integration_runs; do
+            response_headers="$(mktemp)"
+            status="$(curl -sS --max-time 20 -o /dev/null -D "$response_headers" -w '%{http_code}' "${headers[@]}" -H 'Range: 0-0' "$SOURCE/rest/v1/$table?select=id" || true)"
+            range="$(awk 'BEGIN{IGNORECASE=1} /^content-range:/ {gsub("\r",""); print $2}' "$response_headers" | tail -1)"
+            rm -f "$response_headers"
+            if [ "$status" = '200' ] || [ "$status" = '206' ]; then
+              total="${range##*/}"
+              echo "$table=accessible,count=${total:-unknown}"
             else
-              echo "$table=MISSING"
+              echo "$table=http_$status"
             fi
           done
-
-          echo 'RECOVERY_FILES:'
-          find /opt /var/backups /var/lib /root /etc -xdev -type f \
-            \( -iname '*marketing*.sql' -o -iname '*marketing*.dump' -o -iname '*marketing*.backup' -o -iname '*supabase*.sql' -o -iname '*postgres*.dump' -o -iname '*postgres*.backup' -o -iname 'imds-marketing.env*' \) \
-            -printf '%p|%s|%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort | head -200 || true
-
-          echo 'POSSIBLE_ENV_BACKUPS_NAMES_ONLY:'
-          for file in $(find /etc /root /opt -xdev -type f \( -name 'imds-marketing.env*' -o -name '.env*' \) 2>/dev/null | head -100); do
-            echo "FILE=$file"
-            sed -n 's/^\([A-Z0-9_][A-Z0-9_]*\)=.*/\1/p' "$file" 2>/dev/null | sort | grep -E '^(SUPABASE_|VITE_SUPABASE_|META_|INTEGRATION_|IMDS_)' || true
-          done
-
-          echo 'DOCKER_VOLUMES:'
-          docker volume ls --format '{{.Name}}' | grep -Ei 'imds|postgres|supabase|marketing' || true
-
-          echo 'SYSTEMD_BACKUP_UNITS:'
-          systemctl list-unit-files --type=service --type=timer 2>/dev/null | grep -Ei 'imds|postgres|backup|marketing' || true
           REMOTE
