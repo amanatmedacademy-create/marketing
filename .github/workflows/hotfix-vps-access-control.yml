@@ -54,14 +54,13 @@ jobs:
           TOKEN_HASH="$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')"
 
           cleanup() {
-            docker exec imds-postgres psql -U imds_owner -d imds_marketing -v token_hash="$TOKEN_HASH" -c "delete from public.imds_auth_sessions where token_hash=:'token_hash';" >/dev/null 2>&1 || true
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -c "delete from public.imds_auth_sessions where token_hash='${TOKEN_HASH}';" >/dev/null 2>&1 || true
             rm -f /tmp/auth-me.json /tmp/auth-config.json
           }
           trap cleanup EXIT
 
           docker exec imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing \
-            -v auth_id="$AUTH_ID" -v token_hash="$TOKEN_HASH" \
-            -c "insert into public.imds_auth_sessions(user_id,token_hash,remember_me,expires_at) values (:'auth_id'::uuid,:'token_hash',false,now()+interval '10 minutes');"
+            -c "insert into public.imds_auth_sessions(user_id,token_hash,remember_me,expires_at) values ('${AUTH_ID}'::uuid,'${TOKEN_HASH}',false,now()+interval '10 minutes');"
 
           STATUS="$(curl -sS --max-time 20 -o /tmp/auth-me.json -w '%{http_code}' -H "authorization: Bearer $TOKEN" http://127.0.0.1:8787/api/auth/me)"
           echo "AUTH_ME_STATUS=$STATUS"
