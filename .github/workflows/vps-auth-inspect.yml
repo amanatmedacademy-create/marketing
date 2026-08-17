@@ -39,9 +39,9 @@ jobs:
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
             echo "=== auth user ==="
-            docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select u.id,u.email,u.status,u.email_verified,coalesce(p.user_id is not null,false) as has_password,coalesce(string_agg(distinct i.provider,','),'') as providers from imds_auth_users u left join imds_auth_passwords p on p.user_id=u.id left join imds_auth_identities i on i.user_id=u.id where lower(u.email)=lower('admin@imds.kz') group by u.id,u.email,u.status,u.email_verified,p.user_id;"
-            echo "=== marketing user and memberships ==="
-            docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select mu.id,mu.email,mu.role,mu.status,cm.company_id,cm.role,cm.status from marketing_users mu left join crm_company_members cm on cm.user_id=mu.id where lower(mu.email)=lower('admin@imds.kz') order by cm.created_at nulls last;"
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select u.id,u.status,u.email_verified,exists(select 1 from imds_auth_passwords p where p.user_id=u.id) as has_password,exists(select 1 from imds_auth_identities i where i.user_id=u.id and i.provider=\$\$password\$\$) as has_password_identity from imds_auth_users u where lower(u.email)=lower(\$\$admin@imds.kz\$\$);"
+            echo "=== marketing membership ==="
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select mu.id,mu.role,mu.status,cm.company_id,cm.role,cm.status from marketing_users mu left join crm_company_members cm on cm.user_id=mu.id where lower(mu.email)=lower(\$\$admin@imds.kz\$\$) order by cm.created_at nulls last;"
             echo "=== auth table counts ==="
             docker exec imds-postgres psql -U imds_owner -d imds_marketing -AtF "|" -c "select (select count(*) from imds_auth_users),(select count(*) from imds_auth_passwords),(select count(*) from imds_auth_sessions);"
             echo "=== endpoint ==="
