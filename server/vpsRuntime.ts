@@ -2,8 +2,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import worker from '../worker/securedMain';
+import { authenticateRequest } from '../worker/auth';
+import { resolveCompanyId } from '../worker/companyContext';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
-import { enforcePlatformEntitlement, handlePlatformInternalRequest } from './platformControl';
+import { enforcePlatformEntitlement, handlePlatformInternalRequest, platformEntitlementForTenant } from './platformControl';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -67,12 +69,8 @@ const runtimeValues: Record<string, string | undefined> = { ...process.env };
 const localDbUrl = (runtimeValues.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
 const localServiceKey = (runtimeValues.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
 
-// The legacy browser/admin secret is deliberately disabled on VPS. Access is granted
-// only after native IMDS authentication and server-side role/tenant checks.
 delete runtimeValues.FRONTEND_ADMIN_KEY;
 
-// Compatibility for modules that still use the historical Supabase variable names.
-// On VPS these aliases always point to our self-hosted PostgREST and never to Supabase Cloud.
 if (localDbUrl && localServiceKey) {
   runtimeValues.SUPABASE_URL = localDbUrl;
   runtimeValues.SUPABASE_SERVICE_ROLE_KEY = localServiceKey;
@@ -127,6 +125,35 @@ async function sendResponse(res: ServerResponse, response: Response): Promise<vo
   res.end(body);
 }
 
+async function browserEntitlementResponse(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (url.pathname !== '/api/platform/entitlements' || request.method !== 'GET') return null;
+  const user = await authenticateRequest(request, env as never);
+  if (!user) return new Response(JSON.stringify({ error: 'AUTH_REQUIRED' }), { status: 401, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  if (user.status !== 'active') return new Response(JSON.stringify({ error: 'USER_INACTIVE' }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
+  const tenantId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } as never : env as never, user.id);
+  const entitlement = await platformEntitlementForTenant(tenantId);
+  const payload = entitlement ? {
+    managed: true,
+    tenantId,
+    organizationId: entitlement.organizationId,
+    revision: entitlement.revision,
+    productEnabled: entitlement.productEnabled,
+    modules: entitlement.modules,
+    updatedAt: entitlement.updatedAt,
+  } : {
+    managed: false,
+    tenantId,
+    organizationId: null,
+    revision: null,
+    productEnabled: true,
+    modules: {},
+    updatedAt: null,
+  };
+  return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
 const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
@@ -136,6 +163,13 @@ const server = createServer(async (req, res) => {
     if (platformResponse) {
       await sendResponse(res, platformResponse);
       console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true }));
+      return;
+    }
+
+    const browserEntitlement = await browserEntitlementResponse(request);
+    if (browserEntitlement) {
+      await sendResponse(res, browserEntitlement);
+      console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' }));
       return;
     }
 
