@@ -1,4 +1,4 @@
-name: Hotfix VPS Access Control
+name: Verify VPS Native Auth
 
 on:
   push:
@@ -10,63 +10,79 @@ permissions:
   contents: read
 
 jobs:
-  hotfix:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install --no-audit --no-fund
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y sshpass
-      - name: Verify and recover VPS runtime
+      - name: Validate VPS access
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
           test -n "$VPS_PASSWORD"
-          export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          sshpass -e scp "${SSH_ARGS[@]}" worker/accessControl.ts "$VPS_USER@$VPS_HOST:/tmp/accessControl.ts"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
-            set -euo pipefail
-            test -d /opt/imds-marketing/current/worker
-            install -o imds -g imds -m 644 /tmp/accessControl.ts /opt/imds-marketing/current/worker/accessControl.ts
-            rm -f /tmp/accessControl.ts
-            grep -q "IMDS_LOCAL_DB_URL" /opt/imds-marketing/current/worker/accessControl.ts
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Prepare verification script
+        shell: bash
+        run: |
+          cat > /tmp/verify-native-auth.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          if ! curl -fsS --max-time 10 http://127.0.0.1:8787/api/auth/config >/tmp/auth-config.json; then
             systemctl restart imds-marketing.service
             for attempt in $(seq 1 15); do
-              if systemctl is-active --quiet imds-marketing.service && curl -fsS http://127.0.0.1:8787/api/auth/config | grep -q '"nativeAuth":true'; then
-                echo "Backend recovered with local access control."
-                exit 0
+              if curl -fsS --max-time 10 http://127.0.0.1:8787/api/auth/config >/tmp/auth-config.json; then
+                break
               fi
               sleep 2
             done
-            systemctl status imds-marketing.service --no-pager -l || true
-            journalctl -u imds-marketing.service -n 100 --no-pager -o cat || true
+          fi
+          cat /tmp/auth-config.json
+          echo
+
+          AUTH_ID="$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select id from public.imds_auth_users where lower(email)=lower('admin@imds.kz') limit 1")"
+          test -n "$AUTH_ID"
+          TOKEN="$(openssl rand -hex 48)"
+          TOKEN_HASH="$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')"
+
+          cleanup() {
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -v token_hash="$TOKEN_HASH" -c "delete from public.imds_auth_sessions where token_hash=:'token_hash';" >/dev/null 2>&1 || true
+            rm -f /tmp/auth-me.json /tmp/auth-config.json
+          }
+          trap cleanup EXIT
+
+          docker exec imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing \
+            -v auth_id="$AUTH_ID" -v token_hash="$TOKEN_HASH" \
+            -c "insert into public.imds_auth_sessions(user_id,token_hash,remember_me,expires_at) values (:'auth_id'::uuid,:'token_hash',false,now()+interval '10 minutes');"
+
+          STATUS="$(curl -sS --max-time 20 -o /tmp/auth-me.json -w '%{http_code}' -H "authorization: Bearer $TOKEN" http://127.0.0.1:8787/api/auth/me)"
+          echo "AUTH_ME_STATUS=$STATUS"
+          cat /tmp/auth-me.json
+          echo
+
+          if [ "$STATUS" != "200" ]; then
+            echo "=== recent runtime journal ==="
+            journalctl -u imds-marketing.service -n 120 --no-pager -o cat || true
             exit 1
-          '
-      - name: Verify through nginx
+          fi
+          SCRIPT
+          chmod 700 /tmp/verify-native-auth.sh
+
+      - name: Verify native admin session on VPS
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          for attempt in {1..10}; do
-            if curl --fail --silent --show-error --max-time 15 "http://$VPS_HOST/api/auth/config" | grep -q '"nativeAuth":true'; then
-              exit 0
-            fi
-            sleep 2
-          done
-          exit 1
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/verify-native-auth.sh "$VPS_USER@$VPS_HOST:/tmp/verify-native-auth.sh"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'chmod 700 /tmp/verify-native-auth.sh && /tmp/verify-native-auth.sh; rc=$?; rm -f /tmp/verify-native-auth.sh; exit $rc'
