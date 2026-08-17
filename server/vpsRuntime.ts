@@ -122,9 +122,29 @@ async function sendResponse(res: ServerResponse, response: Response): Promise<vo
   res.end(body);
 }
 
+function isRuntimeHealthRequest(req: IncomingMessage): boolean {
+  if ((req.method || 'GET') !== 'GET') return false;
+  try {
+    return new URL(req.url || '/', 'http://localhost').pathname === '/api/health';
+  } catch {
+    return false;
+  }
+}
+
 const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
+    // Report the local Node process itself. Runtime health must not depend on a tenant,
+    // integration credentials, PostgREST, or compatibility environment aliases.
+    if (isRuntimeHealthRequest(req)) {
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/json; charset=utf-8');
+      res.setHeader('cache-control', 'no-store');
+      res.end(JSON.stringify({ ok: true, service: 'imds-marketing', runtime: 'vps', uptimeSeconds: Math.floor(process.uptime()) }));
+      console.log(JSON.stringify({ method: req.method, path: req.url, status: 200, durationMs: Date.now() - startedAt }));
+      return;
+    }
+
     const request = await toRequest(req);
     const response = await worker.fetch(request, env as never, executionContext());
     await sendResponse(res, response);
