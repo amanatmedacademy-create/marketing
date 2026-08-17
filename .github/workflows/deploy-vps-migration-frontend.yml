@@ -1,0 +1,101 @@
+name: Deploy VPS Migration Frontend
+
+on:
+  push:
+    branches: [agent/selfhosted-postgres-migration]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
+      - 'deploy/vps/nginx-imds-marketing.conf'
+      - '.github/workflows/deploy-vps-migration-frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps-migration-frontend
+  cancel-in-progress: true
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate VPS secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+
+      - name: Checkout migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/selfhosted-postgres-migration
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Upload frontend and nginx config
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=30)
+          tar -czf /tmp/imds-frontend.tgz -C dist .
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-frontend.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-frontend.tgz"
+          sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/nginx-imds-marketing.conf "$VPS_USER@$VPS_HOST:/tmp/nginx-imds-marketing.conf"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            RELEASE_DIR="/var/www/imds-marketing/releases/$(date -u +%Y%m%d%H%M%S)"
+            mkdir -p "$RELEASE_DIR" /var/www/imds-marketing/releases
+            tar -xzf /tmp/imds-frontend.tgz -C "$RELEASE_DIR"
+            ln -sfn "$RELEASE_DIR" /var/www/imds-marketing/current
+            install -m 0644 /tmp/nginx-imds-marketing.conf /etc/nginx/sites-available/imds-marketing
+            ln -sfn /etc/nginx/sites-available/imds-marketing /etc/nginx/sites-enabled/imds-marketing
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
+            systemctl reload nginx
+            find /var/www/imds-marketing/releases -mindepth 1 -maxdepth 1 -type d -printf "%T@ %p\n" | sort -nr | tail -n +6 | cut -d" " -f2- | xargs -r rm -rf
+          '
+
+      - name: Verify frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            if body=$(curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/"); then
+              printf '%s' "$body" | grep -qi '<html'
+              echo "Migration frontend is reachable at http://$VPS_HOST/"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'VPS migration frontend check failed'
+          exit 1
