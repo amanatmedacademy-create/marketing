@@ -1,15 +1,12 @@
 import { resolveCompanyId } from './companyContext';
+import { localDataJson, type LocalDataEnv } from './localData';
 
 type Row = Record<string, unknown>;
 export type AccessAction = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'manage';
 export type AccessGrant = Record<AccessAction, boolean>;
 export type AccessMap = Record<string, AccessGrant>;
 
-export interface AccessControlEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  IMDS_LOCAL_DB_URL?: string;
-  IMDS_LOCAL_SERVICE_ROLE_KEY?: string;
+export interface AccessControlEnv extends LocalDataEnv {
   DEFAULT_COMPANY_ID?: string;
   CURRENT_COMPANY_ID?: string;
 }
@@ -19,28 +16,8 @@ const emptyGrant = (): AccessGrant => ({ view: false, create: false, edit: false
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const bool = (value: unknown): boolean => value === true;
 
-function dataBase(env: AccessControlEnv): string {
-  const base = text(env.IMDS_LOCAL_DB_URL) || text(env.SUPABASE_URL);
-  if (!base) throw new Error('Access control database URL is missing');
-  return base.replace(/\/$/, '').replace(/\/rest\/v1$/, '');
-}
-
-function dataKey(env: AccessControlEnv): string {
-  const key = text(env.IMDS_LOCAL_SERVICE_ROLE_KEY) || text(env.SUPABASE_SERVICE_ROLE_KEY);
-  if (!key) throw new Error('Access control service key is missing');
-  return key;
-}
-
-function headers(env: AccessControlEnv): HeadersInit {
-  const key = dataKey(env);
-  return { apikey: key, authorization: `Bearer ${key}`, accept: 'application/json' };
-}
-
 async function db<T>(env: AccessControlEnv, path: string): Promise<T> {
-  const response = await fetch(`${dataBase(env)}/rest/v1/${path}`, { headers: headers(env) });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Access control ${response.status}: ${body.slice(0, 700)}`);
-  return (body ? JSON.parse(body) : null) as T;
+  return localDataJson<T>(env, path, {}, 'Access control');
 }
 
 export async function resolveUserAccess(env: AccessControlEnv, userId: string, role?: string): Promise<{ companyId: string; positionId: string | null; jobTitle: string | null; permissions: AccessMap }> {
@@ -48,9 +25,9 @@ export async function resolveUserAccess(env: AccessControlEnv, userId: string, r
   const modules = await db<Row[]>(env, 'platform_modules?status=eq.active&select=id');
   const permissions: AccessMap = Object.fromEntries(modules.map((module) => [text(module.id), emptyGrant()]));
 
-  if (role === 'administrator') {
+  if (role === 'administrator' || role === 'super_admin') {
     for (const grant of Object.values(permissions)) for (const action of ACTIONS) grant[action] = true;
-    return { companyId, positionId: null, jobTitle: 'Администратор системы', permissions };
+    return { companyId, positionId: null, jobTitle: role === 'super_admin' ? 'Супер-администратор платформы' : 'Администратор системы', permissions };
   }
 
   const assignments = await db<Row[]>(env, `crm_access_user_assignments?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&select=position_id,job_title&limit=1`);
