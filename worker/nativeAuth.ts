@@ -40,7 +40,8 @@ function serviceKey(env: NativeAuthEnv): string {
 
 function dbHeaders(env: NativeAuthEnv, extra: HeadersInit = {}): Headers {
   const key = serviceKey(env);
-  const headers = new Headers({ apikey: key, authorization: `Bearer ${key}`, accept: 'application/json', ...extra });
+  const headers = new Headers({ apikey: key, authorization: `Bearer ${key}`, accept: 'application/json' });
+  new Headers(extra).forEach((value, name) => headers.set(name, value));
   return headers;
 }
 
@@ -115,9 +116,15 @@ async function verifyPassword(password: string, encoded: string): Promise<boolea
   if (parts.length !== 4 || parts[0] !== 'pbkdf2_sha256') return false;
   const iterations = Number(parts[1]);
   if (!Number.isInteger(iterations) || iterations < 100_000 || iterations > 2_000_000) return false;
-  let salt: Uint8Array;
+  let salt: ArrayBuffer;
   let expected: Uint8Array;
-  try { salt = base64UrlToBytes(parts[2]); expected = base64UrlToBytes(parts[3]); } catch { return false; }
+  try {
+    const decodedSalt = base64UrlToBytes(parts[2]);
+    salt = new Uint8Array(decodedSalt).buffer;
+    expected = base64UrlToBytes(parts[3]);
+  } catch {
+    return false;
+  }
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, expected.length * 8);
   return timingSafeEqual(new Uint8Array(bits), expected);
@@ -365,10 +372,11 @@ export function nativeGoogleConfigured(env: NativeAuthEnv): boolean {
 }
 
 export async function handleNativeAuthRequest(request: Request, env: NativeAuthEnv, url: URL): Promise<Response | null> {
+  if (!text(env.IMDS_LOCAL_DB_URL) || !text(env.IMDS_LOCAL_SERVICE_ROLE_KEY)) return null;
   if (url.pathname === '/api/auth/login' && request.method === 'POST') return login(request, env);
   if (url.pathname === '/api/auth/register' && request.method === 'POST') return register(request, env);
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') return logout(request, env);
-  if (url.pathname === '/api/auth/google/start' && request.method === 'GET' && text(env.IMDS_LOCAL_DB_URL)) return googleStart(request, env);
-  if (url.pathname === '/api/auth/google/callback' && request.method === 'GET' && text(env.IMDS_LOCAL_DB_URL)) return googleCallback(request, env, url);
+  if (url.pathname === '/api/auth/google/start' && request.method === 'GET') return googleStart(request, env);
+  if (url.pathname === '/api/auth/google/callback' && request.method === 'GET') return googleCallback(request, env, url);
   return null;
 }
