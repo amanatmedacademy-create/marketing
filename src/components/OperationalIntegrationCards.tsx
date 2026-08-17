@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import type { CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
@@ -25,10 +26,6 @@ type TelephonyStatus = {
 
 type DetailKey = 'mis' | 'zadarma' | null;
 
-type Props = {
-  onSummaryChange?: (summary: { connected: number; total: number }) => void;
-};
-
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: 'no-store' });
   const raw = await response.text();
@@ -42,12 +39,13 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? 'Нет данных' : date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function OperationalIntegrationCards({ onSummaryChange }: Props) {
+export default function OperationalIntegrationCards() {
   const { user } = useAuth();
   const [mis, setMis] = useState<MisStatus | null>(null);
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
   const [detail, setDetail] = useState<DetailKey>(null);
   const [active, setActive] = useState<CardIntegrationProvider | null>(null);
+  const [catalogTarget, setCatalogTarget] = useState<Element | null>(null);
 
   const load = useCallback(async () => {
     const [nextMis, nextTelephony] = await Promise.all([
@@ -59,6 +57,16 @@ export default function OperationalIntegrationCards({ onSummaryChange }: Props) 
   }, []);
 
   useEffect(() => { void load(); }, [load, user.companyId]);
+  useEffect(() => {
+    const resolveTarget = () => {
+      const target = document.querySelector('.iv2-page .iv2-section .iv2-grid');
+      if (target) setCatalogTarget(target);
+      return Boolean(target);
+    };
+    if (resolveTarget()) return;
+    const timer = window.setInterval(() => { if (resolveTarget()) window.clearInterval(timer); }, 50);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const cards = useMemo<CardIntegrationSummary[]>(() => {
     const misError = mis?.credential?.lastError || mis?.settings?.last_error || undefined;
@@ -96,26 +104,21 @@ export default function OperationalIntegrationCards({ onSummaryChange }: Props) 
     ];
   }, [mis, telephony]);
 
-  useEffect(() => {
-    onSummaryChange?.({
-      connected: cards.filter((card) => card.status === 'connected' || card.status === 'syncing').length,
-      total: cards.length,
-    });
-  }, [cards, onSummaryChange]);
-
   const open = (id: CardIntegrationProvider) => {
     setActive(id);
     if (id === 'mis' || id === 'zadarma') setDetail(id);
   };
 
+  const cardNodes = cards.map((card) => <IntegrationCard
+    key={card.id}
+    integration={card}
+    active={active === card.id}
+    onSelect={() => setActive(card.id)}
+    onConfigure={() => open(card.id)}
+  />);
+
   return <>
-    {cards.map((card) => <IntegrationCard
-      key={card.id}
-      integration={card}
-      active={active === card.id}
-      onSelect={() => setActive(card.id)}
-      onConfigure={() => open(card.id)}
-    />)}
+    {catalogTarget ? createPortal(cardNodes, catalogTarget) : null}
 
     {detail && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
       <section className="iv2-modal iv2-modal--workspace" role="dialog" aria-modal="true" aria-label={detail === 'mis' ? 'Настройка МИС' : 'Настройка Zadarma'}>
