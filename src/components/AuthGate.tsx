@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  Phone,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -90,6 +91,7 @@ function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (us
   const [mode, setMode] = useState<AuthMode>('login');
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('new_company');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -114,10 +116,12 @@ function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (us
     event.preventDefault();
     if (busy) return;
     const normalizedEmail = email.trim().toLowerCase();
+    const phoneDigits = phone.replace(/\D/g, '');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) { setError('Введите корректный email.'); return; }
     if (password.length < 10) { setError('Пароль должен содержать минимум 10 символов.'); return; }
     if (mode === 'register' && password !== confirmPassword) { setError('Пароли не совпадают.'); return; }
     if (mode === 'register' && displayName.trim().length < 2) { setError('Укажите имя пользователя.'); return; }
+    if (mode === 'register' && (phoneDigits.length < 10 || phoneDigits.length > 15)) { setError('Введите корректный номер телефона.'); return; }
     if (mode === 'register' && registrationMode === 'new_company' && companyName.trim().length < 2) { setError('Укажите название организации.'); return; }
     if (mode === 'register' && registrationMode === 'join_company' && companyCode.trim().length < 6) { setError('Введите код организации.'); return; }
 
@@ -129,6 +133,7 @@ function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (us
       } else {
         await registerNativeAccount({
           email: normalizedEmail,
+          phone,
           password,
           displayName,
           mode: registrationMode,
@@ -171,6 +176,7 @@ function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (us
       {mode === 'register' && <label className="auth-field"><span>Имя</span><div><UserRound size={17}/><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" placeholder="Имя и фамилия" disabled={busy}/></div></label>}
       {mode === 'register' && registrationMode === 'new_company' && <label className="auth-field"><span>Название организации</span><div><Building2 size={17}/><input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Например: Amanat Clinic" disabled={busy}/></div></label>}
       {mode === 'register' && registrationMode === 'join_company' && <label className="auth-field"><span>Код организации</span><div><KeyRound size={17}/><input value={companyCode} onChange={(e) => setCompanyCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="IMDS-XXXX-XXXX" disabled={busy}/></div></label>}
+      {mode === 'register' && <label className="auth-field"><span>Телефон</span><div><Phone size={17}/><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" inputMode="tel" placeholder="+7 700 000 00 00" disabled={busy}/></div></label>}
 
       <label className="auth-field"><span>Email</span><div><Mail size={17}/><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" placeholder="name@example.com" disabled={busy}/></div></label>
       <label className="auth-field"><span>Пароль</span><div><LockKeyhole size={17}/><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="Минимум 10 символов" disabled={busy}/></div></label>

@@ -5,6 +5,8 @@ export type NativeAuthEnv = {
   SUPABASE_SERVICE_ROLE_KEY?: string;
   IMDS_LOCAL_DB_URL?: string;
   IMDS_LOCAL_SERVICE_ROLE_KEY?: string;
+  IMDS_PLATFORM_CONTROL_TOKEN?: string;
+  IMDS_SUPER_ADMIN_INTERNAL_URL?: string;
   APP_ORIGIN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -72,6 +74,10 @@ function bearer(request: Request): string {
 
 function normalizeEmail(value: unknown): string { return text(value).toLowerCase(); }
 function validEmail(value: string): boolean { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+function normalizePhone(value: unknown): string {
+  const digits = text(value).replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15 ? `+${digits}` : '';
+}
 function slugify(value: string): string {
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 80) || `company-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -130,6 +136,47 @@ export function nativeGoogleConfigured(env: NativeAuthEnv): boolean {
 }
 function googleRedirectUri(request: Request, env: NativeAuthEnv): string {
   return `${appOrigin(request, env)}/api/auth/google/callback`;
+}
+
+async function deliverRegistrationEvent(env: NativeAuthEnv, eventId?: string): Promise<void> {
+  const token = text(env.IMDS_PLATFORM_CONTROL_TOKEN);
+  if (!token) return;
+  const endpoint = (text(env.IMDS_SUPER_ADMIN_INTERNAL_URL) || 'http://127.0.0.1:8788').replace(/\/$/, '');
+  const filter = eventId ? `&id=eq.${encodeURIComponent(eventId)}` : '';
+  const pending = await db<JsonRecord[]>(env, `/imds_platform_event_outbox?status=eq.pending${filter}&select=id,payload,attempts&order=created_at.asc&limit=20`).catch(() => []);
+  for (const row of pending) {
+    const id = text(row.id);
+    if (!id) continue;
+    try {
+      const response = await fetch(`${endpoint}/internal/platform/events/registration`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(row.payload || {}),
+        signal: AbortSignal.timeout(5000),
+      });
+      const responseText = await response.text();
+      if (!response.ok) throw new Error(`Super Admin ${response.status}: ${responseText.slice(0, 300)}`);
+      await db(env, `/imds_platform_event_outbox?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'delivered', attempts: Number(row.attempts || 0) + 1, last_error: null, delivered_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+      });
+    } catch (error) {
+      await db(env, `/imds_platform_event_outbox?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ attempts: Number(row.attempts || 0) + 1, last_error: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000), updated_at: new Date().toISOString() }),
+      }).catch(() => undefined);
+    }
+  }
+}
+
+let outboxRetryStarted = false;
+function ensureOutboxRetry(env: NativeAuthEnv) {
+  if (outboxRetryStarted || !text(env.IMDS_PLATFORM_CONTROL_TOKEN)) return;
+  outboxRetryStarted = true;
+  const timer = globalThis.setInterval(() => { void deliverRegistrationEvent(env); }, 60_000);
+  if (typeof timer === 'object' && timer && 'unref' in timer && typeof (timer as { unref?: unknown }).unref === 'function') {
+    (timer as unknown as { unref: () => void }).unref();
+  }
 }
 
 async function issueSession(env: NativeAuthEnv, authUserId: string, request: Request, remember: boolean): Promise<{ access_token: string; expires_in: number; token_type: string }> {
@@ -196,13 +243,15 @@ async function login(request: Request, env: NativeAuthEnv): Promise<Response> {
 
 async function register(request: Request, env: NativeAuthEnv): Promise<Response> {
   const body = await request.json().catch(() => null) as {
-    email?: string; password?: string; displayName?: string; mode?: string; companyName?: string; companyCode?: string; remember?: boolean;
+    email?: string; password?: string; displayName?: string; phone?: string; mode?: string; companyName?: string; companyCode?: string; remember?: boolean;
   } | null;
   const email = normalizeEmail(body?.email);
   const displayName = text(body?.displayName);
+  const phone = normalizePhone(body?.phone);
   const mode = text(body?.mode);
   if (!validEmail(email)) return json({ error: 'Введите корректный email.' }, 400);
   if (displayName.length < 2) return json({ error: 'Укажите имя пользователя.' }, 400);
+  if (!phone) return json({ error: 'Введите корректный номер телефона.' }, 400);
   if (mode !== 'new_company' && mode !== 'join_company') return json({ error: 'Выберите способ регистрации организации.' }, 400);
   const password = typeof body?.password === 'string' ? body.password : '';
   let passwordHash: string;
@@ -223,10 +272,13 @@ async function register(request: Request, env: NativeAuthEnv): Promise<Response>
         p_company_name: mode === 'new_company' ? companyName : null,
         p_company_slug: mode === 'new_company' ? slugify(companyName) : null,
         p_company_code_hash: codeHash,
+        p_phone: phone,
       }),
     });
     const authUserId = text(result?.auth_user_id);
     if (!authUserId) throw new Error('Регистрация не вернула идентификатор пользователя');
+    const registrationEventId = text(result?.registration_event_id);
+    if (registrationEventId) void deliverRegistrationEvent(env, registrationEventId);
     return json(await issueSession(env, authUserId, request, body?.remember !== false), 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Не удалось создать аккаунт';
@@ -351,6 +403,7 @@ async function googleCallback(request: Request, env: NativeAuthEnv, url: URL): P
 function asObject(value: unknown): JsonRecord | null { return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null; }
 
 export async function handleNativeAuthRequest(request: Request, env: NativeAuthEnv, url: URL): Promise<Response | null> {
+  ensureOutboxRetry(env);
   if (url.pathname === '/api/auth/login' && request.method === 'POST') return login(request, env);
   if (url.pathname === '/api/auth/register' && request.method === 'POST') return register(request, env);
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') return logout(request, env);
