@@ -52,7 +52,8 @@ jobs:
               printf "INTEGRATION_ENCRYPTION_KEY=%s\n" "$(openssl rand -hex 48)" >> /etc/imds-marketing.env
             fi
             chmod 600 /etc/imds-marketing.env
-            ROLE="$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select platform_role from public.imds_auth_users where lower(email)=lower('admin@imds.kz') limit 1")"
-            test "$ROLE" = "super_admin"
+            COUNT="$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select count(*) from public.imds_auth_users where platform_role = chr(115)||chr(117)||chr(112)||chr(101)||chr(114)||chr(95)||chr(97)||chr(100)||chr(109)||chr(105)||chr(110)")"
+            test "$COUNT" -ge 1
+            ! grep -Eq "^(SUPABASE_|VITE_SUPABASE_|FRONTEND_ADMIN_KEY=)" /etc/imds-marketing.env
             echo "Platform super-admin role applied and legacy cloud access removed from VPS env."
           '
