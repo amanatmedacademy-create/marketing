@@ -12,71 +12,16 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER }}
-      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    timeout-minutes: 5
     steps:
-      - name: Probe legacy source without exposing credentials
+      - name: Check legacy migration credentials safely
         shell: bash
         env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
-          command -v sshpass >/dev/null
-          export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
-          set -euo pipefail
-          SOURCE='https://kysdtmgijkffwtzugonv.supabase.co'
-          TMP="$(mktemp)"
-          trap 'rm -f "$TMP" /tmp/imds-anon-key' EXIT
-
-          find /var/www/imds-marketing /opt/imds-marketing -type f -name '*.js' -size -20M -print0 2>/dev/null \
-            | xargs -0 grep -hoE 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' 2>/dev/null \
-            | sort -u > "$TMP" || true
-
-          python3 - "$TMP" /tmp/imds-anon-key <<'PY'
-          import base64, json, sys
-          source, out = sys.argv[1:]
-          found = None
-          for line in open(source, encoding='utf-8', errors='ignore'):
-              token = line.strip()
-              try:
-                  payload = token.split('.')[1]
-                  payload += '=' * (-len(payload) % 4)
-                  data = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
-              except Exception:
-                  continue
-              if data.get('role') == 'anon' and data.get('ref') == 'kysdtmgijkffwtzugonv':
-                  found = token
-                  break
-          if found:
-              with open(out, 'w', encoding='utf-8') as stream:
-                  stream.write(found)
-              print('LEGACY_ANON_KEY_FOUND=yes')
-          else:
-              print('LEGACY_ANON_KEY_FOUND=no')
-          PY
-
-          if [ ! -s /tmp/imds-anon-key ]; then
-            exit 0
-          fi
-
-          KEY="$(cat /tmp/imds-anon-key)"
-          headers=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H 'Prefer: count=exact')
-          echo 'LEGACY_SOURCE_COUNTS:'
-          for table in marketing_ads marketing_leads marketing_daily_metrics marketing_calls marketing_campaigns marketing_tasks marketing_content_plan marketing_automations marketing_lead_forms marketing_tracking_links marketing_media_plan integration_credentials integration_runs; do
-            response_headers="$(mktemp)"
-            status="$(curl -sS --max-time 20 -o /dev/null -D "$response_headers" -w '%{http_code}' "${headers[@]}" -H 'Range: 0-0' "$SOURCE/rest/v1/$table?select=id" || true)"
-            range="$(awk 'BEGIN{IGNORECASE=1} /^content-range:/ {gsub("\r",""); print $2}' "$response_headers" | tail -1)"
-            rm -f "$response_headers"
-            if [ "$status" = '200' ] || [ "$status" = '206' ]; then
-              total="${range##*/}"
-              echo "$table=accessible,count=${total:-unknown}"
-            else
-              echo "$table=http_$status"
-            fi
-          done
-          REMOTE
+          [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] && echo 'SUPABASE_SERVICE_ROLE_KEY=present' || echo 'SUPABASE_SERVICE_ROLE_KEY=absent'
+          [ -n "${VITE_SUPABASE_ANON_KEY:-}" ] && echo 'VITE_SUPABASE_ANON_KEY=present' || echo 'VITE_SUPABASE_ANON_KEY=absent'
+          [ -n "${SUPABASE_ANON_KEY:-}" ] && echo 'SUPABASE_ANON_KEY=present' || echo 'SUPABASE_ANON_KEY=absent'
