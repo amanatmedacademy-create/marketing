@@ -25,6 +25,7 @@ import { handlePhoneWorkspace } from './phoneWorkspace';
 import { zadarmaRequest } from './zadarmaTelephony';
 import { handleZadarmaWebhookSetup } from './zadarmaWebhookSetup';
 import { handleTelephonySettings } from './telephonySettings';
+import { localDataRequest } from './localData';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -38,16 +39,24 @@ const corsHeaders = (request: Request, env: Env): HeadersInit => {
   return origin === allowedOrigin ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', vary: 'origin' } : {};
 };
 
-const supabaseHeaders = (env: Env, extra: HeadersInit = {}): HeadersInit => ({ apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json', ...extra });
-
-async function supabaseRequest(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'Supabase is not configured' }, 503);
-  return fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { ...init, headers: supabaseHeaders(env, init.headers) });
+async function dataRequest(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await localDataRequest(env, path, init);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : 'Local data API unavailable' }, 503);
+  }
 }
 
-async function proxySupabase(response: Response, request: Request, env: Env) {
+async function proxyData(response: Response, request: Request, env: Env) {
   const body = await response.text();
-  return new Response(body || null, { status: response.status, headers: { 'content-type': response.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store', ...corsHeaders(request, env) } });
+  return new Response(body || null, {
+    status: response.status,
+    headers: {
+      'content-type': response.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      ...corsHeaders(request, env),
+    },
+  });
 }
 
 async function handleLeads(request: Request, env: Env, url: URL) {
@@ -58,11 +67,11 @@ async function handleLeads(request: Request, env: Env, url: URL) {
     const params = new URLSearchParams({ select: '*', order: 'lead_created_at.desc.nullslast,created_at.desc', limit: String(limit) });
     if (stage) params.set('stage', `eq.${stage}`);
     if (source) params.set('source', `eq.${source}`);
-    return proxySupabase(await supabaseRequest(env, `marketing_leads?${params.toString()}`), request, env);
+    return proxyData(await dataRequest(env, `marketing_leads?${params.toString()}`), request, env);
   }
   if (request.method === 'POST') {
     const payload = (await request.json()) as JsonRecord;
-    return proxySupabase(await supabaseRequest(env, 'marketing_leads', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload) }), request, env);
+    return proxyData(await dataRequest(env, 'marketing_leads', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload) }), request, env);
   }
   return json({ error: 'Method not allowed' }, 405, corsHeaders(request, env));
 }
@@ -71,9 +80,11 @@ async function handleLeadById(request: Request, env: Env, id: string) {
   if (!id) return json({ error: 'Lead id is required' }, 400, corsHeaders(request, env));
   if (request.method === 'PATCH') {
     const payload = (await request.json()) as JsonRecord;
-    return proxySupabase(await supabaseRequest(env, `marketing_leads?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload) }), request, env);
+    return proxyData(await dataRequest(env, `marketing_leads?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(payload) }), request, env);
   }
-  if (request.method === 'DELETE') return proxySupabase(await supabaseRequest(env, `marketing_leads?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { prefer: 'return=representation' } }), request, env);
+  if (request.method === 'DELETE') {
+    return proxyData(await dataRequest(env, `marketing_leads?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { prefer: 'return=representation' } }), request, env);
+  }
   return json({ error: 'Method not allowed' }, 405, corsHeaders(request, env));
 }
 
@@ -83,7 +94,7 @@ async function handleCalls(request: Request, env: Env, url: URL) {
   const operator = url.searchParams.get('operator');
   const params = new URLSearchParams({ select: '*', order: 'started_at.desc', limit: String(limit) });
   if (operator) params.set('operator_name', `eq.${operator}`);
-  return proxySupabase(await supabaseRequest(env, `marketing_calls?${params.toString()}`), request, env);
+  return proxyData(await dataRequest(env, `marketing_calls?${params.toString()}`), request, env);
 }
 
 async function handleDashboard(request: Request, env: Env, url: URL) {
@@ -92,7 +103,7 @@ async function handleDashboard(request: Request, env: Env, url: URL) {
   const to = url.searchParams.get('to');
   if (from) params.set('date', `gte.${from}`);
   if (to) params.append('date', `lte.${to}`);
-  return proxySupabase(await supabaseRequest(env, `marketing_dashboard_daily?${params.toString()}&order=date.asc`), request, env);
+  return proxyData(await dataRequest(env, `marketing_dashboard_daily?${params.toString()}&order=date.asc`), request, env);
 }
 
 async function handleFrontendIntegrationAction(request: Request, env: Env, url: URL): Promise<Response | null> {
@@ -146,7 +157,23 @@ async function handleRates(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return new Response(null, { status: 204, headers: { ...corsHeaders(request, env), 'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization,x-admin-key,x-webhook-secret,x-hub-signature-256', 'access-control-max-age': '86400' } });
+    if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...corsHeaders(request, env),
+          'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+          'access-control-allow-headers': 'content-type,authorization,x-webhook-secret,x-hub-signature-256,x-imds-company-id',
+          'access-control-max-age': '86400',
+        },
+      });
+    }
+
+    // Health is deliberately tenant- and integration-independent.
+    if (url.pathname === '/api/health') {
+      return json({ ok: true, service: 'imds-marketing-api', dataMode: 'self-hosted-postgres' }, 200, corsHeaders(request, env));
+    }
+
     try {
       const googleResponse = await handleGoogleIntegrationRequest(request, env, url);
       if (googleResponse) return googleResponse;
@@ -158,6 +185,7 @@ export default {
       if (lifecycleResponse) return lifecycleResponse;
       const credentialResponse = await handleCredentialRequest(request, env, url);
       if (credentialResponse) return credentialResponse;
+
       const runtimeEnv = await hydrateIntegrationEnv(env);
       const zadarmaWebhookSetup = await handleZadarmaWebhookSetup(request, runtimeEnv, url);
       if (zadarmaWebhookSetup) return zadarmaWebhookSetup;
@@ -165,7 +193,6 @@ export default {
       if (telephonySettings) return telephonySettings;
       const phoneWorkspace = await handlePhoneWorkspace(request, runtimeEnv, url);
       if (phoneWorkspace) return phoneWorkspace;
-      if (url.pathname === '/api/health') return json({ ok: true, service: 'amanat-marketing-api', supabaseConfigured: Boolean(runtimeEnv.SUPABASE_URL && runtimeEnv.SUPABASE_SERVICE_ROLE_KEY) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname === '/api/exchange-rates' && request.method === 'GET') return handleRates(request, runtimeEnv);
       if (url.pathname === '/api/web-analytics' && request.method === 'GET') return json([], 200, corsHeaders(request, runtimeEnv));
       const customer360Response = await handleCustomer360(request, runtimeEnv, url);
@@ -181,12 +208,14 @@ export default {
       if (url.pathname === '/api/leads') return handleLeads(request, runtimeEnv, url);
       if (url.pathname.startsWith('/api/leads/')) return handleLeadById(request, runtimeEnv, url.pathname.split('/').pop() || '');
       if (url.pathname === '/api/calls') return handleCalls(request, runtimeEnv, url);
-      if (url.pathname === '/api/calls/operators' && request.method === 'GET') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_call_operator_summary?select=*&order=appointments.desc,calls.desc'), request, runtimeEnv);
+      if (url.pathname === '/api/calls/operators' && request.method === 'GET') return proxyData(await dataRequest(runtimeEnv, 'marketing_call_operator_summary?select=*&order=appointments.desc,calls.desc'), request, runtimeEnv);
       if (url.pathname === '/api/dashboard') return handleDashboard(request, runtimeEnv, url);
-      if (url.pathname === '/api/sources') return proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_source_summary?select=*&order=revenue.desc'), request, runtimeEnv);
+      if (url.pathname === '/api/sources') return proxyData(await dataRequest(runtimeEnv, 'marketing_source_summary?select=*&order=revenue.desc'), request, runtimeEnv);
       if (url.pathname === '/api/ads') {
-        const summary = await supabaseRequest(runtimeEnv, 'marketing_ads_summary?select=*&order=revenue.desc');
-        return summary.ok || summary.status !== 404 ? proxySupabase(summary, request, runtimeEnv) : proxySupabase(await supabaseRequest(runtimeEnv, 'marketing_ads?select=row_key:id,*&order=report_date.desc,revenue.desc'), request, runtimeEnv);
+        const summary = await dataRequest(runtimeEnv, 'marketing_ads_summary?select=*&order=revenue.desc');
+        return summary.ok || summary.status !== 404
+          ? proxyData(summary, request, runtimeEnv)
+          : proxyData(await dataRequest(runtimeEnv, 'marketing_ads?select=row_key:id,*&order=report_date.desc,revenue.desc'), request, runtimeEnv);
       }
       if (url.pathname === '/api/ads/currencies' && request.method === 'GET') return json({ accounts: await detectAdvertisingCurrencies(runtimeEnv) }, 200, corsHeaders(request, runtimeEnv));
       if (url.pathname.startsWith('/api/')) return json({ error: 'API route not found' }, 404, corsHeaders(request, runtimeEnv));
@@ -196,6 +225,7 @@ export default {
       return json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500, corsHeaders(request, env));
     }
   },
+
   async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext): Promise<void> {
     const runtimeEnv = await hydrateIntegrationEnv(env);
     await runScheduledSync(controller, runtimeEnv, ctx);
