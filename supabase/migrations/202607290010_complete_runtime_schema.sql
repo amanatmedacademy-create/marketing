@@ -77,6 +77,14 @@ grant all on public.integration_events to service_role;
 grant all on public.integration_runs to service_role;
 grant all on public.integration_credentials to service_role;
 
-revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+-- Supabase-managed databases may expose this helper, while a clean PostgreSQL
+-- installation does not. Revoke it only when it is actually present.
+do $$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke execute on function public.rls_auto_enable() from public, anon, authenticated';
+  end if;
+end;
+$$;
 
 notify pgrst, 'reload schema';
