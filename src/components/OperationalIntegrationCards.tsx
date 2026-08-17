@@ -25,6 +25,10 @@ type TelephonyStatus = {
 
 type DetailKey = 'mis' | 'zadarma' | null;
 
+type OperationalIntegrationCardsProps = {
+  inline?: boolean;
+};
+
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: 'no-store' });
   const raw = await response.text();
@@ -38,7 +42,7 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? 'Нет данных' : date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function OperationalIntegrationCards() {
+export default function OperationalIntegrationCards({ inline = false }: OperationalIntegrationCardsProps) {
   const { user } = useAuth();
   const [mis, setMis] = useState<MisStatus | null>(null);
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
@@ -97,18 +101,18 @@ export default function OperationalIntegrationCards() {
     if (id === 'mis' || id === 'zadarma') setDetail(id);
   };
 
+  const cardNodes = cards.map((card) => <IntegrationCard
+    key={card.id}
+    integration={card}
+    active={active === card.id}
+    onSelect={() => setActive(card.id)}
+    onConfigure={() => open(card.id)}
+  />);
+
   return <>
-    <section className="iv2-section iv2-section--operational" aria-label="Операционные интеграции">
-      <div className="iv2-grid">
-        {cards.map((card) => <IntegrationCard
-          key={card.id}
-          integration={card}
-          active={active === card.id}
-          onSelect={() => setActive(card.id)}
-          onConfigure={() => open(card.id)}
-        />)}
-      </div>
-    </section>
+    {inline ? cardNodes : <section className="iv2-section iv2-section--operational" aria-label="Операционные интеграции">
+      <div className="iv2-grid">{cardNodes}</div>
+    </section>}
 
     {detail && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
       <section className="iv2-modal iv2-modal--workspace" role="dialog" aria-modal="true" aria-label={detail === 'mis' ? 'Настройка МИС' : 'Настройка Zadarma'}>
