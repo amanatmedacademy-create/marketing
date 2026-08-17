@@ -53,7 +53,7 @@ body{margin:0;background:var(--imds-app-fallback)!important}
 }
 .marketing-content{
   position:relative!important;
-  z-index:1!important;
+  z-index:auto!important;
   min-height:calc(100vh - 70px)!important;
   min-height:calc(100dvh - 70px)!important;
   background:transparent!important;
