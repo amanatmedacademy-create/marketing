@@ -18,14 +18,13 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
     steps:
-      - name: Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y sshpass
       - name: Verify Marketing Hub APIs
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
+          command -v sshpass >/dev/null
           export SSHPASS
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
@@ -68,6 +67,7 @@ jobs:
           check_list forms '/api/operations/forms?limit=1'
           check_list links '/api/operations/links?limit=1'
           check_list media_plan '/api/operations/media-plan?limit=1'
+          check_list automation_runs '/api/automation/runs'
 
           curl -fsS --max-time 20 "${common[@]}" "$API/api/analytics/ad-manager?days=30" -o /tmp/imds-hub-ad-manager.json
           python3 - <<'PY'
@@ -77,5 +77,15 @@ jobs:
           if not isinstance(value, dict) or not isinstance(value.get('rows'), list) or not isinstance(value.get('accounts'), list):
               raise SystemExit('ad_manager: unexpected response')
           print(f"AD_MANAGER=ok rows={len(value['rows'])} accounts={len(value['accounts'])}")
+          PY
+
+          curl -fsS --max-time 20 "${common[@]}" "$API/api/ads/currencies" -o /tmp/imds-hub-ad-currencies.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/imds-hub-ad-currencies.json', encoding='utf-8') as stream:
+              value = json.load(stream)
+          if not isinstance(value, dict) or not isinstance(value.get('accounts'), list):
+              raise SystemExit('ad_currencies: unexpected response')
+          print(f"AD_CURRENCIES=ok accounts={len(value['accounts'])}")
           PY
           REMOTE
