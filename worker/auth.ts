@@ -1,5 +1,6 @@
 import type { Env } from './integrations';
 import { handleUserAdminRequest } from './userAdmin';
+import { handleAccountSelfServiceRequest } from './accountSelfService';
 import { hasPermission, permissionForRequest, resolveUserAccess, type AccessMap } from './accessControl';
 import { listUserCompanies, resolveCompanyId } from './companyContext';
 import {
@@ -214,11 +215,18 @@ async function onboardingStatus(env: AuthEnv, userId: string): Promise<string | 
   }
 }
 
-async function handleClinicAccountRequest(request: Request, env: AuthEnv, url: URL, preauthenticatedUser?: AuthenticatedUser): Promise<Response | null> {
-  if (url.pathname !== '/api/clinics' && url.pathname !== '/api/clinics/join') return null;
+async function authenticatedAccountUser(request: Request, env: AuthEnv, preauthenticatedUser?: AuthenticatedUser): Promise<AuthenticatedUser | Response> {
   const user = preauthenticatedUser || await authenticateRequest(request, env);
   if (!user) return json({ error: 'Необходим вход в систему' }, 401);
   if (user.status !== 'active') return json({ error: 'Пользователь не активен' }, 403);
+  return user;
+}
+
+async function handleClinicAccountRequest(request: Request, env: AuthEnv, url: URL, preauthenticatedUser?: AuthenticatedUser): Promise<Response | null> {
+  if (url.pathname !== '/api/clinics' && url.pathname !== '/api/clinics/join') return null;
+  const candidate = await authenticatedAccountUser(request, env, preauthenticatedUser);
+  if (candidate instanceof Response) return candidate;
+  const user = candidate;
 
   if (url.pathname === '/api/clinics' && request.method === 'GET') {
     return json({ items: await listUserCompanies(env, user.id, user.platformRole) });
@@ -234,12 +242,7 @@ async function handleClinicAccountRequest(request: Request, env: AuthEnv, url: U
     const sourceCompanyId = source && source.accessSource !== 'platform' && ['owner', 'administrator'].includes(source.role) ? source.id : null;
     const response = await rest(env, 'rpc/imds_create_clinic', {
       method: 'POST',
-      body: JSON.stringify({
-        p_user_id: user.id,
-        p_name: name,
-        p_slug: null,
-        p_source_company_id: sourceCompanyId,
-      }),
+      body: JSON.stringify({ p_user_id: user.id, p_name: name, p_slug: null, p_source_company_id: sourceCompanyId }),
     });
     const raw = await response.text();
     if (!response.ok) return json({ error: raw || 'Не удалось создать клинику' }, response.status === 403 ? 403 : 400);
@@ -270,6 +273,13 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
   if (localAuthEnabled(env)) {
     const nativeResponse = await handleNativeAuthRequest(request, env, url);
     if (nativeResponse) return nativeResponse;
+  }
+
+  if (url.pathname.startsWith('/api/account/')) {
+    const candidate = await authenticatedAccountUser(request, env, preauthenticatedUser);
+    if (candidate instanceof Response) return candidate;
+    const accountResponse = await handleAccountSelfServiceRequest(request, env, url, candidate);
+    if (accountResponse) return accountResponse;
   }
 
   const clinicResponse = await handleClinicAccountRequest(request, env, url, preauthenticatedUser);
