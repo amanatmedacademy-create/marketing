@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, BarChart3, Bot, Cable, CalendarDays, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import AnalyticsWorkspace from './components/AnalyticsWorkspace';
@@ -28,10 +28,11 @@ import MarketingAiPage from './pages/MarketingAiPage';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import ContextualTasksPage from './pages/ContextualTasksPage';
 import { useAuth } from './components/AuthGate';
+import { loadPlatformEntitlements, type PlatformEntitlements } from './services/platformEntitlements';
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; platformModule?: string | readonly string[]; end?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navigation: NavGroup[] = [
@@ -39,25 +40,25 @@ const navigation: NavGroup[] = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, moduleId: 'dashboard' },
   ]},
   { label: 'РАБОТА', items: [
-    { to: '/tasks', label: 'Задачи', icon: ListChecks, moduleId: 'work.tasks' },
+    { to: '/tasks', label: 'Задачи', icon: ListChecks, moduleId: 'work.tasks', platformModule: 'marketing.tasks' },
   ]},
   { label: 'CRM', items: [
-    { to: '/crm', label: 'CRM', icon: UsersRound, moduleId: ['crm.leads', 'crm.pipeline'] },
+    { to: '/crm', label: 'CRM', icon: UsersRound, moduleId: ['crm.leads', 'crm.pipeline'], platformModule: 'marketing.crm' },
   ]},
   { label: 'КОММУНИКАЦИИ', items: [
-    { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat' },
-    { to: '/telephony', label: 'Телефония', icon: PhoneCall, moduleId: 'communications.calls' },
-    { to: '/schedule', label: 'Clinic Schedule', icon: CalendarDays, moduleId: 'communications.calls' },
-    { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat' },
-    { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat' },
+    { to: '/chat', label: 'Входящие', icon: MessageCircle, moduleId: 'communications.chat', platformModule: 'marketing.call-center' },
+    { to: '/telephony', label: 'Телефония', icon: PhoneCall, moduleId: 'communications.calls', platformModule: 'marketing.call-center' },
+    { to: '/schedule', label: 'Clinic Schedule', icon: CalendarDays, moduleId: 'communications.calls', platformModule: 'marketing.call-center' },
+    { to: '/whatsapp/campaigns', label: 'WhatsApp-рассылки', icon: Send, moduleId: 'communications.chat', platformModule: 'marketing.whatsapp-business' },
+    { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat', platformModule: 'marketing.whatsapp-business' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
-    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'] },
+    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'], platformModule: ['marketing.meta-ads', 'marketing.automation', 'marketing.analytics', 'marketing.crm'] },
   ]},
   { label: 'АНАЛИТИКА', items: [
-    { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports' },
-    { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports' },
-    { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports' },
+    { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
+    { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
+    { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
@@ -78,17 +79,50 @@ function Shell() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
+  const [platform, setPlatform] = useState<PlatformEntitlements | null>(null);
+  const [platformError, setPlatformError] = useState<string | null>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
-  const canViewItem = (moduleId: NavItem['moduleId']) => Array.isArray(moduleId) ? moduleId.some((id) => canView(id)) : canView(moduleId as string);
-  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(item => canViewItem(item.moduleId)) })).filter(group => group.items.length > 0);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const next = await loadPlatformEntitlements();
+        if (active) { setPlatform(next); setPlatformError(null); }
+      } catch (reason) {
+        if (active) setPlatformError(reason instanceof Error ? reason.message : String(reason));
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    const onFocus = () => void refresh();
+    window.addEventListener('focus', onFocus);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+  }, [user.companyId]);
+
+  const localCanView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
+  const platformAllows = (moduleId?: string | readonly string[]) => {
+    if (!platform || !platform.managed) return true;
+    if (!platform.productEnabled) return false;
+    if (!moduleId) return true;
+    return Array.isArray(moduleId) ? moduleId.some((id) => platform.modules[id] === true) : platform.modules[moduleId as string] === true;
+  };
+  const canViewItem = (item: NavItem) => {
+    const local = Array.isArray(item.moduleId) ? item.moduleId.some((id) => localCanView(id)) : localCanView(item.moduleId as string);
+    return local && platformAllows(item.platformModule);
+  };
+  const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(canViewItem) })).filter(group => group.items.length > 0);
   const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
-  const guard = (moduleId: string, element: ReactNode) => canView(moduleId) ? element : <AccessDenied/>;
-  const guardAny = (moduleIds: string[], element: ReactNode) => moduleIds.some(canView) ? element : <AccessDenied/>;
-  const crmHome = canView('crm.leads') ? '/leads' : canView('crm.pipeline') ? '/pipeline' : firstRoute;
-  const crm = (element: ReactNode) => <CrmWorkspace canView={canView}>{element}</CrmWorkspace>;
+  const guard = (moduleId: string, element: ReactNode, platformModule?: string | readonly string[]) => localCanView(moduleId) && platformAllows(platformModule) ? element : <AccessDenied platformControlled={Boolean(platform?.managed && platformModule && !platformAllows(platformModule))}/>;
+  const guardAny = (moduleIds: string[], element: ReactNode, platformModules?: string | readonly string[]) => moduleIds.some(localCanView) && platformAllows(platformModules) ? element : <AccessDenied platformControlled={Boolean(platform?.managed && platformModules && !platformAllows(platformModules))}/>;
+  const crmHome = localCanView('crm.leads') && platformAllows('marketing.crm') ? '/leads' : localCanView('crm.pipeline') && platformAllows('marketing.crm') ? '/pipeline' : firstRoute;
+  const crm = (element: ReactNode) => <CrmWorkspace canView={localCanView}>{element}</CrmWorkspace>;
   const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
   const isMarketingRoute = location.pathname === '/marketing' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
+
+  if (platform?.managed && !platform.productEnabled) {
+    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing отключён</h2><p>Доступ к продукту приостановлен в IMDS Super Admin для этой организации.</p></div>;
+  }
 
   return <div className="marketing-shell">
     <aside className={open ? 'open' : ''}>
@@ -104,6 +138,8 @@ function Shell() {
         <button className="marketing-menu" type="button" aria-label="Открыть меню" aria-expanded={open} onClick={() => setOpen(!open)}><Menu size={21}/></button>
         <GlobalSearch />
         <div className="marketing-top-actions">
+          {platform?.managed && <span className="platform-sync-indicator" title={`Control Plane revision ${platform.revision ?? '—'}`}>SYNC {platform.revision ?? '—'}</span>}
+          {platformError && <span className="platform-sync-indicator platform-sync-indicator--error" title={platformError}>SYNC ERROR</span>}
           <CompanySwitcher />
           <ThemeToggle />
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
@@ -113,30 +149,30 @@ function Shell() {
       <div className="marketing-content"><Routes>
         <Route path="/" element={guard('dashboard', <DashboardRoute/>)} />
         <Route path="/goals" element={<Navigate to="/" replace/>} />
-        <Route path="/tasks" element={guard('work.tasks', <ContextualTasksPage/>)} />
-        <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>)} />
+        <Route path="/tasks" element={guard('work.tasks', <ContextualTasksPage/>, 'marketing.tasks')} />
+        <Route path="/chat" element={guard('communications.chat', <CallCenterChatPage/>, 'marketing.call-center')} />
         <Route path="/crm" element={<Navigate to={crmHome} replace/>} />
-        <Route path="/leads" element={guard('crm.leads', crm(<LeadsPage/>))} />
-        <Route path="/customers" element={guard('crm.leads', crm(<Customer360Page/>))} />
-        <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>)} />
+        <Route path="/leads" element={guard('crm.leads', crm(<LeadsPage/>), 'marketing.crm')} />
+        <Route path="/customers" element={guard('crm.leads', crm(<Customer360Page/>), 'marketing.crm')} />
+        <Route path="/telephony" element={guard('communications.calls', <TelephonyPage/>, 'marketing.call-center')} />
         <Route path="/phone" element={<Navigate to="/telephony" replace/>} />
         <Route path="/calls" element={<Navigate to="/telephony" replace/>} />
-        <Route path="/schedule" element={guard('communications.calls', <ContextualSchedulePage/>)} />
-        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>))} />
-        <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>)} />
-        <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>)} />
-        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS/>)} />
-        <Route path="/advertising" element={<Navigate to="/marketing?view=ads" replace/>} />
-        <Route path="/automation" element={<Navigate to="/marketing?view=automation" replace/>} />
-        <Route path="/lead-forms" element={<Navigate to="/marketing?view=leads" replace/>} />
+        <Route path="/schedule" element={guard('communications.calls', <ContextualSchedulePage/>, 'marketing.call-center')} />
+        <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>), 'marketing.crm')} />
+        <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>, 'marketing.whatsapp-business')} />
+        <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>, 'marketing.whatsapp-business')} />
+        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
+        <Route path="/advertising" element={platformAllows('marketing.meta-ads') ? <Navigate to="/marketing?view=ads" replace/> : <AccessDenied platformControlled/>} />
+        <Route path="/automation" element={platformAllows('marketing.automation') ? <Navigate to="/marketing?view=automation" replace/> : <AccessDenied platformControlled/>} />
+        <Route path="/lead-forms" element={platformAllows('marketing.crm') ? <Navigate to="/marketing?view=leads" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/media-plan" element={<Navigate to="/marketing?view=media-plan" replace/>} />
-        <Route path="/utm-builder" element={<Navigate to="/marketing?view=attribution" replace/>} />
-        <Route path="/attribution" element={<Navigate to="/marketing?view=attribution" replace/>} />
+        <Route path="/utm-builder" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
+        <Route path="/attribution" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/segments" element={<Navigate to="/leads" replace/>} />
-        <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>)} />
-        <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>)} />
+        <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>, 'marketing.analytics')} />
+        <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>, 'marketing.analytics')} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
-        <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>)} />
+        <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.analytics')} />
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
@@ -151,8 +187,8 @@ function Shell() {
   </div>;
 }
 
-function AccessDenied() {
-  return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>Обратитесь к администратору, чтобы изменить должность или персональные права.</p></div>;
+function AccessDenied({ platformControlled = false }: { platformControlled?: boolean }) {
+  return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>{platformControlled ? 'Модуль отключён для этой организации в IMDS Super Admin.' : 'Обратитесь к администратору, чтобы изменить должность или персональные права.'}</p></div>;
 }
 
 export default function MarketingPlatform() {
