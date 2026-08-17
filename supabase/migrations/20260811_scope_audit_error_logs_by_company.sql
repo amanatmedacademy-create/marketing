@@ -1,17 +1,30 @@
 do $$
 declare
   v_company_id uuid;
+  v_has_unscoped_rows boolean;
 begin
-  select id into v_company_id from public.crm_companies order by created_at asc limit 1;
-  if v_company_id is null then
-    raise exception 'Cannot backfill audit/error logs: no crm company exists';
-  end if;
-
   alter table public.audit_logs add column if not exists company_id uuid;
   alter table public.error_logs add column if not exists company_id uuid;
 
-  update public.audit_logs set company_id = v_company_id where company_id is null;
-  update public.error_logs set company_id = v_company_id where company_id is null;
+  select exists(select 1 from public.audit_logs where company_id is null)
+      or exists(select 1 from public.error_logs where company_id is null)
+    into v_has_unscoped_rows;
+
+  select id into v_company_id
+  from public.crm_companies
+  order by created_at asc
+  limit 1;
+
+  -- Clean self-hosted bootstrap legitimately has no company and no log rows yet.
+  -- Existing unscoped rows, however, must never be silently accepted without a tenant.
+  if v_company_id is null and v_has_unscoped_rows then
+    raise exception 'Cannot backfill audit/error logs: unscoped rows exist but no crm company exists';
+  end if;
+
+  if v_company_id is not null then
+    update public.audit_logs set company_id = v_company_id where company_id is null;
+    update public.error_logs set company_id = v_company_id where company_id is null;
+  end if;
 end $$;
 
 alter table public.audit_logs alter column company_id set not null;
