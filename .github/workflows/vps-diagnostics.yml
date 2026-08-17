@@ -38,23 +38,30 @@ jobs:
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
+            set -a
+            . /etc/imds-postgres.env
+            set +a
+            test -n "${POSTGRES_PASSWORD:-}"
+            test -n "${IMDS_API_PASSWORD:-}"
+            test -n "${PGRST_JWT_SECRET:-}"
+            test -n "${LOCAL_SERVICE_ROLE_KEY:-}"
             cd /opt/imds-db
             if docker compose version >/dev/null 2>&1; then
               docker compose up -d postgres postgrest
             else
               docker-compose up -d postgres postgrest
             fi
-            set -a
-            . /etc/imds-postgres.env
-            set +a
             for attempt in $(seq 1 30); do
               if curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3001/ >/dev/null 2>&1; then
                 break
               fi
+              if [ "$attempt" -eq 30 ]; then
+                docker logs --tail 120 imds-postgrest || true
+              fi
               sleep 2
             done
             curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3001/ >/dev/null
-            curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" http://127.0.0.1:3002/rest/v1/imds_auth_users?select=id\&limit=1 >/dev/null
+            curl -fsS -H "Authorization: Bearer $LOCAL_SERVICE_ROLE_KEY" "http://127.0.0.1:3002/rest/v1/imds_auth_users?select=id&limit=1" >/dev/null
             systemctl restart imds-marketing.service
             sleep 4
             systemctl is-active --quiet imds-marketing.service
