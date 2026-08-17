@@ -44,6 +44,7 @@ import './imds-legacy-color-cleanup.css';
 import './crm-custom-fields.css';
 import './call-center-chat-v2.css';
 import './imds-intelligence-harmony.css';
+import './auth-palette-final.css';
 
 type ThemeMode = 'light' | 'dark';
 
