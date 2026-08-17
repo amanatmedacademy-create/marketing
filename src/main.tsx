@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
+import SubscriptionStatusLayer from './components/SubscriptionStatusLayer';
 import MarketingPlatform from './MarketingPlatform';
 import './source-badge-auto-layer';
 import './crm-custom-fields-layer';
@@ -62,7 +63,7 @@ applyInitialTheme();
 
 function Root() {
   if (window.location.pathname === '/operations') window.history.replaceState({}, document.title, '/marketing');
-  return <MarketingPlatform />;
+  return <SubscriptionStatusLayer><MarketingPlatform /></SubscriptionStatusLayer>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
