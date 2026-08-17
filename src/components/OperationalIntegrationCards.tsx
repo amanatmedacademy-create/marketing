@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
 import type { CardIntegrationProvider, CardIntegrationSummary } from './integrationCards/types';
@@ -44,6 +45,7 @@ export default function OperationalIntegrationCards() {
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
   const [detail, setDetail] = useState<DetailKey>(null);
   const [active, setActive] = useState<CardIntegrationProvider | null>(null);
+  const [catalogTarget, setCatalogTarget] = useState<Element | null>(null);
 
   const load = useCallback(async () => {
     const [nextMis, nextTelephony] = await Promise.all([
@@ -55,6 +57,16 @@ export default function OperationalIntegrationCards() {
   }, []);
 
   useEffect(() => { void load(); }, [load, user.companyId]);
+  useEffect(() => {
+    const resolveTarget = () => {
+      const target = document.querySelector('.iv2-page .iv2-section .iv2-grid');
+      if (target) setCatalogTarget(target);
+      return Boolean(target);
+    };
+    if (resolveTarget()) return;
+    const timer = window.setInterval(() => { if (resolveTarget()) window.clearInterval(timer); }, 50);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const cards = useMemo<CardIntegrationSummary[]>(() => {
     const misError = mis?.credential?.lastError || mis?.settings?.last_error || undefined;
@@ -97,19 +109,16 @@ export default function OperationalIntegrationCards() {
     if (id === 'mis' || id === 'zadarma') setDetail(id);
   };
 
+  const cardNodes = cards.map((card) => <IntegrationCard
+    key={card.id}
+    integration={card}
+    active={active === card.id}
+    onSelect={() => setActive(card.id)}
+    onConfigure={() => open(card.id)}
+  />);
+
   return <>
-    <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Операционные подключения</h2><p>МИС и телефония используют тот же стандарт карточек, что рекламные, аналитические и коммуникационные интеграции.</p></div></div>
-      <div className="iv2-grid">
-        {cards.map((card) => <IntegrationCard
-          key={card.id}
-          integration={card}
-          active={active === card.id}
-          onSelect={() => setActive(card.id)}
-          onConfigure={() => open(card.id)}
-        />)}
-      </div>
-    </section>
+    {catalogTarget ? createPortal(cardNodes, catalogTarget) : null}
 
     {detail && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
       <section className="iv2-modal iv2-modal--workspace" role="dialog" aria-modal="true" aria-label={detail === 'mis' ? 'Настройка МИС' : 'Настройка Zadarma'}>
