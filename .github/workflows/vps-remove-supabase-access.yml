@@ -1,0 +1,58 @@
+name: Remove Supabase Access From VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vps-remove-supabase-access.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate VPS access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Apply platform super admin migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" supabase/migrations/20260817190500_platform_super_admin.sql "$VPS_USER@$VPS_HOST:/tmp/platform-super-admin.sql"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing < /tmp/platform-super-admin.sql
+            rm -f /tmp/platform-super-admin.sql
+            test -f /etc/imds-marketing.env
+            sed -i -E "/^(SUPABASE_|VITE_SUPABASE_|FRONTEND_ADMIN_KEY=)/d" /etc/imds-marketing.env
+            if ! grep -q "^INTEGRATION_ENCRYPTION_KEY=" /etc/imds-marketing.env; then
+              printf "INTEGRATION_ENCRYPTION_KEY=%s\n" "$(openssl rand -hex 48)" >> /etc/imds-marketing.env
+            fi
+            chmod 600 /etc/imds-marketing.env
+            ROLE="$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select platform_role from public.imds_auth_users where lower(email)=lower('admin@imds.kz') limit 1")"
+            test "$ROLE" = "super_admin"
+            echo "Platform super-admin role applied and legacy cloud access removed from VPS env."
+          '
