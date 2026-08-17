@@ -63,7 +63,13 @@ create table if not exists public.integration_runs (
 create index if not exists integration_runs_source_idx on public.integration_runs (source, started_at desc);
 create index if not exists integration_runs_status_idx on public.integration_runs (status, started_at desc);
 
-create or replace view public.marketing_dashboard_daily as
+-- PostgreSQL does not permit CREATE OR REPLACE VIEW to rename/reorder existing
+-- columns. These reporting views are derived objects, so recreate them explicitly.
+drop view if exists public.marketing_dashboard_daily cascade;
+drop view if exists public.marketing_source_summary cascade;
+drop view if exists public.marketing_ads_summary cascade;
+
+create view public.marketing_dashboard_daily as
 select
   date,
   sum(leads)::integer as leads,
@@ -75,7 +81,7 @@ select
 from public.marketing_daily_metrics
 group by date;
 
-create or replace view public.marketing_source_summary as
+create view public.marketing_source_summary as
 select
   source,
   platform,
@@ -88,7 +94,7 @@ select
 from public.marketing_daily_metrics
 group by source, platform;
 
-create or replace view public.marketing_ads_summary as
+create view public.marketing_ads_summary as
 select
   coalesce(ad_id, external_id, id::text) as row_key,
   max(source) as source,
