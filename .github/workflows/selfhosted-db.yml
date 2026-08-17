@@ -1,0 +1,85 @@
+name: Self-hosted DB
+
+on:
+  push:
+    branches: [agent/selfhosted-postgres-migration]
+    paths:
+      - 'deploy/vps/selfhosted-db/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/selfhosted-db.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhosted-db-migration
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate SSH secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+
+      - name: Checkout migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/selfhosted-postgres-migration
+
+      - name: Package database bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/imds-db-bootstrap.tgz deploy/vps/selfhosted-db supabase/migrations
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Bootstrap PostgreSQL and PostgREST
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-db-bootstrap.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-db-bootstrap.tgz"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            rm -rf /tmp/imds-db-bootstrap
+            mkdir -p /tmp/imds-db-bootstrap /opt/imds-db/migrations
+            tar -xzf /tmp/imds-db-bootstrap.tgz -C /tmp/imds-db-bootstrap
+            cp /tmp/imds-db-bootstrap/deploy/vps/selfhosted-db/docker-compose.yml /opt/imds-db/docker-compose.yml
+            cp /tmp/imds-db-bootstrap/deploy/vps/selfhosted-db/bootstrap-db.sh /opt/imds-db/bootstrap-db.sh
+            rm -rf /opt/imds-db/migrations
+            cp -a /tmp/imds-db-bootstrap/supabase/migrations /opt/imds-db/migrations
+            chmod 700 /opt/imds-db/bootstrap-db.sh
+            /opt/imds-db/bootstrap-db.sh /opt/imds-db/migrations
+          '
+
+      - name: Verify local database stack
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            docker ps --filter name=imds-postgres --filter name=imds-postgrest
+            curl -fsS http://127.0.0.1:3001/ >/dev/null
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select count(*) from public.imds_schema_migrations"
+          '
