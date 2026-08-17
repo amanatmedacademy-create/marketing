@@ -47,6 +47,7 @@ import './call-center-chat-v2.css';
 import './imds-intelligence-harmony.css';
 import './auth-palette-final.css';
 import './topbar-runtime-status.css';
+import './beles-brand.css';
 
 type ThemeMode = 'light' | 'dark';
 
