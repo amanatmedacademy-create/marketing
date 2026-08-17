@@ -53,7 +53,7 @@ const navigation: NavGroup[] = [
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat', platformModule: 'marketing.whatsapp-business' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
-    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'], platformModule: ['marketing.meta-ads', 'marketing.automation', 'marketing.analytics', 'marketing.crm'] },
+    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'], platformModule: ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'] },
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
@@ -160,7 +160,7 @@ function Shell() {
         <Route path="/schedule" element={guard('communications.calls', <ContextualSchedulePage/>, 'marketing.call-center')} />
         <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>), 'marketing.crm')} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>, 'marketing.whatsapp-business')} />
-        <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>), 'marketing.whatsapp-business'} />
+        <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>, 'marketing.whatsapp-business')} />
         <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS platform={platform}/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
         <Route path="/advertising" element={platformAllows('marketing.meta-ads') ? <Navigate to="/marketing?view=ads" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/automation" element={platformAllows('marketing.automation') ? <Navigate to="/marketing?view=automation" replace/> : <AccessDenied platformControlled/>} />
