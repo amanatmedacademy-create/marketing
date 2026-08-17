@@ -81,6 +81,17 @@ begin
       raise exception 'Добавлять клиники в эту организацию может только владелец или администратор' using errcode = '42501';
     end if;
   else
+    if not exists (
+      select 1
+      from public.marketing_users u
+      left join public.imds_auth_users a on a.id = u.auth_user_id
+      where u.id = p_user_id
+        and u.status = 'active'
+        and (u.role = 'administrator' or a.platform_role = 'super_admin')
+    ) then
+      raise exception 'Создавать отдельную организацию может только администратор' using errcode = '42501';
+    end if;
+
     v_organization_id := v_company_id;
     insert into public.imds_organizations(id, name, slug, created_by)
     values (v_organization_id, v_name, nullif(v_slug, ''), p_user_id)
