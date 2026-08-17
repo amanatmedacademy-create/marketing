@@ -1,15 +1,10 @@
 import IntegrationManager from '../components/IntegrationManager';
-import MisIntegrationPanel from '../components/MisIntegrationPanel';
-import TelephonyDiagnosticsPanel from '../components/TelephonyDiagnosticsPanel';
-import ZadarmaIntegrationPanel from '../components/ZadarmaIntegrationPanel';
-import ZadarmaInboundControls from '../components/ZadarmaInboundControls';
+import OperationalIntegrationCards from '../components/OperationalIntegrationCards';
+import '../integration-workspace-unified.css';
 
 export default function IntegrationsWorkspace() {
   return <>
-    <MisIntegrationPanel />
-    <ZadarmaIntegrationPanel />
-    <TelephonyDiagnosticsPanel />
-    <ZadarmaInboundControls />
+    <div className="integration-operational-wrap"><OperationalIntegrationCards /></div>
     <IntegrationManager />
   </>;
 }
