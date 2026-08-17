@@ -35,6 +35,11 @@ services:
       PGRST_JWT_SECRET: ${PGRST_JWT_SECRET}
       PGRST_SERVER_HOST: 0.0.0.0
       PGRST_SERVER_PORT: 3000
+      # PostgREST is a GHC/Haskell binary. On this VPS the runtime was trying
+      # to create more OS capability threads than the host/container allows,
+      # causing a crash loop before port 3000 opened. One capability is more
+      # than sufficient for this internal-only data API.
+      GHCRTS: -N1
     ports:
       - "127.0.0.1:3001:3000"
     networks:
