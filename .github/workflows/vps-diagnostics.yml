@@ -2,35 +2,33 @@ name: VPS Diagnostics
 
 on:
   push:
-    branches: [agent/vps-diagnostics]
+    branches: [main]
     paths: ['.github/workflows/vps-diagnostics.yml']
+
+permissions:
+  contents: read
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
     steps:
-      - name: Check application secret presence
+      - name: Validate VPS access
         shell: bash
         run: |
           set -euo pipefail
-          for name in SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY OPENAI_API_KEY INTEGRATION_ENCRYPTION_KEY; do
-            if [ -n "${!name:-}" ]; then
-              echo "$name=present"
-            else
-              echo "$name=missing"
-            fi
-          done
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
-      - name: Read runtime diagnostics
+
+      - name: Diagnose and restart runtime
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -39,8 +37,36 @@ jobs:
           export SSHPASS
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
-            echo "=== service status ==="
+            set -u
+            echo "=== service before restart ==="
             systemctl status imds-marketing.service --no-pager -l || true
             echo "=== recent journal ==="
-            journalctl -u imds-marketing.service -n 40 --no-pager -o cat || true
+            journalctl -u imds-marketing.service -n 120 --no-pager -o cat || true
+            echo "=== listening ports ==="
+            ss -ltnp | grep -E ":(8787|3001|3002)[[:space:]]" || true
+            echo "=== database containers ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|imds-postgres|postgrest" || true
+            echo "=== env presence ==="
+            grep -q "^IMDS_LOCAL_DB_URL=" /etc/imds-marketing.env && echo "IMDS_LOCAL_DB_URL=present" || echo "IMDS_LOCAL_DB_URL=missing"
+            grep -q "^IMDS_LOCAL_SERVICE_ROLE_KEY=" /etc/imds-marketing.env && echo "IMDS_LOCAL_SERVICE_ROLE_KEY=present" || echo "IMDS_LOCAL_SERVICE_ROLE_KEY=missing"
+            echo "=== restart backend ==="
+            systemctl daemon-reload
+            systemctl restart imds-marketing.service
+            sleep 5
+            systemctl status imds-marketing.service --no-pager -l || true
+            echo "=== direct health ==="
+            curl -fsS --max-time 10 http://127.0.0.1:8787/api/health
+            echo
+            echo "=== direct auth config ==="
+            curl -fsS --max-time 10 http://127.0.0.1:8787/api/auth/config
+            echo
           '
+
+      - name: Verify through nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/api/health"
+          echo
+          curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/api/auth/config"
+          echo
