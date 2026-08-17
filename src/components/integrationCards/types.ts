@@ -6,6 +6,8 @@ export type CardIntegrationProvider =
   | 'bitrix'
   | 'n8n'
   | 'waba'
+  | 'mis'
+  | 'zadarma'
   | 'wazzup'
   | 'binotel'
   | 'sipuni';
