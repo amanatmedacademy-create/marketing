@@ -13,50 +13,29 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
     steps:
-      - name: Probe legacy Cloudflare API safely
+      - name: Prepare secure migration token on VPS
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          BASE='https://marketing.amanat-med-academy.workers.dev'
-          check_json() {
-            name="$1"
-            path="$2"
-            tmp="$(mktemp)"
-            status="$(curl -sS -L --max-time 20 -o "$tmp" -w '%{http_code}' "$BASE$path" || true)"
-            python3 - "$name" "$status" "$tmp" <<'PY'
-          import json, sys
-          name, status, path = sys.argv[1:]
-          try:
-              raw = open(path, encoding='utf-8', errors='replace').read()
-              value = json.loads(raw)
-          except Exception:
-              print(f'{name}=http_{status},json=no')
-              raise SystemExit
-          if isinstance(value, list):
-              print(f'{name}=http_{status},json=list,count={len(value)}')
-          elif isinstance(value, dict):
-              keys = sorted(value.keys())[:20]
-              counts = []
-              for key in keys:
-                  item = value.get(key)
-                  if isinstance(item, list): counts.append(f'{key}:{len(item)}')
-              print(f'{name}=http_{status},json=dict,list_counts={";".join(counts) or "none"}')
-          else:
-              print(f'{name}=http_{status},json={type(value).__name__}')
-          PY
-            rm -f "$tmp"
-          }
-          check_json health '/api/health'
-          check_json ads '/api/ads'
-          check_json ad_manager '/api/analytics/ad-manager?days=30'
-          check_json leads '/api/leads?limit=500'
-          check_json dashboard '/api/dashboard'
-          check_json calls '/api/calls?limit=500'
-          check_json campaigns '/api/operations/campaigns?limit=500'
-          check_json tasks '/api/operations/tasks?limit=500'
-          check_json content '/api/operations/content?limit=500'
-          check_json automations '/api/operations/automations?limit=500'
-          check_json forms '/api/operations/forms?limit=500'
-          check_json links '/api/operations/links?limit=500'
-          check_json media_plan '/api/operations/media-plan?limit=500'
+          command -v sshpass >/dev/null
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          TOKEN_FILE=/root/.imds-legacy-migration-token
+          if [ ! -s "$TOKEN_FILE" ]; then
+            umask 077
+            openssl rand -hex 48 > "$TOKEN_FILE"
+          fi
+          chmod 600 "$TOKEN_FILE"
+          HASH="$(sha256sum "$TOKEN_FILE" | awk '{print $1}')"
+          echo "MIGRATION_TOKEN_SHA256=$HASH"
+          echo 'MIGRATION_TOKEN_READY=yes'
+          REMOTE
