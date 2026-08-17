@@ -48,6 +48,7 @@ import './imds-intelligence-harmony.css';
 import './auth-palette-final.css';
 import './topbar-runtime-status.css';
 import './schedule-imds-theme.css';
+import './schedule-search-icon-fix.css';
 
 type ThemeMode = 'light' | 'dark';
 
