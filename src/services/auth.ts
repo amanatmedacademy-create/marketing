@@ -7,6 +7,7 @@ export interface UserCompany {
   slug: string;
   role: string;
   status: string;
+  accessSource?: 'membership' | 'platform';
 }
 
 export interface AppUser {
@@ -190,6 +191,36 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   const companyId = activeCompanyId();
   if (companyId) headers.set('x-imds-company-id', companyId);
   return fetch(input, { ...init, headers });
+}
+
+async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers || {});
+  headers.set('accept', 'application/json');
+  if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
+  const response = await authFetch(path, { ...init, headers, cache: 'no-store' });
+  const raw = await response.text();
+  let payload: Record<string, unknown> = {};
+  try { payload = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { payload = {}; }
+  if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : raw || `HTTP ${response.status}`);
+  return payload as T;
+}
+
+export async function createClinic(name: string, sourceCompanyId?: string | null): Promise<UserCompany> {
+  const result = await apiJson<{ clinic?: UserCompany }>('/api/clinics', {
+    method: 'POST',
+    body: JSON.stringify({ name: name.trim(), sourceCompanyId: sourceCompanyId || null }),
+  });
+  if (!result.clinic?.id) throw new Error('Сервер не вернул созданную клинику');
+  return result.clinic;
+}
+
+export async function joinClinic(code: string): Promise<UserCompany> {
+  const result = await apiJson<{ clinic?: UserCompany }>('/api/clinics/join', {
+    method: 'POST',
+    body: JSON.stringify({ code: code.trim().toUpperCase() }),
+  });
+  if (!result.clinic?.id) throw new Error('Сервер не вернул клинику');
+  return result.clinic;
 }
 
 export async function loadAppUser(): Promise<AppUser> {
