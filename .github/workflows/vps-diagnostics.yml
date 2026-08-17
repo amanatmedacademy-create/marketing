@@ -1,0 +1,46 @@
+name: VPS Diagnostics
+
+on:
+  push:
+    branches: [agent/vps-diagnostics]
+    paths: ['.github/workflows/vps-diagnostics.yml']
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
+    steps:
+      - name: Check application secret presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY OPENAI_API_KEY INTEGRATION_ENCRYPTION_KEY; do
+            if [ -n "${!name:-}" ]; then
+              echo "$name=present"
+            else
+              echo "$name=missing"
+            fi
+          done
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Read runtime diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            echo "=== service status ==="
+            systemctl status imds-marketing.service --no-pager -l || true
+            echo "=== recent journal ==="
+            journalctl -u imds-marketing.service -n 40 --no-pager -o cat || true
+          '
