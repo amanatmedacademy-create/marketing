@@ -1,0 +1,236 @@
+/* Final IMDS theme layer for the Schedule module. Loaded last. */
+
+.mis-schedule-page{
+  --ls-bg:transparent;
+  --ls-white:var(--imds-glass);
+  --ls-accent:var(--imds-primary);
+  --ls-accent2:var(--imds-primary-strong);
+  --ls-border:var(--imds-border);
+  --ls-border2:color-mix(in srgb,var(--imds-border) 72%,transparent);
+  --ls-text:var(--imds-text);
+  --ls-text2:var(--imds-text-soft);
+  --ls-text3:var(--imds-muted);
+  background:transparent!important;
+  color:var(--imds-text)!important;
+}
+
+.mis-schedule-page ::-webkit-scrollbar-thumb{background:var(--imds-border-strong)!important}
+
+/* Toolbar */
+.mis-schedule-topbar{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-strong)!important;
+  color:var(--imds-text)!important;
+  backdrop-filter:blur(20px) saturate(112%);
+  -webkit-backdrop-filter:blur(20px) saturate(112%);
+}
+.mis-topbar-nav>button,
+.mis-topbar-controls .search input,
+.mis-topbar-controls>select,
+.mis-topbar-controls .scale,
+.mis-topbar-controls .scale button,
+.mis-topbar-stats>div,
+.mis-schedule-topbar>.sync{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:none!important;
+}
+.mis-topbar-nav>button:hover,
+.mis-topbar-controls .scale button:hover{
+  border-color:var(--imds-border-strong)!important;
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text)!important;
+}
+.mis-topbar-nav>button.today,
+.mis-topbar-controls .scale button.active{
+  border-color:var(--imds-primary)!important;
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+.mis-topbar-nav strong{color:var(--imds-text)!important}
+.mis-topbar-controls .search{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+}
+.mis-topbar-controls .search>svg{color:var(--imds-muted)!important}
+.mis-topbar-controls .search input{
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text)!important;
+}
+.mis-topbar-controls .search input::placeholder{color:var(--imds-muted)!important;opacity:1}
+.mis-topbar-controls .search input:focus{
+  border-color:var(--imds-primary)!important;
+  box-shadow:0 0 0 3px var(--imds-primary-a10)!important;
+}
+.mis-topbar-controls .search button{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-muted)!important;
+}
+.mis-topbar-stats span{color:var(--imds-muted)!important}
+.mis-topbar-stats b{color:var(--imds-text)!important}
+.mis-schedule-topbar>.sync{
+  color:var(--imds-primary)!important;
+}
+.mis-schedule-topbar>.sync:hover{
+  border-color:var(--imds-primary-a18)!important;
+  background:var(--imds-primary-soft)!important;
+}
+
+/* Sidebar + calendar */
+.mis-schedule-workspace{border-color:var(--imds-border)!important}
+.mis-schedule-sidebar{
+  border-color:var(--imds-border)!important;
+  background:color-mix(in srgb,var(--imds-glass-soft) 84%,transparent)!important;
+}
+.mini-calendar,.doctor-list{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass)!important;
+  color:var(--imds-text)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+  backdrop-filter:blur(16px) saturate(108%);
+  -webkit-backdrop-filter:blur(16px) saturate(108%);
+}
+.mini-calendar>header{border-color:var(--imds-border)!important}
+.mini-calendar>header strong{color:var(--imds-text)!important}
+.mini-calendar>header button{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+}
+.mini-calendar>header button:hover{background:var(--imds-surface-3)!important;color:var(--imds-text)!important}
+.mini-calendar .weekdays span{color:var(--imds-muted)!important}
+.mini-calendar .days button{color:var(--imds-text-soft)!important}
+.mini-calendar .days button:hover{background:var(--imds-primary-soft)!important;color:var(--imds-primary-strong)!important}
+.mini-calendar .days button.other{color:var(--imds-muted)!important}
+.mini-calendar .days button.today{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+  box-shadow:inset 0 0 0 1px var(--imds-primary-a18)!important;
+}
+.mini-calendar .days button.selected{
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+  box-shadow:0 7px 16px color-mix(in srgb,var(--imds-primary) 22%,transparent)!important;
+}
+.doctor-list>header span{color:var(--imds-primary-strong)!important}
+.doctor-list>header strong{
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+}
+.doctor-list>header small{color:var(--imds-muted)!important}
+.doctor-list>button,.doctor-list>div>button{color:var(--imds-text-soft)!important}
+.doctor-list>button.active,.doctor-list>button:hover,.doctor-list>div>button.active,.doctor-list>div>button:hover{
+  border-color:var(--imds-primary-a18)!important;
+  background:var(--imds-primary-soft)!important;
+  color:var(--imds-primary-strong)!important;
+}
+.doctor-list .avatar,.staff-card .avatar,.visit-drawer .avatar{
+  background:linear-gradient(135deg,var(--imds-primary),var(--imds-primary-strong))!important;
+  color:#fff!important;
+}
+.doctor-list>div strong{color:var(--imds-text)!important}
+.doctor-list>div small{color:var(--imds-muted)!important}
+.doctor-list>button b,.doctor-list>div>button>b{
+  background:var(--imds-surface-3)!important;
+  color:var(--imds-text-soft)!important;
+}
+
+/* Timeline */
+.mis-schedule-stage,
+.mis-schedule-scroll,
+.staff-header,
+.time-header,
+.time-column,
+.staff-column,
+.column-slot{
+  background:var(--imds-glass)!important;
+  color:var(--imds-text)!important;
+}
+.mis-schedule-stage{border-color:var(--imds-border)!important}
+.staff-header,.time-header,.time-column,.staff-card,.staff-column,.column-slot,.time-slot{
+  border-color:var(--imds-border)!important;
+}
+.staff-header{
+  background:var(--imds-glass-strong)!important;
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+}
+.time-header,.time-slot span,.staff-card small{color:var(--imds-muted)!important}
+.staff-card strong{color:var(--imds-text)!important}
+.staff-card em{color:var(--imds-success)!important}
+.column-slot:hover{background:var(--imds-primary-a10)!important}
+.mis-schedule-scroll.step-15 .column-slot:before,
+.mis-schedule-scroll.step-30 .column-slot:before,
+.mis-schedule-scroll.step-15 .time-slot:before,
+.mis-schedule-scroll.step-30 .time-slot:before{
+  border-color:color-mix(in srgb,var(--imds-border-strong) 50%,transparent)!important;
+}
+.schedule-loading{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-strong)!important;
+  color:var(--imds-text-soft)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+
+/* Appointments retain semantic colors, but use IMDS typography and depth. */
+.appointment{box-shadow:var(--imds-shadow-soft)!important}
+.appointment:hover{box-shadow:var(--imds-shadow)!important}
+.appointment .appt-head{background:color-mix(in srgb,var(--imds-text) 78%,transparent)!important}
+.appointment.status-arrived .appt-head{background:var(--imds-primary-strong)!important}
+
+/* Drawer, modal and tooltip surfaces */
+.drawer-overlay{background:rgba(2,15,20,.52)!important;backdrop-filter:blur(5px)!important}
+.visit-drawer,.schedule-modal,.schedule-hover-tooltip{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-strong)!important;
+  color:var(--imds-text)!important;
+  box-shadow:0 26px 74px rgba(0,0,0,.26)!important;
+  backdrop-filter:blur(22px) saturate(112%);
+  -webkit-backdrop-filter:blur(22px) saturate(112%);
+}
+.visit-drawer>header,.visit-drawer>footer,.schedule-hover-tooltip header,.schedule-hover-tooltip footer{border-color:var(--imds-border)!important}
+.visit-drawer p,.visit-summary dt,.schedule-hover-tooltip header small,.schedule-hover-tooltip footer{color:var(--imds-muted)!important}
+.visit-drawer>header>button,
+.visit-status-actions button,
+.visit-drawer>footer button,
+.visit-drawer>footer a,
+.visit-contact-row a,.visit-contact-row span,
+.visit-history-list button{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+  color:var(--imds-text-soft)!important;
+}
+.visit-drawer>section{
+  border-color:var(--imds-border)!important;
+  background:var(--imds-glass-soft)!important;
+}
+.visit-drawer>section h3,.visit-drawer>section p{color:var(--imds-text-soft)!important}
+.visit-drawer>footer .primary,.mobile-add{
+  border-color:var(--imds-primary)!important;
+  background:var(--imds-primary)!important;
+  color:#fff!important;
+}
+.schedule-modal-tabs{background:var(--imds-surface-3)!important}
+.schedule-modal-tabs button{color:var(--imds-muted)!important}
+.schedule-modal-tabs button.active{
+  background:var(--imds-glass-strong)!important;
+  color:var(--imds-primary-strong)!important;
+  box-shadow:var(--imds-shadow-soft)!important;
+}
+.schedule-hover-tooltip .avatar{background:var(--imds-primary)!important;color:#fff!important}
+.schedule-hover-tooltip p{color:var(--imds-text-soft)!important}
+
+/* Mobile follows the same palette. */
+@media(max-width:768px){
+  .mis-schedule-page,.mis-schedule-mobile{background:transparent!important;color:var(--imds-text)!important}
+  .mis-schedule-mobile>header button,.mobile-date-nav button,.mis-schedule-mobile>select,.mobile-appointment-list>button,.mobile-empty{
+    border-color:var(--imds-border)!important;
+    background:var(--imds-glass)!important;
+    color:var(--imds-text-soft)!important;
+  }
+  .mis-schedule-mobile>header strong,.mobile-appointment-list strong{color:var(--imds-text)!important}
+  .mobile-appointment-list small,.mobile-appointment-list em,.mobile-empty{color:var(--imds-muted)!important}
+  .mobile-appointment-list time{color:var(--imds-primary-strong)!important}
+}
