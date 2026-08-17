@@ -27,7 +27,7 @@ jobs:
           test -n "$VPS_PASSWORD"
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
-      - name: Inspect VPS runtime
+      - name: Inspect Super Admin runtime
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -37,20 +37,20 @@ jobs:
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -u
-            echo "=== health response ==="
-            curl -sS -i --max-time 15 http://127.0.0.1:8787/api/health || true
-            echo
-            echo "=== auth config ==="
-            curl -sS -i --max-time 15 http://127.0.0.1:8787/api/auth/config || true
-            echo
-            echo "=== service ==="
-            systemctl status imds-marketing.service --no-pager -l || true
-            echo "=== journal ==="
-            journalctl -u imds-marketing.service -n 160 --no-pager -o cat || true
-            echo "=== local env names only ==="
-            cut -d= -f1 /etc/imds-marketing.env | grep -E "^(IMDS_|INTEGRATION_|APP_ORIGIN|DEFAULT_COMPANY_ID|GOOGLE_|META_|OPENAI_)" | sort || true
-            echo "=== ports ==="
-            ss -ltnp | grep -E ":(8787|3001|3002)[[:space:]]" || true
-            echo "=== containers ==="
-            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|imds-postgres|postgrest" || true
+            echo "=== listening ports ==="
+            ss -ltnp | grep -E ":(80|443|8080|8081|3000|3001|4000|5000|5173|8787)[[:space:]]" || true
+            echo "=== candidate services ==="
+            systemctl list-units --type=service --all --no-pager | grep -Ei "imds|admin|super|node|nginx" || true
+            echo "=== candidate processes ==="
+            ps -eo pid,cmd --sort=pid | grep -Ei "imdssa|super.?admin|vite|tsx|node" | grep -v grep || true
+            echo "=== docker ==="
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" || true
+            echo "=== nginx routes ==="
+            nginx -T 2>/dev/null | grep -nE "listen|server_name|8080|proxy_pass|imdssa|super" | head -160 || true
+            echo "=== local 8080 ==="
+            curl -sS -i --max-time 10 http://127.0.0.1:8080/ | head -40 || true
+            echo "=== common local probes ==="
+            for u in http://127.0.0.1/ http://127.0.0.1:3000/ http://127.0.0.1:5173/ http://127.0.0.1:8081/; do echo "### $u"; curl -sS -i --max-time 5 "$u" | head -20 || true; done
+            echo "=== likely directories ==="
+            find /opt /srv /var/www -maxdepth 3 -type d \( -iname "*imdssa*" -o -iname "*super*admin*" -o -iname "*imds*admin*" \) 2>/dev/null | head -80 || true
           '
