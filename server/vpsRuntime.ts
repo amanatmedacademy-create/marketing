@@ -62,7 +62,7 @@ const assets: AssetFetcher = {
   },
 };
 
-const env: RuntimeEnv = { ...process.env, ASSETS };
+const env: RuntimeEnv = { ...process.env, ASSETS: assets };
 
 function executionContext(): WorkerExecutionContext {
   return {
