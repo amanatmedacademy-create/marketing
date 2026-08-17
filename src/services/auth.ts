@@ -15,6 +15,7 @@ export interface AppUser {
   name: string;
   avatarUrl: string | null;
   role: string;
+  platformRole?: 'user' | 'super_admin';
   status: string;
   jobTitle?: string | null;
   positionId?: string | null;
@@ -202,6 +203,7 @@ export async function loadAppUser(): Promise<AppUser> {
     }
   }
   const user = (JSON.parse(body) as { user: AppUser }).user;
+  if (user.platformRole === 'super_admin' && user.role !== 'administrator') user.role = 'administrator';
   if (user.companyId && !activeCompanyId()) setActiveCompanyId(user.companyId);
   return user;
 }
