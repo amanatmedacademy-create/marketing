@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=30)
           sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-db-bootstrap.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-db-bootstrap.tgz"
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=30)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
             docker ps --filter name=imds-postgres --filter name=imds-postgrest
