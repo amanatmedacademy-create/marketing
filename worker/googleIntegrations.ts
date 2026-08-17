@@ -268,7 +268,7 @@ async function syncProvider(env: GoogleIntegrationEnv, provider: GoogleProvider,
 export async function handleGoogleIntegrationRequest(request: Request, env: GoogleIntegrationEnv, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/integrations/google')) return null;
   const role = text(request.headers.get('x-amanat-auth-role'));
-  if (role !== 'administrator') return json({ error: 'Настройки Google доступны только администратору' }, 403);
+  if (role !== 'administrator' && role !== 'super_admin') return json({ error: 'Настройки Google доступны только администратору' }, 403);
 
   if (url.pathname === '/api/integrations/google/config' && request.method === 'GET') {
     const [ads, ga4] = await Promise.all([findCredential(env, 'google_ads'), findCredential(env, 'ga4')]);
