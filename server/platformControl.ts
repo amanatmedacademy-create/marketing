@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 type PlatformEnv = Record<string, string | undefined>;
-type Entitlement = {
+export type PlatformEntitlement = {
   organizationId: string;
   tenantId: string;
   revision: number;
@@ -10,7 +10,7 @@ type Entitlement = {
   modules: Record<string, boolean>;
   updatedAt: string;
 };
-type StateFile = { version: 1; tenants: Record<string, Entitlement> };
+type StateFile = { version: 1; tenants: Record<string, PlatformEntitlement> };
 type Company = { id?: unknown; name?: unknown; slug?: unknown };
 
 const stateDir = process.env.IMDS_PLATFORM_STATE_DIR || '/opt/imds-marketing/control';
@@ -79,6 +79,13 @@ async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name
   });
 }
 
+export async function platformEntitlementForTenant(tenantId: string): Promise<PlatformEntitlement | null> {
+  const normalized = tenantId.trim();
+  if (!normalized) return null;
+  const state = await readState();
+  return state.tenants[normalized] || null;
+}
+
 export async function handlePlatformInternalRequest(request: Request, env: PlatformEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/internal/platform/')) return null;
@@ -100,7 +107,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
   }
 
   if (url.pathname === '/internal/platform/entitlements/apply' && request.method === 'POST') {
-    const body = await request.json().catch(() => null) as Partial<Entitlement> | null;
+    const body = await request.json().catch(() => null) as Partial<PlatformEntitlement> | null;
     const organizationId = String(body?.organizationId || '').trim();
     const tenantId = String(body?.tenantId || '').trim();
     const revision = Number(body?.revision || 0);
@@ -111,7 +118,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
     const state = await readState();
     const current = state.tenants[tenantId];
     if (current && current.revision > revision) return json({ applied: false, stale: true, tenant: current }, 409);
-    const tenant: Entitlement = { organizationId, tenantId, revision, productEnabled, modules, updatedAt: new Date().toISOString() };
+    const tenant: PlatformEntitlement = { organizationId, tenantId, revision, productEnabled, modules, updatedAt: new Date().toISOString() };
     state.tenants[tenantId] = tenant;
     await writeState(state);
     return json({ applied: true, tenant });
@@ -123,13 +130,12 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
 export async function enforcePlatformEntitlement(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
-  if (url.pathname === '/api/health' || url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/webhooks/') || url.pathname.startsWith('/api/public/')) return null;
+  if (url.pathname === '/api/health' || url.pathname === '/api/platform/entitlements' || url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/webhooks/') || url.pathname.startsWith('/api/public/')) return null;
 
   const tenantId = tenantIdFromRequest(request);
   if (!tenantId) return null;
-  const state = await readState();
-  const tenant = state.tenants[tenantId];
-  if (!tenant) return json({ error: 'PRODUCT_ENTITLEMENT_NOT_SYNCED' }, 503);
+  const tenant = await platformEntitlementForTenant(tenantId);
+  if (!tenant) return null;
   if (!tenant.productEnabled) return json({ error: 'PRODUCT_DISABLED_BY_PLATFORM' }, 403);
 
   const rule = routeModules.find((item) => item.test(url.pathname));
