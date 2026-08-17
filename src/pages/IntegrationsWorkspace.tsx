@@ -3,8 +3,7 @@ import OperationalIntegrationCards from '../components/OperationalIntegrationCar
 import '../integration-workspace-unified.css';
 
 export default function IntegrationsWorkspace() {
-  return <>
-    <IntegrationManager />
-    <OperationalIntegrationCards />
-  </>;
+  return <IntegrationManager>
+    <OperationalIntegrationCards inline />
+  </IntegrationManager>;
 }
