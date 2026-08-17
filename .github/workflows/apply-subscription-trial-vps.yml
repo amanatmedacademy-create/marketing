@@ -72,15 +72,13 @@ jobs:
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
-            sudo -u postgres psql -v ON_ERROR_STOP=1 -At -d imds_marketing <<'"'"'SQL'"'"'
-            select case when to_regclass('"'"'public.imds_product_trial_access'"'"') is not null then '"'"'table:ok'"'"' else 1/0::text end;
-            select case when to_regprocedure('"'"'public.imds_marketing_trial_state(uuid)'"'"') is not null then '"'"'function:ok'"'"' else 1/0::text end;
-            select case when exists (
-              select 1 from pg_trigger
-              where tgname = '"'"'crm_companies_create_marketing_trial'"'"'
-                and not tgisinternal
-            ) then '"'"'trigger:ok'"'"' else 1/0::text end;
-            SQL
+            table_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (to_regclass('"'"'public.imds_product_trial_access'"'"') is not null)::int")
+            function_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (to_regprocedure('"'"'public.imds_marketing_trial_state(uuid)'"'"') is not null)::int")
+            trigger_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (exists (select 1 from pg_trigger where tgname = '"'"'crm_companies_create_marketing_trial'"'"' and not tgisinternal))::int")
+            test "$table_ok" = "1" || { echo "trial table missing"; exit 1; }
+            test "$function_ok" = "1" || { echo "trial state function missing"; exit 1; }
+            test "$trigger_ok" = "1" || { echo "trial trigger missing"; exit 1; }
+            echo "table:ok function:ok trigger:ok"
           '
 
       - name: Cleanup
