@@ -33,6 +33,7 @@ jobs:
           test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
           test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
           test -n "$DEPLOY_SHA" || { echo 'DEPLOY_SHA is missing'; exit 1; }
+          command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
 
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -63,9 +64,6 @@ jobs:
             --exclude=.env \
             --exclude=.env.local \
             -czf /tmp/imds-marketing-release.tgz .
-
-      - name: Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y sshpass
 
       - name: Bootstrap and upload release
         shell: bash
