@@ -14,14 +14,49 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check legacy migration credentials safely
+      - name: Probe legacy Cloudflare API safely
         shell: bash
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
-          [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] && echo 'SUPABASE_SERVICE_ROLE_KEY=present' || echo 'SUPABASE_SERVICE_ROLE_KEY=absent'
-          [ -n "${VITE_SUPABASE_ANON_KEY:-}" ] && echo 'VITE_SUPABASE_ANON_KEY=present' || echo 'VITE_SUPABASE_ANON_KEY=absent'
-          [ -n "${SUPABASE_ANON_KEY:-}" ] && echo 'SUPABASE_ANON_KEY=present' || echo 'SUPABASE_ANON_KEY=absent'
+          BASE='https://marketing.amanat-med-academy.workers.dev'
+          check_json() {
+            name="$1"
+            path="$2"
+            tmp="$(mktemp)"
+            status="$(curl -sS -L --max-time 20 -o "$tmp" -w '%{http_code}' "$BASE$path" || true)"
+            python3 - "$name" "$status" "$tmp" <<'PY'
+          import json, sys
+          name, status, path = sys.argv[1:]
+          try:
+              raw = open(path, encoding='utf-8', errors='replace').read()
+              value = json.loads(raw)
+          except Exception:
+              print(f'{name}=http_{status},json=no')
+              raise SystemExit
+          if isinstance(value, list):
+              print(f'{name}=http_{status},json=list,count={len(value)}')
+          elif isinstance(value, dict):
+              keys = sorted(value.keys())[:20]
+              counts = []
+              for key in keys:
+                  item = value.get(key)
+                  if isinstance(item, list): counts.append(f'{key}:{len(item)}')
+              print(f'{name}=http_{status},json=dict,list_counts={";".join(counts) or "none"}')
+          else:
+              print(f'{name}=http_{status},json={type(value).__name__}')
+          PY
+            rm -f "$tmp"
+          }
+          check_json health '/api/health'
+          check_json ads '/api/ads'
+          check_json ad_manager '/api/analytics/ad-manager?days=30'
+          check_json leads '/api/leads?limit=500'
+          check_json dashboard '/api/dashboard'
+          check_json calls '/api/calls?limit=500'
+          check_json campaigns '/api/operations/campaigns?limit=500'
+          check_json tasks '/api/operations/tasks?limit=500'
+          check_json content '/api/operations/content?limit=500'
+          check_json automations '/api/operations/automations?limit=500'
+          check_json forms '/api/operations/forms?limit=500'
+          check_json links '/api/operations/links?limit=500'
+          check_json media_plan '/api/operations/media-plan?limit=500'
