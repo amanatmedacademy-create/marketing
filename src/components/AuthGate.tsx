@@ -1,19 +1,24 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  KeyRound,
   LoaderCircle,
   LockKeyhole,
+  Mail,
   ShieldCheck,
   Sparkles,
+  UserRound,
 } from 'lucide-react';
 import ImdsBrand from './ImdsBrand';
 import {
   activeCompanyId,
   currentSession,
   loadAppUser,
+  registerNativeAccount,
   setActiveCompanyId,
+  signInWithPassword,
   signOutSession,
   startGoogleSignIn,
   type AppUser,
@@ -25,6 +30,9 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   switchCompany: (companyId: string) => Promise<void>;
 }
+
+type AuthMode = 'login' | 'register';
+type RegistrationMode = 'new_company' | 'join_company';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -45,37 +53,152 @@ function GoogleIcon() {
 
 function CompanyPicker({ companies, onSelect, busy }: { companies: UserCompany[]; onSelect: (id: string) => void; busy: boolean }) {
   return <div className="auth-screen">
-    <div className="auth-orb auth-orb--one"/>
-    <div className="auth-orb auth-orb--two"/>
+    <div className="auth-orb auth-orb--one"/><div className="auth-orb auth-orb--two"/>
     <section className="auth-login-panel" style={{ margin: 'auto', minHeight: '100vh' }}>
       <div className="auth-login-card">
         <div className="auth-login-icon"><Building2 size={28}/></div>
         <span className="auth-login-product">IMDS TECH</span>
-        <h2>Выберите клинику</h2>
-        <p>Все данные, сотрудники, интеграции и реклама будут открыты только в контексте выбранной клиники.</p>
-        <div style={{ display: 'grid', gap: 10, width: '100%' }}>
+        <h2>Выберите организацию</h2>
+        <p>Данные, сотрудники, интеграции и реклама открываются только в контексте выбранной организации.</p>
+        <div className="auth-company-list">
           {companies.map((company) => <button key={company.id} type="button" className="google-login" disabled={busy} onClick={() => onSelect(company.id)}>
-            <Building2 size={19}/><span style={{ flex: 1, textAlign: 'left' }}>{company.name}<small style={{ display: 'block', opacity: .7 }}>{company.role}</small></span><ArrowRight size={17}/>
+            <Building2 size={19}/><span>{company.name}<small>{company.role}</small></span><ArrowRight size={17}/>
           </button>)}
         </div>
-        <div className="auth-security-note"><ShieldCheck size={15}/><span>Сервер проверяет членство пользователя при каждом переключении клиники.</span></div>
+        <div className="auth-security-note"><ShieldCheck size={15}/><span>Сервер проверяет членство пользователя при каждом переключении организации.</span></div>
       </div>
     </section>
   </div>;
 }
 
+function PendingOrganization({ user, onSignOut }: { user: AppUser; onSignOut: () => Promise<void> }) {
+  return <div className="auth-screen auth-screen--loading">
+    <div className="auth-login-card auth-pending-card">
+      <div className="auth-login-icon"><ShieldCheck size={28}/></div>
+      <span className="auth-login-product">IMDS MARKETING</span>
+      <h2>Регистрация организации</h2>
+      <p>{user.onboardingStatus === 'pending_approval'
+        ? 'Заявка отправлена администратору организации. После одобрения откроются назначенные модули.'
+        : 'Для этого аккаунта ещё не завершено подключение к организации.'}</p>
+      <div className="auth-security-note"><Mail size={15}/><span>{user.email}</span></div>
+      <button className="auth-secondary-action" onClick={() => void onSignOut()}>Выйти</button>
+    </div>
+  </div>;
+}
+
+function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (user: AppUser) => void; error: string | null; setError: (value: string | null) => void }) {
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('new_company');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const google = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await startGoogleSignIn();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setBusy(false);
+    }
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) { setError('Введите корректный email.'); return; }
+    if (password.length < 10) { setError('Пароль должен содержать минимум 10 символов.'); return; }
+    if (mode === 'register' && password !== confirmPassword) { setError('Пароли не совпадают.'); return; }
+    if (mode === 'register' && displayName.trim().length < 2) { setError('Укажите имя пользователя.'); return; }
+    if (mode === 'register' && registrationMode === 'new_company' && companyName.trim().length < 2) { setError('Укажите название организации.'); return; }
+    if (mode === 'register' && registrationMode === 'join_company' && companyCode.trim().length < 6) { setError('Введите код организации.'); return; }
+
+    setBusy(true);
+    setError(null);
+    try {
+      if (mode === 'login') {
+        await signInWithPassword(normalizedEmail, password, remember);
+      } else {
+        await registerNativeAccount({
+          email: normalizedEmail,
+          password,
+          displayName,
+          mode: registrationMode,
+          companyName: registrationMode === 'new_company' ? companyName : undefined,
+          companyCode: registrationMode === 'join_company' ? companyCode : undefined,
+          remember,
+        });
+      }
+      onAuthenticated(await loadAppUser());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <section className="auth-login-panel">
+    <form className="auth-login-card" onSubmit={submit}>
+      <div className="auth-login-icon"><ShieldCheck size={28}/></div>
+      <span className="auth-login-product">IMDS MARKETING</span>
+      <h2>{mode === 'login' ? 'Вход в IMDS' : 'Регистрация'}</h2>
+      <p>{mode === 'login' ? 'Введите email и пароль своей учётной записи.' : 'Создайте аккаунт и выберите способ подключения организации.'}</p>
+
+      <div className="auth-tabs">
+        <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(null); }}>Вход</button>
+        <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(null); }}>Регистрация</button>
+      </div>
+
+      {error && <div className="auth-error" role="alert">{error}</div>}
+
+      {mode === 'register' && <div className="auth-registration-choice">
+        <button type="button" className={registrationMode === 'new_company' ? 'active' : ''} onClick={() => setRegistrationMode('new_company')}>
+          <Building2 size={18}/><span><strong>Новая организация</strong><small>Создам отдельный рабочий контур</small></span>
+        </button>
+        <button type="button" className={registrationMode === 'join_company' ? 'active' : ''} onClick={() => setRegistrationMode('join_company')}>
+          <KeyRound size={18}/><span><strong>Есть код организации</strong><small>Подключусь к существующей организации</small></span>
+        </button>
+      </div>}
+
+      {mode === 'register' && <label className="auth-field"><span>Имя</span><div><UserRound size={17}/><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" placeholder="Имя и фамилия" disabled={busy}/></div></label>}
+      {mode === 'register' && registrationMode === 'new_company' && <label className="auth-field"><span>Название организации</span><div><Building2 size={17}/><input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Например: Amanat Clinic" disabled={busy}/></div></label>}
+      {mode === 'register' && registrationMode === 'join_company' && <label className="auth-field"><span>Код организации</span><div><KeyRound size={17}/><input value={companyCode} onChange={(e) => setCompanyCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="IMDS-XXXX-XXXX" disabled={busy}/></div></label>}
+
+      <label className="auth-field"><span>Email</span><div><Mail size={17}/><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" placeholder="name@example.com" disabled={busy}/></div></label>
+      <label className="auth-field"><span>Пароль</span><div><LockKeyhole size={17}/><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="Минимум 10 символов" disabled={busy}/></div></label>
+      {mode === 'register' && <label className="auth-field"><span>Повторите пароль</span><div><LockKeyhole size={17}/><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" disabled={busy}/></div></label>}
+
+      <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={busy}/><span>Оставаться в системе</span></label>
+      <button className="auth-submit" type="submit" disabled={busy}>
+        {busy ? <LoaderCircle className="spin" size={19}/> : mode === 'login' ? <LockKeyhole size={18}/> : <UserRound size={18}/>}<span>{busy ? 'Проверяем данные…' : mode === 'login' ? 'Войти в систему' : 'Создать аккаунт'}</span>
+      </button>
+
+      <div className="auth-divider"><span>или</span></div>
+      <button className="google-login" type="button" onClick={() => void google()} disabled={busy}>
+        <GoogleIcon/><span>Продолжить через Google</span><ArrowRight size={17}/>
+      </button>
+      <div className="auth-security-note"><ShieldCheck size={15}/><span>Пароли хранятся только в виде стойких хешей. Доступ к данным определяется организацией, ролью и персональными правами.</span></div>
+    </form>
+  </section>;
+}
+
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [signingIn, setSigningIn] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const nativeFetch = window.fetch.bind(window);
-
     const searchParams = new URLSearchParams(window.location.search);
     const oauthError = searchParams.get('error_description');
     if (oauthError) {
@@ -87,7 +210,6 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const isOwnApi = url.startsWith('/api/') || url.startsWith(`${window.location.origin}/api/`);
       if (!isOwnApi || url.includes('/api/auth/')) return nativeFetch(input, init);
-
       const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
       if (!headers.has('authorization')) {
         const session = await currentSession();
@@ -98,23 +220,18 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return nativeFetch(input, { ...init, headers });
     };
 
-    currentSession()
-      .then(async (session) => {
-        if (!active) return;
-        setHasSession(Boolean(session));
-        if (!session) return;
-        const appUser = await loadAppUser();
-        if (active) {
-          setUser(appUser);
-          setError(null);
-        }
-      })
-      .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    currentSession().then(async (session) => {
+      if (!active || !session) return;
+      const appUser = await loadAppUser();
+      if (active) {
+        setUser(appUser);
+        setError(null);
+      }
+    }).catch((reason) => {
+      if (active) setError(reason instanceof Error ? reason.message : String(reason));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
 
     return () => {
       active = false;
@@ -122,21 +239,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async () => {
-    setSigningIn(true);
-    setError(null);
-    try {
-      await startGoogleSignIn();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-      setSigningIn(false);
-    }
-  };
-
   const signOut = async () => {
     await signOutSession();
     setUser(null);
-    setHasSession(false);
     setError(null);
   };
 
@@ -158,64 +263,36 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   const context = useMemo(() => user ? { user, signOut, switchCompany } : null, [user]);
 
-  if (loading) return <div className="auth-screen auth-screen--loading">
-    <div className="auth-loading-card">
-      <ImdsBrand compact />
-      <LoaderCircle className="spin" size={25}/>
-      <p>Проверяем защищённую сессию</p>
-    </div>
-  </div>;
-
-  if (user?.companies && user.companies.length > 1 && !user.companyId) {
-    return <CompanyPicker companies={user.companies} onSelect={(id) => void switchCompany(id)} busy={switching}/>;
-  }
+  if (loading) return <div className="auth-screen auth-screen--loading"><div className="auth-loading-card"><ImdsBrand compact/><LoaderCircle className="spin" size={25}/><p>Проверяем защищённую сессию</p></div></div>;
+  if (user?.companies && user.companies.length > 1 && !user.companyId) return <CompanyPicker companies={user.companies} onSelect={(id) => void switchCompany(id)} busy={switching}/>;
+  if (user && !user.companyId && (!user.companies || user.companies.length === 0)) return <PendingOrganization user={user} onSignOut={signOut}/>;
 
   if (!user || !context) return <div className="auth-screen">
-    <div className="auth-orb auth-orb--one"/>
-    <div className="auth-orb auth-orb--two"/>
+    <div className="auth-orb auth-orb--one"/><div className="auth-orb auth-orb--two"/>
     <div className="auth-layout">
       <section className="auth-showcase">
-        <div className="auth-brand"><ImdsBrand /></div>
+        <div className="auth-brand"><ImdsBrand/></div>
         <div className="auth-copy">
-          <div className="auth-eyebrow"><Sparkles size={14}/>Сквозная рекламная аналитика</div>
+          <div className="auth-eyebrow"><Sparkles size={14}/>IMDS MARKETING</div>
           <h1>Маркетинг, CRM и продажи — в одном контуре</h1>
-          <p>Контролируйте расходы, качество лидов, приходы, продажи и ROAS по каждому источнику и рекламной кампании.</p>
+          <p>Каждая организация получает отдельный tenant, сотрудников, права доступа, интеграции и собственные данные.</p>
         </div>
         <div className="auth-benefits">
-          <div><CheckCircle2 size={17}/><span>Рекламные кабинеты и Bitrix24</span></div>
-          <div><CheckCircle2 size={17}/><span>Полная CRM-воронка до покупки</span></div>
-          <div><CheckCircle2 size={17}/><span>Автоматические рекомендации по кампаниям</span></div>
+          <div><CheckCircle2 size={17}/><span>Отдельный контур организации</span></div>
+          <div><CheckCircle2 size={17}/><span>Роли и персональные права</span></div>
+          <div><CheckCircle2 size={17}/><span>Email/пароль и Google</span></div>
         </div>
         <div className="auth-preview" aria-hidden="true">
-          <header><span>Результаты за 7 дней</span><i>Live data</i></header>
+          <header><span>Единое рабочее пространство</span><i>Secure</i></header>
           <div className="auth-preview-kpis">
-            <div><small>Лиды</small><b>181</b><em>+10%</em></div>
-            <div><small>Продажи</small><b>51</b><em>28%</em></div>
-            <div><small>ROAS</small><b>3.2x</b><em>Норма</em></div>
+            <div><small>Организация</small><b>Tenant</b><em>Изолировано</em></div>
+            <div><small>Пользователи</small><b>Roles</b><em>Контроль</em></div>
+            <div><small>Доступ</small><b>SSO</b><em>Google + пароль</em></div>
           </div>
-          <div className="auth-preview-chart">
-            {[38, 52, 45, 70, 49, 64, 58, 82, 68, 88, 76, 94].map((height, index) => <i key={index} style={{ height: `${height}%` }}/>) }
-          </div>
+          <div className="auth-preview-chart">{[38,52,45,70,49,64,58,82,68,88,76,94].map((height,index)=><i key={index} style={{height:`${height}%`}}/>)}</div>
         </div>
       </section>
-      <section className="auth-login-panel">
-        <div className="auth-login-card">
-          <div className="auth-login-icon"><ShieldCheck size={28}/></div>
-          <span className="auth-login-product">IMDS MARKETING</span>
-          <h2>Вход в систему</h2>
-          <p>Используйте рабочий Google-аккаунт. При первом входе профиль будет зарегистрирован автоматически.</p>
-          {error && <div className="auth-error" role="alert">{error}</div>}
-          <button className="google-login" onClick={() => void signIn()} disabled={signingIn}>
-            {signingIn ? <LoaderCircle className="spin" size={20}/> : <GoogleIcon/>}
-            <span>{signingIn ? 'Открываем Google…' : 'Продолжить через Google'}</span>
-            {!signingIn && <ArrowRight size={17}/>} 
-          </button>
-          {hasSession && error && <button className="auth-secondary-action" onClick={() => void signOut()}>Выйти и выбрать другой аккаунт</button>}
-          <div className="auth-security-note"><LockKeyhole size={15}/><span>Данные доступны только авторизованным пользователям. Пароль Google не передаётся IMDS Marketing.</span></div>
-          <small className="auth-terms">Продолжая, вы соглашаетесь с правилами доступа к внутренней аналитике компании.</small>
-        </div>
-        <p className="auth-support">Проблемы со входом? Обратитесь к администратору системы.</p>
-      </section>
+      <LoginPanel onAuthenticated={setUser} error={error} setError={setError}/>
     </div>
   </div>;
 
