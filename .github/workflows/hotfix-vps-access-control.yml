@@ -29,7 +29,7 @@ jobs:
         run: npm run typecheck
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
-      - name: Patch VPS runtime
+      - name: Verify and recover VPS runtime
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -46,13 +46,27 @@ jobs:
             test -d /opt/imds-marketing/current/worker
             install -o imds -g imds -m 644 /tmp/accessControl.ts /opt/imds-marketing/current/worker/accessControl.ts
             rm -f /tmp/accessControl.ts
+            grep -q "IMDS_LOCAL_DB_URL" /opt/imds-marketing/current/worker/accessControl.ts
             systemctl restart imds-marketing.service
-            sleep 5
-            systemctl is-active --quiet imds-marketing.service
-            curl -fsS http://127.0.0.1:8787/api/auth/config | grep -q '"nativeAuth":true'
+            for attempt in $(seq 1 15); do
+              if systemctl is-active --quiet imds-marketing.service && curl -fsS http://127.0.0.1:8787/api/auth/config | grep -q '"nativeAuth":true'; then
+                echo "Backend recovered with local access control."
+                exit 0
+              fi
+              sleep 2
+            done
+            systemctl status imds-marketing.service --no-pager -l || true
+            journalctl -u imds-marketing.service -n 100 --no-pager -o cat || true
+            exit 1
           '
       - name: Verify through nginx
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 15 "http://$VPS_HOST/api/auth/config" | grep -q '"nativeAuth":true'
+          for attempt in {1..10}; do
+            if curl --fail --silent --show-error --max-time 15 "http://$VPS_HOST/api/auth/config" | grep -q '"nativeAuth":true'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
