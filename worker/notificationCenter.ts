@@ -2,6 +2,17 @@ import { resolveCompanyId, type PlatformRole } from './companyContext';
 import { localDataJson, type LocalDataEnv } from './localData';
 
 type Row = Record<string, unknown>;
+type HealthStatus = 'connected' | 'warning' | 'error' | 'not_configured';
+type HealthItem = {
+  provider: string;
+  label: string;
+  status: HealthStatus;
+  rawStatus: string | null;
+  lastError: string | null;
+  lastVerifiedAt: unknown;
+  updatedAt: unknown;
+  expiresAt: string | null;
+};
 export interface NotificationCenterEnv extends LocalDataEnv { CURRENT_COMPANY_ID?: string; DEFAULT_COMPANY_ID?: string }
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
@@ -53,7 +64,7 @@ async function syncAlerts(env: NotificationCenterEnv, companyId: string, userId:
 
 function normalizeHealth(provider: string, row?: Row) {
   const raw = text(row?.status).toLowerCase();
-  let status: 'connected' | 'warning' | 'error' | 'not_configured' = 'not_configured';
+  let status: HealthStatus = 'not_configured';
   if (raw === 'connected' || raw === 'active' || raw === 'verified') status = 'connected';
   else if (raw === 'error' || raw === 'failed' || raw === 'disconnected') status = 'error';
   else if (row) status = 'warning';
@@ -76,7 +87,7 @@ export async function handleNotificationCenterRequest(request: Request, env: Not
       const definitions = [
         ['waba','WhatsApp Business'], ['zadarma','Телефония'], ['meta','Meta Ads'], ['google','Google'], ['mis','МИС'],
       ] as const;
-      const items = definitions.map(([provider, label]) => ({ label, ...normalizeHealth(provider, map.get(provider)) }));
+      const items: HealthItem[] = definitions.map(([provider, label]) => ({ label, ...normalizeHealth(provider, map.get(provider)) }));
       for (const row of rows) if (!definitions.some(([provider]) => provider === text(row.provider))) items.push({ label: text(row.provider), ...normalizeHealth(text(row.provider), row) });
       return json({ companyId, items, healthy: items.filter((item) => item.status === 'connected').length, issues: items.filter((item) => item.status === 'error' || item.status === 'warning').length });
     }
