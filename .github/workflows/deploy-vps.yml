@@ -83,6 +83,11 @@ jobs:
             test -f /etc/imds-marketing.env || { echo "/etc/imds-marketing.env is missing"; exit 1; }
             grep -q "^IMDS_LOCAL_DB_URL=" /etc/imds-marketing.env || { echo "IMDS_LOCAL_DB_URL is missing"; exit 1; }
             grep -q "^IMDS_LOCAL_SERVICE_ROLE_KEY=" /etc/imds-marketing.env || { echo "IMDS_LOCAL_SERVICE_ROLE_KEY is missing"; exit 1; }
+            if ! grep -q "^INTEGRATION_ENCRYPTION_KEY=" /etc/imds-marketing.env; then
+              umask 077
+              printf "INTEGRATION_ENCRYPTION_KEY=%s\n" "$(openssl rand -hex 48)" >> /etc/imds-marketing.env
+            fi
+            chmod 600 /etc/imds-marketing.env
           '
 
       - name: Install release
