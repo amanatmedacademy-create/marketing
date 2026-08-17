@@ -225,7 +225,14 @@ create trigger marketing_daily_metrics_set_updated_at before update on public.ma
 drop trigger if exists marketing_ads_set_updated_at on public.marketing_ads;
 create trigger marketing_ads_set_updated_at before update on public.marketing_ads for each row execute function public.set_updated_at();
 
-create or replace view public.marketing_dashboard_daily as
+-- Recreate derived views explicitly. PostgreSQL does not allow CREATE OR REPLACE
+-- VIEW to rename or reorder existing columns from earlier migration revisions.
+drop view if exists public.marketing_dashboard_daily cascade;
+drop view if exists public.marketing_source_summary cascade;
+drop view if exists public.marketing_ads_summary cascade;
+drop view if exists public.analytics_attribution_health cascade;
+
+create view public.marketing_dashboard_daily as
 select
   date,
   sum(leads)::integer as leads,
@@ -237,7 +244,7 @@ select
 from public.marketing_daily_metrics
 group by date;
 
-create or replace view public.marketing_source_summary as
+create view public.marketing_source_summary as
 select
   source,
   platform,
@@ -250,7 +257,7 @@ select
 from public.marketing_daily_metrics
 group by source, platform;
 
-create or replace view public.marketing_ads_summary as
+create view public.marketing_ads_summary as
 select
   coalesce(ad_id, external_id, id::text) as row_key,
   platform,
@@ -279,7 +286,7 @@ select
 from public.marketing_ads
 group by coalesce(ad_id, external_id, id::text), platform, account_id, campaign_id, adset_id, ad_id;
 
-create or replace view public.analytics_attribution_health as
+create view public.analytics_attribution_health as
 select
   count(*)::integer as total_leads,
   count(*) filter (where coalesce(utm_source, campaign_id, ad_id, fbclid, gclid, ttclid, yclid, vk_click_id, internal_client_id) is null)::integer as unattributed_leads,
