@@ -1,15 +1,14 @@
 import { resolveCompanyId } from './companyContext';
 import { resolveUserAccess } from './accessControl';
 import { handleAccessAdminRequest } from './accessAdmin';
+import { localDataJson, type LocalDataEnv } from './localData';
 
 type Row = Record<string, unknown>;
 type ManagedRole = 'administrator' | 'marketer' | 'analyst' | 'viewer';
 type ManagedStatus = 'active' | 'invited' | 'blocked';
 type MembershipRole = 'owner' | 'administrator' | 'manager' | 'viewer';
 
-export interface UserAdminEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+export interface UserAdminEnv extends LocalDataEnv {
   DEFAULT_COMPANY_ID?: string;
   CURRENT_COMPANY_ID?: string;
 }
@@ -25,22 +24,19 @@ const statuses: ManagedStatus[] = ['active', 'invited', 'blocked'];
 
 function currentUserId(request: Request): string { return text(request.headers.get('x-amanat-auth-user')); }
 function currentRole(request: Request): string { return text(request.headers.get('x-amanat-auth-role')); }
-function headers(env: UserAdminEnv, extra: HeadersInit = {}): HeadersInit { return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json', ...extra }; }
 async function db<T>(env: UserAdminEnv, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { ...init, headers: headers(env, init.headers) });
-  const body = await response.text();
-  if (!response.ok) throw new HttpError(502, `Supabase users: ${response.status} ${body.slice(0, 900)}`);
-  return (body ? JSON.parse(body) : null) as T;
+  try { return await localDataJson<T>(env, path, init, 'User administration'); }
+  catch (error) { throw new HttpError(502, error instanceof Error ? error.message : String(error)); }
 }
 function roleValue(value: unknown, fallback: ManagedRole = 'viewer'): ManagedRole { const role = text(value) as ManagedRole; if (!role) return fallback; if (!roles.includes(role)) throw new HttpError(400, 'Неизвестная роль пользователя'); return role; }
 function statusValue(value: unknown, fallback: ManagedStatus = 'active'): ManagedStatus { const status = text(value) as ManagedStatus; if (!status) return fallback; if (!statuses.includes(status)) throw new HttpError(400, 'Неизвестный статус пользователя'); return status; }
 function membershipRole(role: ManagedRole, existing?: MembershipRole): MembershipRole { if (role === 'administrator') return existing === 'owner' ? 'owner' : 'administrator'; if (role === 'marketer') return 'manager'; return 'viewer'; }
 async function requireAdmin(request: Request, env: UserAdminEnv): Promise<string> {
-  if (currentRole(request) !== 'administrator') throw new HttpError(403, 'Управление пользователями доступно только администратору');
+  if (!['administrator', 'super_admin'].includes(currentRole(request))) throw new HttpError(403, 'Управление пользователями доступно только администратору');
   const userId = currentUserId(request); if (!uuidPattern.test(userId)) throw new HttpError(401, 'Не удалось определить пользователя');
   const companyId = await resolveCompanyId(env, userId);
   const rows = await db<Row[]>(env, `crm_company_members?company_id=eq.${companyId}&user_id=eq.${userId}&status=eq.active&role=in.(owner,administrator)&select=user_id`);
-  if (!rows.length) throw new HttpError(403, 'Нет административных прав в текущей компании');
+  if (!rows.length && currentRole(request) !== 'super_admin') throw new HttpError(403, 'Нет административных прав в текущей компании');
   return companyId;
 }
 async function readCompanyUser(env: UserAdminEnv, companyId: string, userId: string) {
@@ -82,7 +78,7 @@ async function createUser(request: Request, env: UserAdminEnv, companyId: string
     const exists = await db<Row[]>(env, `crm_company_members?company_id=eq.${companyId}&user_id=eq.${text(user.id)}&select=user_id`); if (exists.length) throw new HttpError(409, 'Пользователь уже добавлен');
     const updated = await db<Row[]>(env, `marketing_users?id=eq.${text(user.id)}`, { method:'PATCH', headers:{prefer:'return=representation'}, body:JSON.stringify({name,role,status,updated_at:new Date().toISOString()}) }); user = updated[0] || user;
   } else {
-    const created = await db<Row[]>(env, 'marketing_users', { method:'POST', headers:{prefer:'return=representation'}, body:JSON.stringify({auth_user_id:null,name,email,role,status,provider:'google',provider_metadata:{manually_added:true,added_by:currentUserId(request)}}) }); user = created[0];
+    const created = await db<Row[]>(env, 'marketing_users', { method:'POST', headers:{prefer:'return=representation'}, body:JSON.stringify({auth_user_id:null,name,email,role,status,provider:'password',provider_metadata:{manually_added:true,added_by:currentUserId(request)}}) }); user = created[0];
   }
   if (!user) throw new HttpError(502, 'Не удалось создать пользователя');
   const memberships = await db<Row[]>(env, 'crm_company_members', { method:'POST', headers:{prefer:'return=representation'}, body:JSON.stringify({company_id:companyId,user_id:user.id,role:membershipRole(role),status}) });
@@ -114,7 +110,7 @@ export async function handleUserAdminRequest(request: Request, env: UserAdminEnv
     }
     const companyId = await requireAdmin(request, env);
     if (url.pathname === '/api/admin/users') {
-      if (request.method === 'GET') return json({ users: await listUsers(env, companyId), loginMode:'google_email_match' });
+      if (request.method === 'GET') return json({ users: await listUsers(env, companyId), loginMode:'native' });
       if (request.method === 'POST') return json({ user: await createUser(request, env, companyId) }, 201);
       return json({error:'Method not allowed'},405);
     }
