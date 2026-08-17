@@ -1,0 +1,83 @@
+name: Inspect Marketing Data State
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vps-marketing-data-state.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Inspect safe Marketing runtime metadata
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          command -v sshpass >/dev/null
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          DB=(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At)
+          COMPANY_ID='4cd22020-6f1d-4afb-9266-b01c96e4a927'
+
+          echo "RELEASE=$(readlink -f /var/www/imds-marketing/current 2>/dev/null || true)"
+          echo 'ENV_NAMES:'
+          sed -n 's/^\([A-Z0-9_][A-Z0-9_]*\)=.*/\1/p' /etc/imds-marketing.env | sort | grep -E '^(APP_ORIGIN|DEFAULT_COMPANY_ID|IMDS_|INTEGRATION_|META_|SUPABASE_|VITE_SUPABASE_)' || true
+
+          echo 'TABLE_COUNTS:'
+          for table in \
+            marketing_ads \
+            marketing_campaigns \
+            marketing_tasks \
+            marketing_content_plan \
+            marketing_automations \
+            marketing_automation_runs \
+            marketing_lead_forms \
+            marketing_tracking_links \
+            marketing_media_plan \
+            marketing_activity_log \
+            marketing_leads \
+            marketing_daily_metrics \
+            marketing_calls \
+            integration_credentials \
+            integration_runs; do
+            exists="$("${DB[@]}" -c "select case when to_regclass('public.$table') is null then 0 else 1 end")"
+            if [ "$exists" = '1' ]; then
+              count="$("${DB[@]}" -c "select count(*) from public.$table")"
+              echo "$table=$count"
+            else
+              echo "$table=MISSING"
+            fi
+          done
+
+          echo 'TENANT_COUNTS:'
+          for table in marketing_ads marketing_campaigns marketing_tasks marketing_content_plan marketing_automations marketing_lead_forms marketing_tracking_links marketing_media_plan marketing_leads marketing_daily_metrics; do
+            exists="$("${DB[@]}" -c "select case when to_regclass('public.$table') is null then 0 else 1 end")"
+            has_company="$("${DB[@]}" -c "select count(*) from information_schema.columns where table_schema='public' and table_name='$table' and column_name='company_id'")"
+            if [ "$exists" = '1' ] && [ "$has_company" = '1' ]; then
+              count="$("${DB[@]}" -c "select count(*) from public.$table where company_id='$COMPANY_ID'::uuid")"
+              echo "$table=$count"
+            fi
+          done
+
+          echo 'INTEGRATION_CREDENTIAL_STATUS:'
+          "${DB[@]}" -F'|' -c "select provider,status,coalesce(last_verified_at::text,'never'),updated_at::text from public.integration_credentials where company_id='$COMPANY_ID'::uuid and user_id is null order by provider" 2>/dev/null || true
+
+          echo 'INTEGRATION_CREDENTIAL_COLUMNS:'
+          "${DB[@]}" -c "select column_name from information_schema.columns where table_schema='public' and table_name='integration_credentials' order by ordinal_position" || true
+
+          echo 'INTEGRATION_RUN_COLUMNS:'
+          "${DB[@]}" -c "select column_name from information_schema.columns where table_schema='public' and table_name='integration_runs' order by ordinal_position" || true
+          REMOTE
