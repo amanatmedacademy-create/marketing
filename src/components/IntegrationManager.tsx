@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Database, Facebook, LoaderCircle, Plug, RefreshCw, Settings, X } from 'lucide-react';
 import { useAuth } from './AuthGate';
 import { IntegrationCard } from './integrationCards/IntegrationCard';
@@ -34,6 +34,10 @@ type WabaConfigResponse = {
     lastError?: string | null;
   } | null;
   error?: string;
+};
+
+type IntegrationManagerProps = {
+  children?: ReactNode;
 };
 
 const supported: ProviderDefinition[] = [
@@ -174,7 +178,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T>
   }
 }
 
-export default function IntegrationManager() {
+export default function IntegrationManager({ children }: IntegrationManagerProps) {
   const { user } = useAuth();
   const isAdmin = user.role === 'administrator';
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
@@ -536,7 +540,7 @@ export default function IntegrationManager() {
     </header>
 
     <section className="iv2-summary">
-      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} из {availableCards.length}</strong></div></article>
+      <article><CheckCircle2 size={22}/><div><span>Подключено</span><strong>{connectedCount} активных</strong></div></article>
       <article><Plug size={22}/><div><span>API</span><strong>{message?.type === 'error' ? 'Ошибка' : loading ? 'Проверка' : 'Работает'}</strong></div></article>
       <article><Settings size={22}/><div><span>Архитектура</span><strong>Единый каталог интеграций</strong></div></article>
     </section>
@@ -544,7 +548,7 @@ export default function IntegrationManager() {
     {message && <div className={`iv2-message iv2-message--${message.type}`}>{message.text}</div>}
 
     <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Meta, Google, CRM и коммуникации управляются из одного каталога и показывают реальные статусы синхронизации.</p></div></div>
+      <div className="iv2-section-head"><div><h2>Доступные подключения</h2><p>Реклама, аналитика, CRM, коммуникации, телефония и клинические системы управляются из одного каталога.</p></div></div>
       <div className="iv2-grid">
         {availableCards.map((card) => <IntegrationCard
           key={card.id}
@@ -557,6 +561,7 @@ export default function IntegrationManager() {
             openEditor(card.id as IntegrationProvider);
           }}
         />)}
+        {children}
       </div>
     </section>
 
