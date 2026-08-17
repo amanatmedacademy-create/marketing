@@ -35,6 +35,7 @@ export type NativeRegistrationInput = {
   email: string;
   password: string;
   displayName: string;
+  phone: string;
   mode: 'new_company' | 'join_company';
   companyName?: string;
   companyCode?: string;
@@ -158,6 +159,7 @@ export async function registerNativeAccount(input: NativeRegistrationInput): Pro
       ...input,
       email: input.email.trim().toLowerCase(),
       displayName: input.displayName.trim(),
+      phone: input.phone.trim(),
       companyName: input.companyName?.trim(),
       companyCode: input.companyCode?.trim().toUpperCase(),
     }),
