@@ -1,6 +1,10 @@
 export interface LocalDataEnv {
   IMDS_LOCAL_DB_URL?: string;
   IMDS_LOCAL_SERVICE_ROLE_KEY?: string;
+  /** @deprecated Type compatibility only. Local data helpers never read this value. */
+  SUPABASE_URL?: string;
+  /** @deprecated Type compatibility only. Local data helpers never read this value. */
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 }
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
