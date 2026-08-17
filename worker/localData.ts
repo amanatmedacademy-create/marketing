@@ -5,7 +5,6 @@ export interface LocalDataEnv {
   SUPABASE_URL?: string;
   /** @deprecated Type compatibility only. Local data helpers never read this value. */
   SUPABASE_SERVICE_ROLE_KEY?: string;
-  [key: string]: unknown;
 }
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
