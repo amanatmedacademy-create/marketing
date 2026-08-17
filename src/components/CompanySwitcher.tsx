@@ -51,6 +51,9 @@ export default function CompanySwitcher() {
   }, [open]);
 
   if (!current) return null;
+  const canCreateClinic = user.platformRole === 'super_admin'
+    || user.role === 'administrator'
+    || (current.accessSource !== 'platform' && ['owner', 'administrator'].includes(current.role));
 
   const changeCompany = async (companyId: string) => {
     if (!companyId || companyId === currentId || busy) { setOpen(false); return; }
@@ -64,6 +67,7 @@ export default function CompanySwitcher() {
     setBusy(true); setError(''); setNotice('');
     try {
       if (mode === 'create') {
+        if (!canCreateClinic) throw new Error('Добавлять клиники может только владелец или администратор');
         const sourceCompanyId = current.accessSource !== 'platform' && ['owner', 'administrator'].includes(current.role) ? current.id : null;
         const clinic = await createClinic(value, sourceCompanyId);
         setValue(''); setMode(null);
@@ -100,7 +104,7 @@ export default function CompanySwitcher() {
         </button>)}
         {!filtered.length && <div className="company-switcher__empty">Клиники не найдены</div>}
       </div>
-      {companies.length === 1 && !query && <div className="company-switcher__hint">Других доступных клиник пока нет. Можно добавить новую или присоединиться по коду.</div>}
+      {companies.length === 1 && !query && <div className="company-switcher__hint">Других доступных клиник пока нет. {canCreateClinic ? 'Можно добавить новую или присоединиться по коду.' : 'Можно присоединиться к другой клинике по коду.'}</div>}
 
       {mode && <form className="company-switcher__form" onSubmit={(event) => { event.preventDefault(); void submitAction(); }}>
         <label><span>{mode === 'create' ? 'Название новой клиники' : 'Код клиники'}</span><input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder={mode === 'create' ? 'Например, IMDS Dental' : 'Введите код'} minLength={mode === 'create' ? 2 : 6} required/></label>
@@ -109,7 +113,7 @@ export default function CompanySwitcher() {
       {error && <div className="company-switcher__error">{error}</div>}
       {notice && <div className="company-switcher__notice">{notice}</div>}
       {!mode && <div className="company-switcher__actions">
-        <button type="button" onClick={() => { setMode('create'); setValue(''); setError(''); setNotice(''); }}><Plus size={15}/>Добавить клинику</button>
+        {canCreateClinic && <button type="button" onClick={() => { setMode('create'); setValue(''); setError(''); setNotice(''); }}><Plus size={15}/>Добавить клинику</button>}
         <button type="button" onClick={() => { setMode('join'); setValue(''); setError(''); setNotice(''); }}><LogIn size={15}/>Присоединиться по коду</button>
       </div>}
     </div>}
