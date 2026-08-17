@@ -16,6 +16,7 @@ export interface NativeAuthenticatedUser {
   name: string;
   avatarUrl: string | null;
   role: string;
+  platformRole: 'user' | 'super_admin';
   status: string;
 }
 
@@ -69,83 +70,66 @@ function bearer(request: Request): string {
   return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
 }
 
+function normalizeEmail(value: unknown): string { return text(value).toLowerCase(); }
+function validEmail(value: string): boolean { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+function slugify(value: string): string {
+  return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 80) || `company-${crypto.randomUUID().slice(0, 8)}`;
+}
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
-
-function base64UrlToBytes(value: string): Uint8Array {
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
   const binary = atob(padded);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const result = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i += 1) result[i] = binary.charCodeAt(i);
+  return result;
 }
-
-function randomToken(size = 32): string {
-  const bytes = new Uint8Array(size);
-  crypto.getRandomValues(bytes);
-  return bytesToBase64Url(bytes);
-}
-
+function randomToken(bytes = 32): string { return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(bytes))); }
 async function sha256Hex(value: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-function timingSafeEqual(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.length !== right.length) return false;
-  let diff = 0;
-  for (let index = 0; index < left.length; index += 1) diff |= left[index] ^ right[index];
-  return diff === 0;
+  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 const PASSWORD_ITERATIONS = 600_000;
-
 async function hashPassword(password: string): Promise<string> {
-  if (password.length < 10 || password.length > 256) throw new Error('Пароль должен содержать минимум 10 символов');
-  const salt = new Uint8Array(24);
-  crypto.getRandomValues(salt);
+  if (password.length < 10) throw new Error('Пароль должен содержать минимум 10 символов.');
+  if (password.length > 256) throw new Error('Пароль слишком длинный.');
+  const salt = crypto.getRandomValues(new Uint8Array(24));
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PASSWORD_ITERATIONS }, key, 256);
   return `pbkdf2_sha256$${PASSWORD_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(new Uint8Array(bits))}`;
 }
-
 async function verifyPassword(password: string, encoded: string): Promise<boolean> {
-  const parts = encoded.split('$');
-  if (parts.length !== 4 || parts[0] !== 'pbkdf2_sha256') return false;
-  const iterations = Number(parts[1]);
-  if (!Number.isInteger(iterations) || iterations < 100_000 || iterations > 2_000_000) return false;
-  let salt: ArrayBuffer;
-  let expected: Uint8Array;
-  try {
-    const decodedSalt = base64UrlToBytes(parts[2]);
-    salt = new Uint8Array(decodedSalt).buffer;
-    expected = base64UrlToBytes(parts[3]);
-  } catch {
-    return false;
-  }
+  const [scheme, iterationText, saltText, digestText] = encoded.split('$');
+  if (scheme !== 'pbkdf2_sha256' || !iterationText || !saltText || !digestText) return false;
+  const iterations = Number(iterationText);
+  if (!Number.isFinite(iterations) || iterations < 100_000 || iterations > 1_500_000) return false;
+  const salt = base64UrlToBytes(saltText);
+  const expected = base64UrlToBytes(digestText);
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, expected.length * 8);
-  return timingSafeEqual(new Uint8Array(bits), expected);
-}
-
-function normalizeEmail(value: unknown): string {
-  return text(value).toLowerCase();
-}
-
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
-}
-
-function slugify(value: string): string {
-  const stem = value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'organization';
-  return `${stem}-${randomToken(5).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 7)}`;
+  const actual = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, expected.length * 8));
+  if (actual.length !== expected.length) return false;
+  let difference = 0;
+  for (let i = 0; i < actual.length; i += 1) difference |= actual[i] ^ expected[i];
+  return difference === 0;
 }
 
 function appOrigin(request: Request, env: NativeAuthEnv): string {
-  const fallback = new URL(request.url).origin;
-  try { return env.APP_ORIGIN ? new URL(env.APP_ORIGIN).origin : fallback; } catch { return fallback; }
+  const configured = text(env.APP_ORIGIN);
+  if (configured) {
+    try { return new URL(configured).origin; } catch { /* use request origin */ }
+  }
+  return new URL(request.url).origin;
+}
+export function nativeGoogleConfigured(env: NativeAuthEnv): boolean {
+  return Boolean(text(env.GOOGLE_CLIENT_ID) && text(env.GOOGLE_CLIENT_SECRET));
+}
+function googleRedirectUri(request: Request, env: NativeAuthEnv): string {
+  return `${appOrigin(request, env)}/api/auth/google/callback`;
 }
 
 async function issueSession(env: NativeAuthEnv, authUserId: string, request: Request, remember: boolean): Promise<{ access_token: string; expires_in: number; token_type: string }> {
@@ -164,7 +148,7 @@ async function issueSession(env: NativeAuthEnv, authUserId: string, request: Req
   return { access_token: token, expires_in: expiresIn, token_type: 'bearer' };
 }
 
-async function marketingUserForAuthId(env: NativeAuthEnv, authUserId: string): Promise<NativeAuthenticatedUser | null> {
+async function marketingUserForAuthId(env: NativeAuthEnv, authUserId: string, platformRole: 'user' | 'super_admin' = 'user'): Promise<NativeAuthenticatedUser | null> {
   const rows = await db<JsonRecord[]>(env, `/marketing_users?auth_user_id=eq.${encodeURIComponent(authUserId)}&select=id,email,name,full_name,avatar_url,role,status&limit=1`);
   const row = rows[0];
   if (!row) return null;
@@ -174,6 +158,7 @@ async function marketingUserForAuthId(env: NativeAuthEnv, authUserId: string): P
     name: text(row.full_name) || text(row.name) || normalizeEmail(row.email).split('@')[0] || 'Пользователь',
     avatarUrl: text(row.avatar_url) || null,
     role: text(row.role) || 'viewer',
+    platformRole,
     status: text(row.status) || 'active',
   };
 }
@@ -187,9 +172,10 @@ export async function authenticateNativeRequest(request: Request, env: NativeAut
   const session = sessions[0];
   const authUserId = text(session?.user_id);
   if (!authUserId) return null;
-  const users = await db<JsonRecord[]>(env, `/imds_auth_users?id=eq.${encodeURIComponent(authUserId)}&status=eq.active&select=id&limit=1`);
+  const users = await db<JsonRecord[]>(env, `/imds_auth_users?id=eq.${encodeURIComponent(authUserId)}&status=eq.active&select=id,platform_role&limit=1`);
   if (!users[0]) return null;
-  return marketingUserForAuthId(env, authUserId);
+  const platformRole = text(users[0].platform_role) === 'super_admin' ? 'super_admin' : 'user';
+  return marketingUserForAuthId(env, authUserId, platformRole);
 }
 
 async function login(request: Request, env: NativeAuthEnv): Promise<Response> {
@@ -291,88 +277,80 @@ async function ensureGoogleUser(env: NativeAuthEnv, profile: JsonRecord): Promis
     });
   }
 
-  const marketing = await db<JsonRecord[]>(env, `/marketing_users?auth_user_id=eq.${encodeURIComponent(authUserId)}&select=id&limit=1`);
-  if (!marketing[0]) {
-    const byEmail = await db<JsonRecord[]>(env, `/marketing_users?email=eq.${encodeURIComponent(email)}&select=id,auth_user_id&limit=1`);
-    if (byEmail[0]) {
-      await db(env, `/marketing_users?id=eq.${encodeURIComponent(text(byEmail[0].id))}`, {
-        method: 'PATCH', headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ auth_user_id: authUserId, name, full_name: name, avatar_url: avatar, provider: 'google', provider_metadata: profile, last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
-      });
-    } else {
-      await db(env, '/marketing_users', {
-        method: 'POST', headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ auth_user_id: authUserId, name, full_name: name, email, avatar_url: avatar, provider: 'google', provider_metadata: profile, role: 'viewer', status: 'active', last_seen_at: new Date().toISOString() }),
-      });
-    }
+  const marketingUsers = await db<JsonRecord[]>(env, `/marketing_users?auth_user_id=eq.${encodeURIComponent(authUserId)}&select=id&limit=1`);
+  if (!marketingUsers[0]) {
+    const firstUsers = await db<JsonRecord[]>(env, '/marketing_users?select=id&limit=1');
+    await db(env, '/marketing_users', {
+      method: 'POST', headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        auth_user_id: authUserId, name, full_name: name, email, avatar_url: avatar,
+        role: firstUsers.length ? 'viewer' : 'administrator', status: 'active', provider: 'google', provider_metadata: profile, last_seen_at: new Date().toISOString(),
+      }),
+    });
   }
   return authUserId;
 }
 
 async function googleStart(request: Request, env: NativeAuthEnv): Promise<Response> {
   const clientId = text(env.GOOGLE_CLIENT_ID);
-  if (!clientId) return Response.redirect(`${appOrigin(request, env)}/?error_description=${encodeURIComponent('Google OAuth ещё не настроен')}`, 302);
-  const state = randomToken(36);
+  if (!clientId || !text(env.GOOGLE_CLIENT_SECRET)) return json({ error: 'Google OAuth не настроен.' }, 503);
+  const state = randomToken(32);
   const stateHash = await sha256Hex(state);
-  const returnTo = appOrigin(request, env);
+  const redirectUri = googleRedirectUri(request, env);
   await db(env, '/imds_auth_oauth_states', {
     method: 'POST', headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ provider: 'google', state_hash: stateHash, return_to: returnTo, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() }),
+    body: JSON.stringify({ provider: 'google', state_hash: stateHash, redirect_uri: redirectUri, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() }),
   });
-  const callback = `${appOrigin(request, env)}/api/auth/google/callback`;
-  const authorize = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authorize.searchParams.set('client_id', clientId);
-  authorize.searchParams.set('redirect_uri', callback);
-  authorize.searchParams.set('response_type', 'code');
-  authorize.searchParams.set('scope', 'openid email profile');
-  authorize.searchParams.set('state', state);
-  authorize.searchParams.set('prompt', 'select_account');
-  return Response.redirect(authorize.toString(), 302);
+  const target = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  target.searchParams.set('client_id', clientId);
+  target.searchParams.set('redirect_uri', redirectUri);
+  target.searchParams.set('response_type', 'code');
+  target.searchParams.set('scope', 'openid email profile');
+  target.searchParams.set('state', state);
+  target.searchParams.set('access_type', 'online');
+  target.searchParams.set('prompt', 'select_account');
+  return Response.redirect(target.toString(), 302);
 }
 
 async function googleCallback(request: Request, env: NativeAuthEnv, url: URL): Promise<Response> {
-  const code = text(url.searchParams.get('code'));
-  const state = text(url.searchParams.get('state'));
-  const oauthError = text(url.searchParams.get('error'));
-  const origin = appOrigin(request, env);
-  if (oauthError) return Response.redirect(`${origin}/?error_description=${encodeURIComponent(oauthError)}`, 302);
-  if (!code || !state) return Response.redirect(`${origin}/?error_description=${encodeURIComponent('Google OAuth callback неполный')}`, 302);
-  const stateHash = await sha256Hex(state);
-  const now = new Date().toISOString();
-  const states = await db<JsonRecord[]>(env, `/imds_auth_oauth_states?provider=eq.google&state_hash=eq.${stateHash}&consumed_at=is.null&expires_at=gt.${encodeURIComponent(now)}&select=id,return_to&limit=1`);
-  const saved = states[0];
-  if (!saved) return Response.redirect(`${origin}/?error_description=${encodeURIComponent('OAuth state истёк или недействителен')}`, 302);
-  await db(env, `/imds_auth_oauth_states?id=eq.${encodeURIComponent(text(saved.id))}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ consumed_at: now }) });
-
-  const clientId = text(env.GOOGLE_CLIENT_ID);
-  const clientSecret = text(env.GOOGLE_CLIENT_SECRET);
-  if (!clientId || !clientSecret) return Response.redirect(`${origin}/?error_description=${encodeURIComponent('Google OAuth не настроен на сервере')}`, 302);
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: `${origin}/api/auth/google/callback`, grant_type: 'authorization_code' }),
-  });
-  const tokenPayload = await tokenResponse.json().catch(() => ({})) as JsonRecord;
-  const googleAccessToken = text(tokenPayload.access_token);
-  if (!tokenResponse.ok || !googleAccessToken) return Response.redirect(`${origin}/?error_description=${encodeURIComponent('Google не выдал access token')}`, 302);
-  const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { authorization: `Bearer ${googleAccessToken}` } });
-  const profile = await profileResponse.json().catch(() => ({})) as JsonRecord;
-  if (!profileResponse.ok) return Response.redirect(`${origin}/?error_description=${encodeURIComponent('Не удалось получить профиль Google')}`, 302);
   try {
+    const state = text(url.searchParams.get('state'));
+    const code = text(url.searchParams.get('code'));
+    const oauthError = text(url.searchParams.get('error'));
+    if (oauthError) throw new Error(oauthError);
+    if (!state || !code) throw new Error('Google OAuth callback неполный');
+    const stateHash = await sha256Hex(state);
+    const states = await db<JsonRecord[]>(env, `/imds_auth_oauth_states?provider=eq.google&state_hash=eq.${stateHash}&consumed_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,redirect_uri&limit=1`);
+    const saved = states[0];
+    if (!saved?.id) throw new Error('Google OAuth state недействителен или истёк');
+    const clientId = text(env.GOOGLE_CLIENT_ID);
+    const clientSecret = text(env.GOOGLE_CLIENT_SECRET);
+    if (!clientId || !clientSecret) throw new Error('Google OAuth не настроен');
+    const redirectUri = text(saved.redirect_uri) || googleRedirectUri(request, env);
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
+    });
+    const tokens = await tokenResponse.json().catch(() => ({})) as JsonRecord;
+    if (!tokenResponse.ok || !text(tokens.access_token)) throw new Error(text(asObject(tokens.error)?.message) || text(tokens.error_description) || `Google token exchange ${tokenResponse.status}`);
+    const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { authorization: `Bearer ${text(tokens.access_token)}` } });
+    const profile = await profileResponse.json().catch(() => ({})) as JsonRecord;
+    if (!profileResponse.ok) throw new Error(`Google profile ${profileResponse.status}`);
     const authUserId = await ensureGoogleUser(env, profile);
+    await db(env, `/imds_auth_oauth_states?id=eq.${encodeURIComponent(text(saved.id))}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ consumed_at: new Date().toISOString() }) });
     const session = await issueSession(env, authUserId, request, true);
-    return Response.redirect(`${origin}/#access_token=${encodeURIComponent(session.access_token)}&expires_in=${session.expires_in}&token_type=bearer`, 302);
+    const fragment = new URLSearchParams({ access_token: session.access_token, token_type: session.token_type, expires_in: String(session.expires_in), provider: 'google' });
+    return Response.redirect(`${appOrigin(request, env)}/#${fragment.toString()}`, 302);
   } catch (error) {
-    return Response.redirect(`${origin}/?error_description=${encodeURIComponent(error instanceof Error ? error.message : 'Ошибка входа через Google')}`, 302);
+    const message = error instanceof Error ? error.message : 'Ошибка Google OAuth';
+    return Response.redirect(`${appOrigin(request, env)}/?error_description=${encodeURIComponent(message)}`, 302);
   }
 }
 
-export function nativeGoogleConfigured(env: NativeAuthEnv): boolean {
-  return Boolean(text(env.GOOGLE_CLIENT_ID) && text(env.GOOGLE_CLIENT_SECRET));
-}
+function asObject(value: unknown): JsonRecord | null { return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null; }
 
 export async function handleNativeAuthRequest(request: Request, env: NativeAuthEnv, url: URL): Promise<Response | null> {
-  if (!text(env.IMDS_LOCAL_DB_URL) || !text(env.IMDS_LOCAL_SERVICE_ROLE_KEY)) return null;
   if (url.pathname === '/api/auth/login' && request.method === 'POST') return login(request, env);
   if (url.pathname === '/api/auth/register' && request.method === 'POST') return register(request, env);
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') return logout(request, env);
