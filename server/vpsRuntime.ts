@@ -5,7 +5,7 @@ import worker from '../worker/securedMain';
 import { authenticateRequest } from '../worker/auth';
 import { resolveCompanyId } from '../worker/companyContext';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
-import { enforcePlatformEntitlement, handlePlatformInternalRequest, platformEntitlementForTenant } from './platformControl';
+import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant } from './platformControl';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -134,6 +134,7 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
   const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
   const tenantId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } as never : env as never, user.id);
   const entitlement = await platformEntitlementForTenant(tenantId);
+  const localBilling = entitlement ? null : await localTrialForTenant(tenantId, env);
   const payload = entitlement ? {
     managed: true,
     tenantId,
@@ -141,14 +142,16 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
     revision: entitlement.revision,
     productEnabled: entitlement.productEnabled,
     modules: entitlement.modules,
+    billing: entitlement.billing || null,
     updatedAt: entitlement.updatedAt,
   } : {
     managed: false,
     tenantId,
     organizationId: null,
     revision: null,
-    productEnabled: true,
+    productEnabled: localBilling?.subscriptionStatus !== 'expired' && localBilling?.subscriptionStatus !== 'suspended',
     modules: {},
+    billing: localBilling,
     updatedAt: null,
   };
   return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -173,7 +176,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const entitlementDenied = await enforcePlatformEntitlement(request);
+    const entitlementDenied = await enforcePlatformEntitlement(request, env);
     if (entitlementDenied) {
       await sendResponse(res, entitlementDenied);
       console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' }));
