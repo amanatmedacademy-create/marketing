@@ -48,7 +48,7 @@ jobs:
             supabase/migrations/20260818023000_marketing_product_trial.sql \
             "$VPS_USER@$VPS_HOST:/tmp/20260818023000_marketing_product_trial.sql"
 
-      - name: Discover database, apply migration and verify
+      - name: Apply migration to verified Marketing PostgreSQL
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -56,69 +56,23 @@ jobs:
           set -euo pipefail
           export SSHPASS
           SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
-            set -euo pipefail
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -s /tmp/20260818023000_marketing_product_trial.sql
+          docker inspect imds-postgres >/dev/null
+          docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < /tmp/20260818023000_marketing_product_trial.sql
 
-            database=""
-            container=""
-            mode=""
+          table_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_product_trial_access') is not null)::int")
+          function_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_marketing_trial_state(uuid)') is not null)::int")
+          trigger_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists (select 1 from pg_trigger where tgname = 'crm_companies_create_marketing_trial' and not tgisinternal))::int")
 
-            if sudo -u postgres psql -At -d postgres -c "select 1" >/dev/null 2>&1; then
-              while IFS= read -r candidate; do
-                test -n "$candidate" || continue
-                has_companies=$(sudo -u postgres psql -At -d "$candidate" -c "select (to_regclass('"'"'public.crm_companies'"'"') is not null)::int" 2>/dev/null || true)
-                if test "$has_companies" = "1"; then
-                  database="$candidate"
-                  mode="host"
-                  break
-                fi
-              done < <(sudo -u postgres psql -At -d postgres -c "select datname from pg_database where datallowconn and not datistemplate order by datname")
-            fi
-
-            if test -z "$database" && command -v docker >/dev/null 2>&1; then
-              while IFS= read -r candidate_container; do
-                test -n "$candidate_container" || continue
-                if ! sudo docker exec -u postgres "$candidate_container" psql -At -d postgres -c "select 1" >/dev/null 2>&1; then
-                  continue
-                fi
-                while IFS= read -r candidate_database; do
-                  test -n "$candidate_database" || continue
-                  has_companies=$(sudo docker exec -u postgres "$candidate_container" psql -At -d "$candidate_database" -c "select (to_regclass('"'"'public.crm_companies'"'"') is not null)::int" 2>/dev/null || true)
-                  if test "$has_companies" = "1"; then
-                    container="$candidate_container"
-                    database="$candidate_database"
-                    mode="docker"
-                    break 2
-                  fi
-                done < <(sudo docker exec -u postgres "$candidate_container" psql -At -d postgres -c "select datname from pg_database where datallowconn and not datistemplate order by datname")
-              done < <(sudo docker ps --format "{{.ID}}")
-            fi
-
-            test -n "$database" || {
-              echo "Could not find the Marketing PostgreSQL database containing public.crm_companies on host PostgreSQL or Docker PostgreSQL containers"
-              exit 1
-            }
-            echo "Marketing database resolved via $mode: $database"
-
-            if test "$mode" = "host"; then
-              sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$database" -f /tmp/20260818023000_marketing_product_trial.sql
-              table_ok=$(sudo -u postgres psql -At -d "$database" -c "select (to_regclass('"'"'public.imds_product_trial_access'"'"') is not null)::int")
-              function_ok=$(sudo -u postgres psql -At -d "$database" -c "select (to_regprocedure('"'"'public.imds_marketing_trial_state(uuid)'"'"') is not null)::int")
-              trigger_ok=$(sudo -u postgres psql -At -d "$database" -c "select (exists (select 1 from pg_trigger where tgname = '"'"'crm_companies_create_marketing_trial'"'"' and not tgisinternal))::int")
-            else
-              sudo docker cp /tmp/20260818023000_marketing_product_trial.sql "$container:/tmp/20260818023000_marketing_product_trial.sql"
-              sudo docker exec -u postgres "$container" psql -v ON_ERROR_STOP=1 -d "$database" -f /tmp/20260818023000_marketing_product_trial.sql
-              table_ok=$(sudo docker exec -u postgres "$container" psql -At -d "$database" -c "select (to_regclass('"'"'public.imds_product_trial_access'"'"') is not null)::int")
-              function_ok=$(sudo docker exec -u postgres "$container" psql -At -d "$database" -c "select (to_regprocedure('"'"'public.imds_marketing_trial_state(uuid)'"'"') is not null)::int")
-              trigger_ok=$(sudo docker exec -u postgres "$container" psql -At -d "$database" -c "select (exists (select 1 from pg_trigger where tgname = '"'"'crm_companies_create_marketing_trial'"'"' and not tgisinternal))::int")
-              sudo docker exec "$container" rm -f /tmp/20260818023000_marketing_product_trial.sql || true
-            fi
-
-            test "$table_ok" = "1" || { echo "trial table missing"; exit 1; }
-            test "$function_ok" = "1" || { echo "trial state function missing"; exit 1; }
-            test "$trigger_ok" = "1" || { echo "trial trigger missing"; exit 1; }
-            echo "table:ok function:ok trigger:ok"
-          '
+          test "$table_ok" = "1" || { echo 'trial table missing'; exit 1; }
+          test "$function_ok" = "1" || { echo 'trial state function missing'; exit 1; }
+          test "$trigger_ok" = "1" || { echo 'trial trigger missing'; exit 1; }
+          echo 'MARKETING_DB=imds-postgres/imds_marketing'
+          echo 'TRIAL_SCHEMA=table:ok function:ok trigger:ok'
+          rm -f /tmp/20260818023000_marketing_product_trial.sql
+          REMOTE
 
       - name: Cleanup
         if: always()
