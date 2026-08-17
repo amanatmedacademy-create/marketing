@@ -6,6 +6,7 @@ type Entitlement = {
   organizationId: string;
   tenantId: string;
   revision: number;
+  productEnabled: boolean;
   modules: Record<string, boolean>;
   updatedAt: string;
 };
@@ -79,6 +80,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
     const organizationId = String(body?.organizationId || '').trim();
     const tenantId = String(body?.tenantId || '').trim();
     const revision = Number(body?.revision || 0);
+    const productEnabled = body?.productEnabled === true;
     const modules = body?.modules && typeof body.modules === 'object' ? body.modules as Record<string, boolean> : null;
     if (!organizationId || !tenantId || !Number.isInteger(revision) || revision < 1 || !modules) return json({ error: 'INVALID_ENTITLEMENT_PAYLOAD' }, 400);
 
@@ -87,7 +89,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
     if (current && current.revision > revision) {
       return json({ applied: false, stale: true, tenant: current }, 409);
     }
-    const tenant: Entitlement = { organizationId, tenantId, revision, modules, updatedAt: new Date().toISOString() };
+    const tenant: Entitlement = { organizationId, tenantId, revision, productEnabled, modules, updatedAt: new Date().toISOString() };
     state.tenants[tenantId] = tenant;
     await writeState(state);
     return json({ applied: true, tenant });
@@ -100,14 +102,15 @@ export async function enforcePlatformEntitlement(request: Request): Promise<Resp
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
   if (url.pathname === '/api/health' || url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/webhooks/') || url.pathname.startsWith('/api/public/')) return null;
-  const rule = routeModules.find((item) => item.test(url.pathname));
-  if (!rule) return null;
 
   const tenantId = tenantIdFromRequest(request);
-  if (!tenantId) return null; // Existing auth layer will require tenant context where applicable.
+  if (!tenantId) return null; // Existing auth layer remains responsible for tenant selection.
   const state = await readState();
   const tenant = state.tenants[tenantId];
-  if (!tenant) return json({ error: 'PRODUCT_ENTITLEMENT_NOT_SYNCED', module: rule.module }, 503);
-  if (tenant.modules[rule.module] !== true) return json({ error: 'MODULE_DISABLED_BY_PLATFORM', module: rule.module }, 403);
+  if (!tenant) return json({ error: 'PRODUCT_ENTITLEMENT_NOT_SYNCED' }, 503);
+  if (!tenant.productEnabled) return json({ error: 'PRODUCT_DISABLED_BY_PLATFORM' }, 403);
+
+  const rule = routeModules.find((item) => item.test(url.pathname));
+  if (rule && tenant.modules[rule.module] !== true) return json({ error: 'MODULE_DISABLED_BY_PLATFORM', module: rule.module }, 403);
   return null;
 }
