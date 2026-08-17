@@ -76,7 +76,7 @@ function PendingOrganization({ user, onSignOut }: { user: AppUser; onSignOut: ()
   return <div className="auth-screen auth-screen--loading">
     <div className="auth-login-card auth-pending-card">
       <div className="auth-login-icon"><ShieldCheck size={28}/></div>
-      <span className="auth-login-product">IMDS MARKETING</span>
+      <span className="auth-login-product">BELES</span>
       <h2>Регистрация организации</h2>
       <p>{user.onboardingStatus === 'pending_approval'
         ? 'Заявка отправлена администратору организации. После одобрения откроются назначенные модули.'
@@ -153,8 +153,8 @@ function LoginPanel({ onAuthenticated, error, setError }: { onAuthenticated: (us
   return <section className="auth-login-panel">
     <form className="auth-login-card" onSubmit={submit}>
       <div className="auth-login-icon"><ShieldCheck size={28}/></div>
-      <span className="auth-login-product">IMDS MARKETING</span>
-      <h2>{mode === 'login' ? 'Вход в IMDS' : 'Регистрация'}</h2>
+      <span className="auth-login-product">BELES</span>
+      <h2>{mode === 'login' ? 'Вход в BELES' : 'Регистрация'}</h2>
       <p>{mode === 'login' ? 'Введите email и пароль своей учётной записи.' : 'Создайте аккаунт и выберите способ подключения организации.'}</p>
 
       <div className="auth-tabs">
@@ -279,7 +279,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       <section className="auth-showcase">
         <div className="auth-brand"><ImdsBrand/></div>
         <div className="auth-copy">
-          <div className="auth-eyebrow"><Sparkles size={14}/>IMDS MARKETING</div>
+          <div className="auth-eyebrow"><Sparkles size={14}/>BELES</div>
           <h1>Маркетинг, CRM и продажи — в одном контуре</h1>
           <p>Каждая организация получает отдельный tenant, сотрудников, права доступа, интеграции и собственные данные.</p>
         </div>

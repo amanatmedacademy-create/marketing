@@ -57,7 +57,7 @@ function normalize(value: string) { return value.toLowerCase().replace(/ё/g, '�
 function routeFor(pathname: string): RouteInfo {
   if (ROUTES[pathname]) return ROUTES[pathname];
   const match = Object.entries(ROUTES).filter(([path]) => path !== '/' && pathname.startsWith(`${path}/`)).sort((a, b) => b[0].length - a[0].length)[0];
-  return match?.[1] || { title: 'IMDS Marketing', description: 'Данные текущего модуля IMDS Marketing.', sources: ['IMDS Data Layer'], fields: ['module_data'] };
+  return match?.[1] || { title: 'BELES', description: 'Данные текущего модуля BELES.', sources: ['IMDS Data Layer'], fields: ['module_data'] };
 }
 function specificFor(label: string) {
   const value = normalize(label);

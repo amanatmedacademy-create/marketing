@@ -121,7 +121,7 @@ function Shell() {
   const isMarketingRoute = location.pathname === '/marketing' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
 
   if (platform?.managed && !platform.productEnabled) {
-    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing отключён</h2><p>Доступ к продукту приостановлен в IMDS Super Admin для этой организации.</p></div>;
+    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>BELES отключён</h2><p>Доступ к продукту приостановлен в IMDS Super Admin для этой организации.</p></div>;
   }
 
   return <div className="marketing-shell">

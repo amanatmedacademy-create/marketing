@@ -64,7 +64,7 @@ export function WhatsAppCampaignsPage() {
     setSending(true); setMessage(null); setProgress({ sent: 0, failed: 0, total: recipients.length });
     let sent = 0; let failed = 0;
     for (const thread of recipients) {
-      try { await sendWhatsAppTemplate(thread.id, selectedTemplate, parameters, 'IMDS Marketing'); sent += 1; }
+      try { await sendWhatsAppTemplate(thread.id, selectedTemplate, parameters, 'BELES'); sent += 1; }
       catch { failed += 1; }
       setProgress({ sent, failed, total: recipients.length });
     }

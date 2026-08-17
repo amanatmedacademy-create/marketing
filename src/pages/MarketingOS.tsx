@@ -135,7 +135,7 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
   return <div className="marketing-hub">
     <header className="marketing-hub-hero">
       <div>
-        <span className="marketing-hub-eyebrow"><Sparkles size={15}/> IMDS MARKETING HUB</span>
+        <span className="marketing-hub-eyebrow"><Sparkles size={15}/> BELES HUB</span>
         <h1>Центр маркетинга</h1>
         <p>Операционная работа с рекламой, креативами, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
       </div>
