@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import worker from '../worker/securedMain';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
+import { enforcePlatformEntitlement, handlePlatformInternalRequest } from './platformControl';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -130,6 +131,21 @@ const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
     const request = await toRequest(req);
+
+    const platformResponse = await handlePlatformInternalRequest(request, env);
+    if (platformResponse) {
+      await sendResponse(res, platformResponse);
+      console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true }));
+      return;
+    }
+
+    const entitlementDenied = await enforcePlatformEntitlement(request);
+    if (entitlementDenied) {
+      await sendResponse(res, entitlementDenied);
+      console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' }));
+      return;
+    }
+
     const response = await worker.fetch(request, env as never, executionContext());
     await sendResponse(res, response);
     console.log(JSON.stringify({ method: req.method, path: req.url, status: response.status, durationMs: Date.now() - startedAt }));
