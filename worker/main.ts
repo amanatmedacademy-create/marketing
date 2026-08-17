@@ -60,7 +60,7 @@ type MainEnv = AuthEnv
   & VoiceTranscriptionEnv
   & ZadarmaTelephonyEnv
   & CallTranscriptionEnv
-  & { FRONTEND_ADMIN_KEY?: string; CURRENT_COMPANY_ID?: string };
+  & { CURRENT_COMPANY_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
@@ -84,21 +84,12 @@ function isIntegrationAdminPath(pathname: string): boolean {
     || pathname.startsWith('/api/integrations/waba/flows/clinic/');
 }
 
-function secureEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let result = 0;
-  for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return result === 0;
+function isAdminRole(role: string): boolean {
+  return role === 'administrator' || role === 'super_admin';
 }
 
-function bearer(request: Request): string {
-  const value = request.headers.get('authorization') || '';
-  return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
-}
-
-function hasLegacyAdminKey(request: Request, env: MainEnv): boolean {
-  const supplied = bearer(request) || request.headers.get('x-admin-key') || '';
-  return Boolean(env.FRONTEND_ADMIN_KEY && supplied && secureEqual(supplied, env.FRONTEND_ADMIN_KEY));
+function effectiveUserRole(user: { role: string; platformRole?: string }): string {
+  return user.platformRole === 'super_admin' ? 'super_admin' : user.role;
 }
 
 function verifiedIdentity(request: Request): { role: string; userId: string } | null {
@@ -113,6 +104,7 @@ function withTrustedIdentity(request: Request, role?: string, userId?: string): 
   headers.delete(INTERNAL_ROLE_HEADER);
   headers.delete(INTERNAL_USER_HEADER);
   headers.delete(INTERNAL_VERIFIED_HEADER);
+  headers.delete('x-admin-key');
   if (role) headers.set(INTERNAL_ROLE_HEADER, role);
   if (userId) headers.set(INTERNAL_USER_HEADER, userId);
   return new Request(request, { headers });
@@ -141,13 +133,14 @@ export default {
   async fetch(request: Request, env: MainEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const requestCorrelationId = correlationId(request);
-    // Keep routing on an independent clone. Never reconstruct from the original request before
-    // audit/pre-route handlers have had a chance to clone or consume their own body stream.
     const forwardingSource = request.clone() as Request;
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
 
     const route = async (): Promise<Response> => {
+      // Health must never depend on tenant context, telephony or integration credentials.
+      if (url.pathname === '/api/health') return app.fetch(withTrustedIdentity(forwardingSource), env);
+
       const zadarmaWebhook = await handleZadarmaWebhook(request, env, url);
       if (zadarmaWebhook) return zadarmaWebhook;
 
@@ -160,12 +153,11 @@ export default {
       if (authResponse) return authResponse;
 
       if (url.pathname.startsWith('/api/') && !isPublicApiPath(url.pathname)) {
-        const legacyAdmin = isIntegrationAdminPath(url.pathname) && hasLegacyAdminKey(request, env);
         const verified = verifiedIdentity(request);
-        if (legacyAdmin) {
-          forwardedRequest = withTrustedIdentity(forwardingSource, 'administrator', 'legacy-admin-key');
-        } else if (verified) {
-          if (isIntegrationAdminPath(url.pathname) && verified.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
+        if (verified) {
+          if (isIntegrationAdminPath(url.pathname) && !isAdminRole(verified.role)) {
+            return authError(403, 'Настройки интеграций доступны только супер-администратору');
+          }
           const requestedCompany = (request.headers.get(COMPANY_HEADER) || '').trim();
           try {
             const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, verified.userId);
@@ -179,7 +171,10 @@ export default {
           if (!user) return authError();
           if (user.status === 'blocked') return authError(403, 'Доступ пользователя заблокирован');
           if (user.status !== 'active') return authError(403, 'Аккаунт ожидает подтверждения администратора');
-          if (isIntegrationAdminPath(url.pathname) && user.role !== 'administrator') return authError(403, 'Настройки интеграций доступны только администратору');
+          const role = effectiveUserRole(user);
+          if (isIntegrationAdminPath(url.pathname) && !isAdminRole(role)) {
+            return authError(403, 'Настройки интеграций доступны только супер-администратору');
+          }
           const requestedCompany = (request.headers.get(COMPANY_HEADER) || '').trim();
           try {
             const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
@@ -187,7 +182,7 @@ export default {
           } catch (error) {
             return authError(409, error instanceof Error ? error.message : 'Выберите клинику для продолжения');
           }
-          forwardedRequest = withTrustedIdentity(forwardingSource, user.role, user.id);
+          forwardedRequest = withTrustedIdentity(forwardingSource, role, user.id);
         }
       }
 
