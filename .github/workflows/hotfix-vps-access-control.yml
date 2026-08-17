@@ -1,0 +1,58 @@
+name: Hotfix VPS Access Control
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hotfix-vps-access-control.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Patch VPS runtime
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" worker/accessControl.ts "$VPS_USER@$VPS_HOST:/tmp/accessControl.ts"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            test -d /opt/imds-marketing/current/worker
+            install -o imds -g imds -m 644 /tmp/accessControl.ts /opt/imds-marketing/current/worker/accessControl.ts
+            rm -f /tmp/accessControl.ts
+            systemctl restart imds-marketing.service
+            sleep 5
+            systemctl is-active --quiet imds-marketing.service
+            curl -fsS http://127.0.0.1:8787/api/auth/config | grep -q '"nativeAuth":true'
+          '
+      - name: Verify through nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 "http://$VPS_HOST/api/auth/config" | grep -q '"nativeAuth":true'
