@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false && tsc -p tsconfig.worker.json --pretty false",
     "test:schedule-crm": "node --experimental-strip-types --test tests/scheduleCrmContext.test.mjs",
     "test:integrations": "node --test tests/integrationRbacAndWaba.test.mjs",
+    "test:account-platform": "node --test tests/accountClinicSubscription.test.mjs",
     "deploy": "bun run build && wrangler deploy",
     "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },
