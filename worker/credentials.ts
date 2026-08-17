@@ -1,11 +1,11 @@
 import { resolveCompanyId } from './companyContext';
+import { localDataJson, type LocalDataEnv } from './localData';
 
 type JsonRecord = Record<string, unknown>;
 
 export type IntegrationProvider = 'bitrix' | 'meta' | 'tiktok' | 'n8n' | 'zadarma';
 
 export interface CredentialSecrets {
-  FRONTEND_ADMIN_KEY?: string;
   INTEGRATION_ENCRYPTION_KEY?: string;
   SYNC_API_KEY?: string;
   N8N_WEBHOOK_SECRET?: string;
@@ -30,10 +30,9 @@ export interface CredentialSecrets {
   ZADARMA_TENANT_CONFIGURED?: string;
 }
 
-interface BaseEnv extends CredentialSecrets {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+interface BaseEnv extends CredentialSecrets, LocalDataEnv {
   DEFAULT_COMPANY_ID?: string;
+  CURRENT_COMPANY_ID?: string;
 }
 
 interface CredentialRow {
@@ -108,30 +107,15 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 
-function secureEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let result = 0;
-  for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return result === 0;
-}
-
-function bearer(request: Request): string {
-  const value = request.headers.get('authorization') || '';
-  return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
-}
-
-export function isFrontendAdmin(request: Request, env: CredentialSecrets): boolean {
-  if (request.headers.get('x-amanat-auth-role') === 'administrator') return true;
-  const supplied = bearer(request) || request.headers.get('x-admin-key') || '';
-  return Boolean(env.FRONTEND_ADMIN_KEY && supplied && secureEqual(supplied, env.FRONTEND_ADMIN_KEY));
+export function isFrontendAdmin(request: Request): boolean {
+  const role = asString(request.headers.get('x-amanat-auth-role'));
+  return role === 'super_admin' || role === 'administrator';
 }
 
 function encryptionSecret(env: BaseEnv): string {
-  const explicit = asString(env.INTEGRATION_ENCRYPTION_KEY);
-  if (explicit) return explicit;
-  const serviceRole = asString(env.SUPABASE_SERVICE_ROLE_KEY);
-  if (!serviceRole) throw new Error('SUPABASE_SERVICE_ROLE_KEY не настроен в Cloudflare');
-  return `amanat-integrations:v1:${serviceRole}`;
+  const value = asString(env.INTEGRATION_ENCRYPTION_KEY);
+  if (!value) throw new Error('INTEGRATION_ENCRYPTION_KEY не настроен на VPS');
+  return value;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -165,24 +149,13 @@ async function decryptPayload(row: CredentialRow, secret: string): Promise<JsonR
   return asRecord(JSON.parse(new TextDecoder().decode(decrypted)));
 }
 
-async function supabase<T>(env: BaseEnv, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      'content-type': 'application/json',
-      ...init.headers,
-    },
-  });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Integration credentials: ${response.status} ${body}`);
-  return (body ? JSON.parse(body) : null) as T;
+async function db<T>(env: BaseEnv, path: string, init: RequestInit = {}): Promise<T> {
+  return localDataJson<T>(env, path, init, 'Integration credentials');
 }
 
 async function listRows(env: BaseEnv, companyId: string): Promise<CredentialRow[]> {
   try {
-    return await supabase<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&select=*&order=provider.asc`);
+    return await db<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&select=*&order=provider.asc`);
   } catch (error) {
     console.error(error);
     return [];
@@ -190,7 +163,7 @@ async function listRows(env: BaseEnv, companyId: string): Promise<CredentialRow[
 }
 
 async function findRow(env: BaseEnv, companyId: string, provider: IntegrationProvider): Promise<CredentialRow | null> {
-  const rows = await supabase<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}&select=*&limit=1`);
+  const rows = await db<CredentialRow[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}&select=*&limit=1`);
   return rows[0] || null;
 }
 
@@ -271,14 +244,14 @@ export async function hydrateIntegrationEnv<T extends BaseEnv>(env: T): Promise<
 
 export async function handleCredentialRequest(request: Request, env: BaseEnv, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/integrations/config')) return null;
-  if (!isFrontendAdmin(request, env)) return json({ error: 'Настройки интеграций доступны только администратору' }, 403);
+  if (!isFrontendAdmin(request)) return json({ error: 'Настройки интеграций доступны только супер-администратору' }, 403);
 
   const companyId = await resolveCompanyId(env);
   const secret = encryptionSecret(env);
   const provider = url.pathname.split('/').pop() as IntegrationProvider;
 
   if (url.pathname === '/api/integrations/config' && request.method === 'GET') {
-    return json({ providers: (await listRows(env, companyId)).map(publicSummary), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
+    return json({ providers: (await listRows(env, companyId)).map(publicSummary), encryptionMode: 'dedicated-vps' });
   }
   if (!providerFields[provider]) return json({ error: 'Неизвестная интеграция' }, 404);
 
@@ -303,21 +276,21 @@ export async function handleCredentialRequest(request: Request, env: BaseEnv, ur
       updated_at: new Date().toISOString(),
     };
     const rows = existing?.id
-      ? await supabase<CredentialRow[]>(env, `integration_credentials?id=eq.${encodeURIComponent(existing.id)}&company_id=eq.${encodeURIComponent(companyId)}`, {
+      ? await db<CredentialRow[]>(env, `integration_credentials?id=eq.${encodeURIComponent(existing.id)}&company_id=eq.${encodeURIComponent(companyId)}`, {
           method: 'PATCH',
           headers: { prefer: 'return=representation' },
           body: JSON.stringify(storedPayload),
         })
-      : await supabase<CredentialRow[]>(env, 'integration_credentials', {
+      : await db<CredentialRow[]>(env, 'integration_credentials', {
           method: 'POST',
           headers: { prefer: 'return=representation' },
           body: JSON.stringify(storedPayload),
         });
-    return json({ ok: true, provider: publicSummary(rows[0]), encryptionMode: env.INTEGRATION_ENCRYPTION_KEY ? 'dedicated' : 'automatic' });
+    return json({ ok: true, provider: publicSummary(rows[0]), encryptionMode: 'dedicated-vps' });
   }
 
   if (request.method === 'DELETE') {
-    await supabase<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
+    await db<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
       method: 'DELETE',
       headers: { prefer: 'return=minimal' },
     });
@@ -330,7 +303,7 @@ export async function handleCredentialRequest(request: Request, env: BaseEnv, ur
 export async function updateCredentialVerification(env: BaseEnv, provider: IntegrationProvider, ok: boolean, error?: unknown): Promise<void> {
   try {
     const companyId = await resolveCompanyId(env);
-    await supabase<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
+    await db<unknown>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}`, {
       method: 'PATCH',
       headers: { prefer: 'return=minimal' },
       body: JSON.stringify({
