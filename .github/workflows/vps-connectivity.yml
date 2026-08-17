@@ -8,23 +8,109 @@ on:
       - '.github/workflows/vps-connectivity.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
-  ssh-port-check:
+  diagnose:
     runs-on: ubuntu-latest
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
     steps:
-      - name: Check VPS TCP 22
+      - name: Check deploy secrets
+        id: secrets
+        shell: bash
         run: |
           set -euo pipefail
-          timeout 10 bash -c 'cat < /dev/null > /dev/tcp/89.207.250.55/22'
-          echo 'VPS SSH port 22 is reachable from GitHub Actions'
-      - name: Check deploy secret presence
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_PASSWORD" ]; then
+            echo 'DEPLOY_SECRETS=missing' >> "$GITHUB_ENV"
+            echo 'SSH_STATE=failure' >> "$GITHUB_ENV"
+            echo 'HTTP_STATE=failure' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo 'DEPLOY_SECRETS=configured' >> "$GITHUB_ENV"
+
+      - name: Check VPS SSH
+        if: env.DEPLOY_SECRETS == 'configured'
+        shell: bash
+        run: |
+          set +e
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/$VPS_HOST/22"
+          if [ "$?" -eq 0 ]; then
+            echo 'SSH_STATE=success' >> "$GITHUB_ENV"
+          else
+            echo 'SSH_STATE=failure' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Check VPS frontend
+        if: env.DEPLOY_SECRETS == 'configured'
+        shell: bash
+        run: |
+          set +e
+          curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/" >/dev/null
+          if [ "$?" -eq 0 ]; then
+            echo 'HTTP_STATE=success' >> "$GITHUB_ENV"
+          else
+            echo 'HTTP_STATE=failure' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Publish SSH diagnostic status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
-          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
-          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
-          echo 'VPS deploy secrets are configured'
+          state="${SSH_STATE:-failure}"
+          if [ "$state" = 'success' ]; then
+            description='VPS SSH port 22 is reachable'
+          elif [ "${DEPLOY_SECRETS:-missing}" = 'missing' ]; then
+            description='VPS deploy secrets are missing'
+          else
+            description='VPS SSH port 22 is unreachable'
+          fi
+          payload=$(jq -nc --arg state "$state" --arg description "$description" '{state:$state,context:"vps-connectivity/ssh",description:$description}')
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$payload" >/dev/null
+
+      - name: Publish frontend diagnostic status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="${HTTP_STATE:-failure}"
+          if [ "$state" = 'success' ]; then
+            description='VPS frontend is reachable on port 80'
+          elif [ "${DEPLOY_SECRETS:-missing}" = 'missing' ]; then
+            description='VPS deploy secrets are missing'
+          else
+            description='VPS frontend is unreachable on port 80'
+          fi
+          payload=$(jq -nc --arg state "$state" --arg description "$description" '{state:$state,context:"vps-connectivity/http",description:$description}')
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$payload" >/dev/null
+
+      - name: Fail if VPS is unavailable
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${SSH_STATE:-failure}" = 'success'
+          test "${HTTP_STATE:-failure}" = 'success'
