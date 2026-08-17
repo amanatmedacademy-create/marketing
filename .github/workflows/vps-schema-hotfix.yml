@@ -1,0 +1,80 @@
+name: Apply VPS Schema Compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vps-schema-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Upload migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" \
+            supabase/migrations/20260818014500_runtime_operations_and_ad_manager_schema_compat.sql \
+            "$VPS_USER@$VPS_HOST:/tmp/imds-runtime-schema-compat.sql"
+      - name: Apply and verify local PostgreSQL schema
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -s /tmp/imds-runtime-schema-compat.sql
+          docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < /tmp/imds-runtime-schema-compat.sql
+          rm -f /tmp/imds-runtime-schema-compat.sql
+
+          expected="marketing_activity_log.company_id marketing_ads.account_status marketing_ads.account_timezone marketing_ads.effective_status marketing_automations.company_id marketing_campaigns.company_id marketing_content_plan.company_id marketing_tasks.company_id"
+          actual="$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -F. -c "
+            select table_name,column_name
+            from information_schema.columns
+            where table_schema='public'
+              and ((table_name in ('marketing_campaigns','marketing_tasks','marketing_content_plan','marketing_automations','marketing_activity_log') and column_name='company_id')
+                or (table_name='marketing_ads' and column_name in ('account_status','account_timezone','effective_status')))
+            order by table_name,column_name;")"
+          for column in $expected; do
+            printf '%s\n' "$actual" | grep -Fxq "$column" || { echo "missing column: $column" >&2; exit 1; }
+          done
+          echo 'SCHEMA_COLUMNS=ok'
+
+          source /etc/imds-marketing.env
+          test -n "${IMDS_LOCAL_SERVICE_ROLE_KEY:-}"
+          headers=(-H "apikey: $IMDS_LOCAL_SERVICE_ROLE_KEY" -H "Authorization: Bearer $IMDS_LOCAL_SERVICE_ROLE_KEY")
+          curl -fsS --max-time 10 "${headers[@]}" \
+            'http://127.0.0.1:3002/rest/v1/marketing_tasks?select=id,company_id&limit=1' >/tmp/tasks.json
+          curl -fsS --max-time 10 "${headers[@]}" \
+            'http://127.0.0.1:3002/rest/v1/marketing_ads?select=id,company_id,account_status,account_timezone,effective_status&limit=1' >/tmp/ads.json
+          python3 - <<'PY'
+          import json
+          for path in ('/tmp/tasks.json','/tmp/ads.json'):
+              with open(path, encoding='utf-8') as stream:
+                  value = json.load(stream)
+              if not isinstance(value, list):
+                  raise SystemExit(f'unexpected PostgREST response in {path}')
+          print('POSTGREST_SCHEMA=ok')
+          PY
+          rm -f /tmp/tasks.json /tmp/ads.json
+          REMOTE
