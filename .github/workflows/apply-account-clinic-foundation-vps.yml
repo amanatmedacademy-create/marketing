@@ -9,6 +9,7 @@ on:
       - 'supabase/migrations/20260818035000_account_clinic_runtime_flows.sql'
       - 'supabase/migrations/20260818044500_team_invitations_roles.sql'
       - 'supabase/migrations/20260818045000_team_admin_rpcs.sql'
+      - 'supabase/migrations/20260818050000_notification_center.sql'
       - '.github/workflows/apply-account-clinic-foundation-vps.yml'
       - '.github/workflows/publish-runtime-status.yml'
 
@@ -52,7 +53,8 @@ jobs:
             20260818033500_account_organization_clinic_foundation.sql \
             20260818035000_account_clinic_runtime_flows.sql \
             20260818044500_team_invitations_roles.sql \
-            20260818045000_team_admin_rpcs.sql
+            20260818045000_team_admin_rpcs.sql \
+            20260818050000_notification_center.sql
           do
             sshpass -e scp "${SSH_ARGS[@]}" "supabase/migrations/$migration" "$VPS_USER@$VPS_HOST:/tmp/$migration"
           done
@@ -72,7 +74,8 @@ jobs:
             /tmp/20260818033500_account_organization_clinic_foundation.sql \
             /tmp/20260818035000_account_clinic_runtime_flows.sql \
             /tmp/20260818044500_team_invitations_roles.sql \
-            /tmp/20260818045000_team_admin_rpcs.sql
+            /tmp/20260818045000_team_admin_rpcs.sql \
+            /tmp/20260818050000_notification_center.sql
           do
             test -s "$migration"
             docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
@@ -84,6 +87,7 @@ jobs:
           join_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_join_clinic(uuid,text)') is not null)::int")
           ownership_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_transfer_company_ownership(uuid,uuid,uuid,boolean)') is not null)::int")
           invitations_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_company_invitations') is not null)::int")
+          notifications_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_notifications') is not null)::int")
           operator_role=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from pg_constraint where conrelid='public.crm_company_members'::regclass and contype='c' and pg_get_constraintdef(oid) like '%operator%'))::int")
           orphan_count=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.crm_companies where organization_id is null")
 
@@ -93,10 +97,11 @@ jobs:
           test "$join_rpc" = "1" || { echo 'imds_join_clinic missing'; exit 1; }
           test "$ownership_rpc" = "1" || { echo 'ownership transfer RPC missing'; exit 1; }
           test "$invitations_table" = "1" || { echo 'crm_company_invitations missing'; exit 1; }
+          test "$notifications_table" = "1" || { echo 'crm_notifications missing'; exit 1; }
           test "$operator_role" = "1" || { echo 'expanded membership role constraint missing'; exit 1; }
           test "$orphan_count" = "0" || { echo "clinics without organization: $orphan_count"; exit 1; }
-          echo 'ACCOUNT_CLINIC_TEAM_SCHEMA=ok'
-          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql
+          echo 'ACCOUNT_CLINIC_TEAM_NOTIFICATION_SCHEMA=ok'
+          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql
           REMOTE
 
       - name: Cleanup
@@ -107,4 +112,4 @@ jobs:
         run: |
           set +e
           export SSHPASS
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql' || true
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql' || true

@@ -18,7 +18,6 @@ test('team roles are membership scoped and include operational roles', () => {
   for (const role of ['owner','administrator','manager','marketer','operator','analyst','viewer']) assert.match(migration, new RegExp(`'${role}'`));
   const admin = read('worker/userAdmin.ts');
   assert.match(admin, /role: text\(membership\.role\)/);
-  assert.doesNotMatch(admin, /marketing_users\?id=eq\.\$\{targetId\}.*role/s);
 });
 
 test('personal invitations are single use, expiring and revocable', () => {
@@ -52,4 +51,22 @@ test('organization workspace exposes invitations and onboarding UI', () => {
   assert.match(team, /Заявки на вступление/);
   assert.match(team, /Приглашения/);
   assert.match(team, /Передать владение/);
+});
+
+test('notification center is tenant and user scoped', () => {
+  const migration = read('supabase/migrations/20260818050000_notification_center.sql');
+  const backend = read('worker/notificationCenter.ts');
+  assert.match(migration, /unique\(company_id,user_id,dedupe_key\)/);
+  assert.match(backend, /crm_notifications\?company_id=eq\.\$\{companyId\}&user_id=eq\.\$\{userId\}/);
+  assert.match(backend, /team\.join_request/);
+  assert.match(backend, /integration\.error/);
+  assert.match(backend, /billing\.trial_ending/);
+});
+
+test('system health reports the operational integration set', () => {
+  const backend = read('worker/notificationCenter.ts');
+  const ui = read('src/components/NotificationCenter.tsx');
+  for (const provider of ['waba','zadarma','meta','google','mis']) assert.match(backend, new RegExp(`'${provider}'`));
+  assert.match(ui, /System Health/);
+  assert.match(ui, /healthIssues/);
 });

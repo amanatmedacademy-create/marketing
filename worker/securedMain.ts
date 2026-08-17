@@ -5,6 +5,7 @@ import { resolveCompanyId } from './companyContext';
 import { handleContactAvatars } from './contactAvatars';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import { runMessagingSlaScan } from './messagingSla';
+import { handleNotificationCenterRequest } from './notificationCenter';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
@@ -88,9 +89,16 @@ export default {
 
         forwardedRequest = trustedRequest(cleanRequest, role, user.id);
 
+        if (url.pathname.startsWith('/api/notifications') || url.pathname === '/api/system-health') {
+          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
+          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
+          const response = await handleNotificationCenterRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
+          if (response) return response;
+        }
+
         if (url.pathname.startsWith('/api/contact-avatars/')) {
           const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
-          const avatarCompanyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id);
+          const avatarCompanyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
           const avatarResponse = await handleContactAvatars(forwardedRequest, { ...env, CURRENT_COMPANY_ID: avatarCompanyId } as unknown as Env, url);
           if (avatarResponse) return avatarResponse;
         }
