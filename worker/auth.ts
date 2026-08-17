@@ -1,7 +1,7 @@
 import type { Env } from './integrations';
 import { handleUserAdminRequest } from './userAdmin';
 import { handleAccountSelfServiceRequest } from './accountSelfService';
-import { hasPermission, permissionForRequest, resolveUserAccess, type AccessMap } from './accessControl';
+import { appRoleForMembership, hasPermission, permissionForRequest, resolveTenantMembershipRole, resolveUserAccess, type AccessMap } from './accessControl';
 import { listUserCompanies, resolveCompanyId } from './companyContext';
 import {
   authenticateNativeRequest,
@@ -194,12 +194,12 @@ export async function authenticateRequest(request: Request, env: AuthEnv): Promi
 }
 
 export async function authorizeApplicationRequest(request: Request, env: AuthEnv, user: AuthenticatedUser): Promise<Response | null> {
-  if (user.platformRole === 'super_admin' || user.role === 'administrator') return null;
+  if (user.platformRole === 'super_admin') return null;
   const rule = permissionForRequest(new URL(request.url).pathname, request.method);
   if (!rule) return null;
   const tenantEnv = await scopedEnv(request, env, user);
   if (!tenantEnv.CURRENT_COMPANY_ID) return json({ error: 'Выберите организацию для продолжения', code: 'COMPANY_REQUIRED' }, 409);
-  const access = await resolveUserAccess(tenantEnv, user.id, user.role);
+  const access = await resolveUserAccess(tenantEnv, user.id);
   if (!hasPermission(access.permissions, rule.moduleId, rule.action)) return json({ error: 'Недостаточно прав для этого действия', moduleId: rule.moduleId, action: rule.action }, 403);
   return null;
 }
@@ -293,7 +293,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
     if (!tenantEnv.CURRENT_COMPANY_ID) return json({ error: 'Выберите организацию для продолжения', code: 'COMPANY_REQUIRED' }, 409);
     const headers = new Headers(request.headers);
     headers.set('x-amanat-auth-user', user.id);
-    headers.set('x-amanat-auth-role', user.role);
+    headers.set('x-amanat-auth-role', user.platformRole === 'super_admin' ? 'super_admin' : await resolveTenantMembershipRole(tenantEnv, user.id));
     return handleUserAdminRequest(new Request(request, { headers }), tenantEnv, url);
   }
 
@@ -339,9 +339,11 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       if (requested) companyId = await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: requested }, user.id, user.platformRole);
       else if (companies.length === 1) companyId = companies[0].id;
       const tenantEnv = companyId ? { ...env, CURRENT_COMPANY_ID: companyId } : env;
-      const access = companyId && user.platformRole !== 'super_admin' ? await resolveUserAccess(tenantEnv, user.id, user.role) : null;
+      const access = companyId ? await resolveUserAccess(tenantEnv, user.id, user.platformRole) : null;
+      const selectedCompany = companyId ? companies.find((company) => company.id === companyId) : null;
+      const effectiveRole = user.platformRole === 'super_admin' ? 'administrator' : selectedCompany ? appRoleForMembership(selectedCompany.role) : user.role;
       const pending = companyId ? null : await onboardingStatus(env, user.id);
-      return json({ user: { ...user, companyId, companies, onboardingStatus: pending, jobTitle: access?.jobTitle || null, positionId: access?.positionId || null, permissions: access?.permissions || {} } });
+      return json({ user: { ...user, role: effectiveRole, companyId, companies, onboardingStatus: pending, jobTitle: access?.jobTitle || null, positionId: access?.positionId || null, permissions: access?.permissions || {} } });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : 'Ошибка авторизации' }, 403);
     }

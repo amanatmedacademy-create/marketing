@@ -20,14 +20,35 @@ async function db<T>(env: AccessControlEnv, path: string): Promise<T> {
   return localDataJson<T>(env, path, {}, 'Access control');
 }
 
-export async function resolveUserAccess(env: AccessControlEnv, userId: string, role?: string): Promise<{ companyId: string; positionId: string | null; jobTitle: string | null; permissions: AccessMap }> {
+export async function resolveTenantMembershipRole(env: AccessControlEnv, userId: string): Promise<string> {
   const companyId = await resolveCompanyId(env, userId);
+  const rows = await db<Row[]>(env, `crm_company_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=role&limit=1`);
+  return text(rows[0]?.role);
+}
+
+export function appRoleForMembership(role: string): string {
+  if (role === 'owner' || role === 'administrator') return 'administrator';
+  if (role === 'manager' || role === 'marketer') return 'marketer';
+  if (role === 'analyst') return 'analyst';
+  return 'viewer';
+}
+
+export async function resolveUserAccess(env: AccessControlEnv, userId: string, platformRole?: string): Promise<{ companyId: string; positionId: string | null; jobTitle: string | null; permissions: AccessMap }> {
+  const companyId = await resolveCompanyId(env, userId, platformRole === 'super_admin' ? 'super_admin' : undefined);
   const modules = await db<Row[]>(env, 'platform_modules?status=eq.active&select=id');
   const permissions: AccessMap = Object.fromEntries(modules.map((module) => [text(module.id), emptyGrant()]));
 
-  if (role === 'administrator' || role === 'super_admin') {
+  if (platformRole === 'super_admin') {
     for (const grant of Object.values(permissions)) for (const action of ACTIONS) grant[action] = true;
-    return { companyId, positionId: null, jobTitle: role === 'super_admin' ? 'Супер-администратор платформы' : 'Администратор системы', permissions };
+    return { companyId, positionId: null, jobTitle: 'Супер-администратор платформы', permissions };
+  }
+
+  const memberships = await db<Row[]>(env, `crm_company_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=role&limit=1`);
+  const membershipRole = text(memberships[0]?.role);
+  if (!membershipRole) return { companyId, positionId: null, jobTitle: null, permissions };
+  if (membershipRole === 'owner' || membershipRole === 'administrator') {
+    for (const grant of Object.values(permissions)) for (const action of ACTIONS) grant[action] = true;
+    return { companyId, positionId: null, jobTitle: membershipRole === 'owner' ? 'Владелец организации' : 'Администратор клиники', permissions };
   }
 
   const assignments = await db<Row[]>(env, `crm_access_user_assignments?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&select=position_id,job_title&limit=1`);

@@ -39,6 +39,9 @@ jobs:
       - name: Account and platform regression tests
         run: npm run test:account-platform
 
+      - name: Team administration regression tests
+        run: npm run test:team-admin
+
       - name: Typecheck
         run: npm run typecheck
 
