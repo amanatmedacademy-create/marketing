@@ -1,0 +1,93 @@
+name: Apply Subscription Trial VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20260818023000_marketing_product_trial.sql'
+      - '.github/workflows/apply-subscription-trial-vps.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-subscription-trial-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload trial migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" \
+            supabase/migrations/20260818023000_marketing_product_trial.sql \
+            "$VPS_USER@$VPS_HOST:/tmp/20260818023000_marketing_product_trial.sql"
+
+      - name: Apply migration to local PostgreSQL
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            sudo -u postgres psql -v ON_ERROR_STOP=1 -d imds_marketing \
+              -f /tmp/20260818023000_marketing_product_trial.sql
+          '
+
+      - name: Verify subscription trial schema
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            table_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (to_regclass('"'"'public.imds_product_trial_access'"'"') is not null)::int")
+            function_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (to_regprocedure('"'"'public.imds_marketing_trial_state(uuid)'"'"') is not null)::int")
+            trigger_ok=$(sudo -u postgres psql -At -d imds_marketing -c "select (exists (select 1 from pg_trigger where tgname = '"'"'crm_companies_create_marketing_trial'"'"' and not tgisinternal))::int")
+            test "$table_ok" = "1" || { echo "trial table missing"; exit 1; }
+            test "$function_ok" = "1" || { echo "trial state function missing"; exit 1; }
+            test "$trigger_ok" = "1" || { echo "trial trigger missing"; exit 1; }
+            echo "table:ok function:ok trigger:ok"
+          '
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set +e
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+            "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818023000_marketing_product_trial.sql' || true
