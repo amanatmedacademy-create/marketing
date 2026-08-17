@@ -9,6 +9,8 @@ const glyphs: Record<CardIntegrationProvider, string> = {
   bitrix: '24',
   n8n: 'N8',
   waba: 'WA',
+  mis: 'MIS',
+  zadarma: 'ZA',
   wazzup: 'WZ',
   binotel: 'BI',
   sipuni: 'SI',
