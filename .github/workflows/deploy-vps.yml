@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: deploy-vps-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
