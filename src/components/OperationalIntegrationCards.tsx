@@ -25,6 +25,10 @@ type TelephonyStatus = {
 
 type DetailKey = 'mis' | 'zadarma' | null;
 
+type Props = {
+  onSummaryChange?: (summary: { connected: number; total: number }) => void;
+};
+
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: 'no-store' });
   const raw = await response.text();
@@ -38,7 +42,7 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? 'Нет данных' : date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function OperationalIntegrationCards() {
+export default function OperationalIntegrationCards({ onSummaryChange }: Props) {
   const { user } = useAuth();
   const [mis, setMis] = useState<MisStatus | null>(null);
   const [telephony, setTelephony] = useState<TelephonyStatus | null>(null);
@@ -92,24 +96,26 @@ export default function OperationalIntegrationCards() {
     ];
   }, [mis, telephony]);
 
+  useEffect(() => {
+    onSummaryChange?.({
+      connected: cards.filter((card) => card.status === 'connected' || card.status === 'syncing').length,
+      total: cards.length,
+    });
+  }, [cards, onSummaryChange]);
+
   const open = (id: CardIntegrationProvider) => {
     setActive(id);
     if (id === 'mis' || id === 'zadarma') setDetail(id);
   };
 
   return <>
-    <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Операционные подключения</h2><p>МИС и телефония используют тот же стандарт карточек, что рекламные, аналитические и коммуникационные интеграции.</p></div></div>
-      <div className="iv2-grid">
-        {cards.map((card) => <IntegrationCard
-          key={card.id}
-          integration={card}
-          active={active === card.id}
-          onSelect={() => setActive(card.id)}
-          onConfigure={() => open(card.id)}
-        />)}
-      </div>
-    </section>
+    {cards.map((card) => <IntegrationCard
+      key={card.id}
+      integration={card}
+      active={active === card.id}
+      onSelect={() => setActive(card.id)}
+      onConfigure={() => open(card.id)}
+    />)}
 
     {detail && <div className="iv2-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
       <section className="iv2-modal iv2-modal--workspace" role="dialog" aria-modal="true" aria-label={detail === 'mis' ? 'Настройка МИС' : 'Настройка Zadarma'}>
