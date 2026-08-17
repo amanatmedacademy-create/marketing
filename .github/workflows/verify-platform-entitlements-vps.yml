@@ -1,0 +1,50 @@
+name: Verify Platform Entitlements VPS
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-platform-entitlements-vps.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate VPS access
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Verify live entitlement runtime
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          systemctl is-active --quiet imds-marketing.service
+          grep -q '/api/platform/entitlements' /opt/imds-marketing/current/server/vpsRuntime.ts
+          source /etc/imds-platform-control.env
+          test -n "$IMDS_PLATFORM_CONTROL_TOKEN"
+          curl -fsS --max-time 10 -H "Authorization: Bearer $IMDS_PLATFORM_CONTROL_TOKEN" http://127.0.0.1:8787/internal/platform/info | grep -q '"product":"imds-marketing"'
+          status="$(curl -sS --max-time 10 -o /tmp/imds-platform-entitlement-body -w '%{http_code}' http://127.0.0.1:8787/api/platform/entitlements)"
+          echo "ENTITLEMENT_ENDPOINT_STATUS=$status"
+          test "$status" = 401
+          grep -q 'AUTH_REQUIRED' /tmp/imds-platform-entitlement-body
+          rm -f /tmp/imds-platform-entitlement-body
+          curl -fsS --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
+          echo 'PLATFORM_ENTITLEMENT_RUNTIME=verified'
+          REMOTE
