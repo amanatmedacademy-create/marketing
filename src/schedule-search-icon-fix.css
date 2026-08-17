@@ -1,0 +1,23 @@
+/* Keep the Schedule patient-search icon fully inside the field. Loaded last. */
+.mis-topbar-controls .search{
+  position:relative!important;
+  overflow:hidden!important;
+  border-radius:10px!important;
+}
+
+.mis-topbar-controls .search>svg{
+  position:absolute!important;
+  left:14px!important;
+  top:50%!important;
+  width:16px!important;
+  height:16px!important;
+  margin:0!important;
+  transform:translateY(-50%)!important;
+  z-index:2!important;
+  pointer-events:none!important;
+  color:var(--imds-muted)!important;
+}
+
+.mis-topbar-controls .search input{
+  padding-left:40px!important;
+}
