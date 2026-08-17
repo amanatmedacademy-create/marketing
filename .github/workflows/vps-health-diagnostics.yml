@@ -1,0 +1,56 @@
+name: VPS Health Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vps-health-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate VPS access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Inspect VPS runtime
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -u
+            echo "=== health response ==="
+            curl -sS -i --max-time 15 http://127.0.0.1:8787/api/health || true
+            echo
+            echo "=== auth config ==="
+            curl -sS -i --max-time 15 http://127.0.0.1:8787/api/auth/config || true
+            echo
+            echo "=== service ==="
+            systemctl status imds-marketing.service --no-pager -l || true
+            echo "=== journal ==="
+            journalctl -u imds-marketing.service -n 160 --no-pager -o cat || true
+            echo "=== local env names only ==="
+            cut -d= -f1 /etc/imds-marketing.env | grep -E "^(IMDS_|INTEGRATION_|APP_ORIGIN|DEFAULT_COMPANY_ID|GOOGLE_|META_|OPENAI_)" | sort || true
+            echo "=== ports ==="
+            ss -ltnp | grep -E ":(8787|3001|3002)[[:space:]]" || true
+            echo "=== containers ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|imds-postgres|postgrest" || true
+          '
