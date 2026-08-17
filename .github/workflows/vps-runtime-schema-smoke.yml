@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
-      - name: Verify operations and Ad Manager APIs
+      - name: Verify Marketing Hub APIs
         shell: bash
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
@@ -40,29 +40,42 @@ jobs:
           docker exec imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 -c "insert into public.imds_auth_sessions(user_id,token_hash,remember_me,expires_at) values ('$AUTH_USER_ID'::uuid,'$TOKEN_HASH',false,now()+interval '10 minutes')" >/dev/null
           cleanup() {
             docker exec imds-postgres psql -U imds_owner -d imds_marketing -c "delete from public.imds_auth_sessions where token_hash='$TOKEN_HASH'" >/dev/null 2>&1 || true
-            rm -f /tmp/tasks-api.json /tmp/ad-manager-api.json
+            rm -f /tmp/imds-hub-*.json
           }
           trap cleanup EXIT
-
           common=(-H "Authorization: Bearer $TOKEN" -H "x-imds-company-id: $COMPANY_ID")
 
-          curl -fsS --max-time 15 "${common[@]}" "$API/api/operations/tasks?limit=1" -o /tmp/tasks-api.json
-          python3 - <<'PY'
-          import json
-          with open('/tmp/tasks-api.json', encoding='utf-8') as stream:
+          check_list() {
+            name="$1"
+            path="$2"
+            output="/tmp/imds-hub-$name.json"
+            curl -fsS --max-time 20 "${common[@]}" "$API$path" -o "$output"
+            python3 - "$name" "$output" <<'PY'
+          import json, sys
+          name, path = sys.argv[1], sys.argv[2]
+          with open(path, encoding='utf-8') as stream:
               value = json.load(stream)
           if not isinstance(value, list):
-              raise SystemExit(f'Unexpected tasks response: {type(value).__name__}')
-          print('OPERATIONS_TASKS_API=ok')
+              raise SystemExit(f'{name}: expected list, got {type(value).__name__}')
+          print(f'{name.upper()}=ok rows={len(value)}')
           PY
+          }
 
-          curl -fsS --max-time 20 "${common[@]}" "$API/api/analytics/ad-manager?days=30" -o /tmp/ad-manager-api.json
+          check_list campaigns '/api/operations/campaigns?limit=1'
+          check_list tasks '/api/operations/tasks?limit=1'
+          check_list content '/api/operations/content?limit=1'
+          check_list automations '/api/operations/automations?limit=1'
+          check_list forms '/api/operations/forms?limit=1'
+          check_list links '/api/operations/links?limit=1'
+          check_list media_plan '/api/operations/media-plan?limit=1'
+
+          curl -fsS --max-time 20 "${common[@]}" "$API/api/analytics/ad-manager?days=30" -o /tmp/imds-hub-ad-manager.json
           python3 - <<'PY'
           import json
-          with open('/tmp/ad-manager-api.json', encoding='utf-8') as stream:
+          with open('/tmp/imds-hub-ad-manager.json', encoding='utf-8') as stream:
               value = json.load(stream)
           if not isinstance(value, dict) or not isinstance(value.get('rows'), list) or not isinstance(value.get('accounts'), list):
-              raise SystemExit('Unexpected Ad Manager response')
-          print(f"AD_MANAGER_API=ok rows={len(value['rows'])} accounts={len(value['accounts'])}")
+              raise SystemExit('ad_manager: unexpected response')
+          print(f"AD_MANAGER=ok rows={len(value['rows'])} accounts={len(value['accounts'])}")
           PY
           REMOTE
