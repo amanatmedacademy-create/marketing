@@ -4,7 +4,7 @@ import '../integration-workspace-unified.css';
 
 export default function IntegrationsWorkspace() {
   return <>
-    <div className="integration-operational-wrap"><OperationalIntegrationCards /></div>
     <IntegrationManager />
+    <OperationalIntegrationCards />
   </>;
 }
