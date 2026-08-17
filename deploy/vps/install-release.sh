@@ -5,6 +5,8 @@ RELEASE_ARCHIVE="${1:-/tmp/imds-marketing-release.tgz}"
 APP_ROOT="/opt/imds-marketing"
 RELEASE_ID="${2:-$(date -u +%Y%m%d%H%M%S)}"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
+CONTROL_ENV=/etc/imds-platform-control.env
+CONTROL_GROUP=imds-platform
 
 if [ ! -f "$RELEASE_ARCHIVE" ]; then
   echo "Release archive not found: $RELEASE_ARCHIVE" >&2
@@ -14,10 +16,24 @@ fi
 if ! id imds >/dev/null 2>&1; then
   useradd --system --home "$APP_ROOT" --shell /usr/sbin/nologin imds
 fi
+getent group "$CONTROL_GROUP" >/dev/null 2>&1 || groupadd --system "$CONTROL_GROUP"
+usermod -a -G "$CONTROL_GROUP" imds
+if id imdssa >/dev/null 2>&1; then
+  usermod -a -G "$CONTROL_GROUP" imdssa
+fi
 
-mkdir -p "$APP_ROOT/releases" "$RELEASE_DIR"
+if [ ! -f "$CONTROL_ENV" ]; then
+  umask 027
+  printf 'IMDS_PLATFORM_CONTROL_TOKEN=%s\n' "$(openssl rand -hex 48)" > "$CONTROL_ENV"
+fi
+chown root:"$CONTROL_GROUP" "$CONTROL_ENV"
+chmod 0640 "$CONTROL_ENV"
+
+mkdir -p "$APP_ROOT/releases" "$RELEASE_DIR" "$APP_ROOT/control"
+chown imds:imds "$APP_ROOT/control"
+chmod 0750 "$APP_ROOT/control"
 tar -xzf "$RELEASE_ARCHIVE" -C "$RELEASE_DIR"
-chown -R imds:imds "$APP_ROOT"
+chown -R imds:imds "$APP_ROOT/releases" "$RELEASE_DIR"
 
 ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
 

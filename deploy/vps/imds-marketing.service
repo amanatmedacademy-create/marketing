@@ -9,9 +9,11 @@ User=imds
 Group=imds
 WorkingDirectory=/opt/imds-marketing/current
 EnvironmentFile=/etc/imds-marketing.env
+EnvironmentFile=-/etc/imds-platform-control.env
 Environment=NODE_ENV=production
 Environment=PORT=8787
 Environment=IMDS_HOST=127.0.0.1
+Environment=IMDS_PLATFORM_STATE_DIR=/opt/imds-marketing/control
 ExecStart=/usr/bin/npx --yes tsx server/vpsRuntime.ts
 Restart=always
 RestartSec=5
