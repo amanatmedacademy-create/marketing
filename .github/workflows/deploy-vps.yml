@@ -23,28 +23,14 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
-      SUPABASE_URL: https://kysdtmgijkffwtzugonv.supabase.co
-      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5c2R0bWdpamtmZnd0enVnb252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjkwNDcsImV4cCI6MjEwMDc0NTA0N30.TWhLZ79Hu8QUb4OjZxkRH5DqPlSpBDWBpGf6LZRm8DY
-      SUPABASE_PUBLISHABLE_KEY: sb_publishable_moNNYVxarzZA_Qj3rMoWxA_--X_8GjG
-      DEFAULT_COMPANY_ID: 4cd22020-6f1d-4afb-9266-b01c96e4a927
-      VITE_SUPABASE_URL: https://kysdtmgijkffwtzugonv.supabase.co
-      VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5c2R0bWdpamtmZnd0enVnb252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjkwNDcsImV4cCI6MjEwMDc0NTA0N30.TWhLZ79Hu8QUb4OjZxkRH5DqPlSpBDWBpGf6LZRm8DY
-      META_GRAPH_VERSION: v23.0
-      BITRIX_ENTITY_TYPE_ID: '1'
-      BITRIX_SYNC_DAYS: '7'
     steps:
-      - name: Validate deployment secrets
+      - name: Validate deployment access
         shell: bash
         run: |
           set -euo pipefail
           test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
           test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
           test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
-          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo 'SUPABASE_SERVICE_ROLE_KEY secret is missing'; exit 1; }
-          test -n "$OPENAI_API_KEY" || { echo 'OPENAI_API_KEY secret is missing'; exit 1; }
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,25 +62,6 @@ jobs:
             --exclude=.env.local \
             -czf /tmp/imds-marketing-release.tgz .
 
-      - name: Prepare server environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          cat > /tmp/imds-marketing.env <<ENVFILE
-          APP_ORIGIN=http://$VPS_HOST
-          SUPABASE_URL=$SUPABASE_URL
-          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
-          SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
-          OPENAI_API_KEY=$OPENAI_API_KEY
-          INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY
-          DEFAULT_COMPANY_ID=$DEFAULT_COMPANY_ID
-          META_GRAPH_VERSION=$META_GRAPH_VERSION
-          BITRIX_ENTITY_TYPE_ID=$BITRIX_ENTITY_TYPE_ID
-          BITRIX_SYNC_DAYS=$BITRIX_SYNC_DAYS
-          ENVFILE
-
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
@@ -109,8 +76,14 @@ jobs:
           sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/bootstrap-host.sh "$VPS_USER@$VPS_HOST:/tmp/imds-bootstrap.sh"
           sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/install-release.sh "$VPS_USER@$VPS_HOST:/tmp/imds-install-release.sh"
           sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing-release.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-release.tgz"
-          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing.env "$VPS_USER@$VPS_HOST:/tmp/imds-marketing.env"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'chmod 700 /tmp/imds-bootstrap.sh /tmp/imds-install-release.sh && /tmp/imds-bootstrap.sh && install -o root -g root -m 600 /tmp/imds-marketing.env /etc/imds-marketing.env && rm -f /tmp/imds-marketing.env'
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            chmod 700 /tmp/imds-bootstrap.sh /tmp/imds-install-release.sh
+            /tmp/imds-bootstrap.sh
+            test -f /etc/imds-marketing.env || { echo "/etc/imds-marketing.env is missing"; exit 1; }
+            grep -q "^IMDS_LOCAL_DB_URL=" /etc/imds-marketing.env || { echo "IMDS_LOCAL_DB_URL is missing"; exit 1; }
+            grep -q "^IMDS_LOCAL_SERVICE_ROLE_KEY=" /etc/imds-marketing.env || { echo "IMDS_LOCAL_SERVICE_ROLE_KEY is missing"; exit 1; }
+          '
 
       - name: Install release
         shell: bash
@@ -127,7 +100,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..12}; do
+          for attempt in {1..18}; do
             if curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/api/health"; then
               echo
               exit 0
