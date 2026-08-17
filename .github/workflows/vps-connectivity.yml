@@ -1,0 +1,30 @@
+name: VPS Connectivity
+
+on:
+  push:
+    branches:
+      - agent/vps-migration
+    paths:
+      - '.github/workflows/vps-connectivity.yml'
+  workflow_dispatch:
+
+jobs:
+  ssh-port-check:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Check VPS TCP 22
+        run: |
+          set -euo pipefail
+          timeout 10 bash -c 'cat < /dev/null > /dev/tcp/89.207.250.55/22'
+          echo 'VPS SSH port 22 is reachable from GitHub Actions'
+      - name: Check deploy secret presence
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          echo 'VPS deploy secrets are configured'

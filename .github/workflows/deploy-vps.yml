@@ -1,0 +1,104 @@
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=.env \
+            --exclude=.env.local \
+            -czf /tmp/imds-marketing-release.tgz .
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Bootstrap and upload release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          export SSHPASS
+          sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/bootstrap-host.sh "$VPS_USER@$VPS_HOST:/tmp/imds-bootstrap.sh"
+          sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/install-release.sh "$VPS_USER@$VPS_HOST:/tmp/imds-install-release.sh"
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing-release.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-release.tgz"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'chmod 700 /tmp/imds-bootstrap.sh /tmp/imds-install-release.sh && /tmp/imds-bootstrap.sh'
+
+      - name: Install release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          export SSHPASS
+          RELEASE_ID="${GITHUB_SHA:0:12}"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "/tmp/imds-install-release.sh /tmp/imds-marketing-release.tgz '$RELEASE_ID'"
+
+      - name: Verify production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 10 "http://$VPS_HOST/api/health"; then
+              echo
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'VPS health check failed'
+          exit 1
