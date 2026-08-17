@@ -5,6 +5,7 @@ import AdCreativeGallery from '../components/AdCreativeGallery';
 import AdsManagerPage from '../components/AdsManagerPage';
 import { useAuth } from '../components/AuthGate';
 import { operationsApi, type Campaign, type ContentItem, type MarketingTask } from '../services/operations';
+import type { PlatformEntitlements } from '../services/platformEntitlements';
 import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './GrowthToolsSafePages';
 import JourneyAutomationPage from './JourneyAutomationPage';
 import '../marketing-hub.css';
@@ -13,6 +14,7 @@ type MarketingView = 'overview' | 'ads' | 'creatives' | 'content' | 'media-plan'
 type AdsRow = { platform?: string; source?: string; account_id?: string; leads?: number; sales?: number; revenue?: number };
 type AdsResponse = { accounts?: Array<{ id: string; name: string; platform?: string }>; rows?: AdsRow[] };
 type PlatformKey = 'Meta' | 'TikTok' | 'Google' | 'Yandex';
+type PlatformModule = 'marketing.crm' | 'marketing.meta-ads' | 'marketing.analytics' | 'marketing.automation';
 
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(value || 0);
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(value || 0);
@@ -33,7 +35,7 @@ const platformDefinitions: Array<{ key: PlatformKey; short: string; title: strin
   { key: 'Yandex', short: 'Я', title: 'Yandex Direct', subtitle: 'Search · РСЯ' },
 ];
 
-export default function MarketingOS() {
+export default function MarketingOS({ platform = null }: { platform?: PlatformEntitlements | null }) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -45,23 +47,25 @@ export default function MarketingOS() {
 
   const canView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
   const canViewAny = (moduleIds: string[]) => moduleIds.some(canView);
+  const platformAllows = (moduleId?: PlatformModule) => !platform?.managed || (platform.productEnabled && (!moduleId || platform.modules[moduleId] === true));
 
   const tabs = useMemo(() => [
-    { id: 'overview' as const, label: 'Обзор', icon: LayoutDashboard, modules: ['dashboard'] },
-    { id: 'ads' as const, label: 'Реклама', icon: Megaphone, modules: ['advertising'] },
-    { id: 'creatives' as const, label: 'Креативы', icon: Images, modules: ['advertising'] },
-    { id: 'content' as const, label: 'Контент', icon: FileText, modules: ['dashboard'] },
-    { id: 'media-plan' as const, label: 'Медиаплан', icon: Goal, modules: ['dashboard'] },
-    { id: 'leads' as const, label: 'Лиды', icon: UsersRound, modules: ['crm.leads'] },
-    { id: 'attribution' as const, label: 'UTM и ссылки', icon: MousePointerClick, modules: ['analytics.attribution'] },
-    { id: 'automation' as const, label: 'Автоматизация', icon: Zap, modules: ['dashboard'] },
+    { id: 'overview' as const, label: 'Обзор', icon: LayoutDashboard, modules: ['dashboard'], platformModule: undefined },
+    { id: 'ads' as const, label: 'Реклама', icon: Megaphone, modules: ['advertising'], platformModule: 'marketing.meta-ads' as PlatformModule },
+    { id: 'creatives' as const, label: 'Креативы', icon: Images, modules: ['advertising'], platformModule: 'marketing.meta-ads' as PlatformModule },
+    { id: 'content' as const, label: 'Контент', icon: FileText, modules: ['dashboard'], platformModule: undefined },
+    { id: 'media-plan' as const, label: 'Медиаплан', icon: Goal, modules: ['dashboard'], platformModule: undefined },
+    { id: 'leads' as const, label: 'Лиды', icon: UsersRound, modules: ['crm.leads'], platformModule: 'marketing.crm' as PlatformModule },
+    { id: 'attribution' as const, label: 'UTM и ссылки', icon: MousePointerClick, modules: ['analytics.attribution'], platformModule: 'marketing.analytics' as PlatformModule },
+    { id: 'automation' as const, label: 'Автоматизация', icon: Zap, modules: ['dashboard'], platformModule: 'marketing.automation' as PlatformModule },
   ], []);
-  const visibleTabs = tabs.filter((tab) => canViewAny(tab.modules));
+  const visibleTabs = tabs.filter((tab) => canViewAny(tab.modules) && platformAllows(tab.platformModule));
   const requested = searchParams.get('view') as MarketingView | null;
   const fallbackView = visibleTabs[0]?.id || 'overview';
   const view = visibleTabs.some((tab) => tab.id === requested) ? requested as MarketingView : fallbackView;
 
   const changeView = (next: MarketingView) => {
+    if (!visibleTabs.some((tab) => tab.id === next)) return;
     const params = new URLSearchParams(searchParams);
     if (next === 'overview') params.delete('view'); else params.set('view', next);
     setSearchParams(params, { replace: true });
@@ -85,7 +89,7 @@ export default function MarketingOS() {
         errors.push(reason instanceof Error ? reason.message : 'Не удалось загрузить операционные данные');
       }
     }
-    if (canView('advertising')) {
+    if (canView('advertising') && platformAllows('marketing.meta-ads')) {
       try {
         const response = await fetch('/api/analytics/ad-manager?days=30');
         const body = await response.text();
@@ -94,12 +98,14 @@ export default function MarketingOS() {
       } catch (reason) {
         errors.push(reason instanceof Error ? reason.message : 'Не удалось загрузить рекламные данные');
       }
+    } else {
+      setAdsData({ accounts: [], rows: [] });
     }
     setError(errors.length ? errors.join(' · ') : null);
     setLoading(false);
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [platform?.revision]);
 
   const platformStats = useMemo(() => {
     const stats = new Map<PlatformKey, { accounts: Set<string>; leads: number; sales: number; revenue: number }>();
@@ -142,8 +148,8 @@ export default function MarketingOS() {
 
     {error && <div className="marketing-hub-error">{error}</div>}
 
-    {view === 'overview' && <Overview loading={loading} campaigns={campaigns} content={content} activeCampaigns={activeCampaigns} openTasks={openTasks} readyContent={readyContent} totalAdLeads={totalAdLeads} totalAdSales={totalAdSales} platformStats={platformStats} canView={canView} changeView={changeView}/>} 
-    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Операционная работа с кабинетами, кампаниями, группами и объявлениями. Креативы вынесены в отдельную верхнюю вкладку."/><MarketingBoundaryLinks canView={canView}/><AdsManagerPage/></section>}
+    {view === 'overview' && <Overview loading={loading} campaigns={campaigns} content={content} activeCampaigns={activeCampaigns} openTasks={openTasks} readyContent={readyContent} totalAdLeads={totalAdLeads} totalAdSales={totalAdSales} platformStats={platformStats} canView={canView} platformAllows={platformAllows} changeView={changeView}/>} 
+    {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Операционная работа с кабинетами, кампаниями, группами и объявлениями. Креативы вынесены в отдельную верхнюю вкладку."/><MarketingBoundaryLinks canView={canView} platformAllows={platformAllows}/><AdsManagerPage/></section>}
     {view === 'creatives' && <section className="marketing-hub-module"><ModuleHeading title="Креативы" text="Визуальная библиотека реальных рекламных объявлений с нативной валютой кабинета и быстрым preview."/><AdCreativeGallery/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
@@ -153,7 +159,7 @@ export default function MarketingOS() {
   </div>;
 }
 
-function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyContent,totalAdLeads,totalAdSales,platformStats,canView,changeView}:{loading:boolean;campaigns:Campaign[];content:ContentItem[];activeCampaigns:number;openTasks:number;readyContent:number;totalAdLeads:number;totalAdSales:number;platformStats:Map<PlatformKey,{accounts:Set<string>;leads:number;sales:number;revenue:number}>;canView:(id:string)=>boolean;changeView:(view:MarketingView)=>void}) {
+function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyContent,totalAdLeads,totalAdSales,platformStats,canView,platformAllows,changeView}:{loading:boolean;campaigns:Campaign[];content:ContentItem[];activeCampaigns:number;openTasks:number;readyContent:number;totalAdLeads:number;totalAdSales:number;platformStats:Map<PlatformKey,{accounts:Set<string>;leads:number;sales:number;revenue:number}>;canView:(id:string)=>boolean;platformAllows:(id?:PlatformModule)=>boolean;changeView:(view:MarketingView)=>void}) {
   return <div className="marketing-hub-overview">
     <section className="marketing-hub-kpis">
       <article><span>Активные инициативы</span><strong>{activeCampaigns}</strong><small>{campaigns.length} всего в реестре</small></article>
@@ -162,14 +168,14 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
       <article><span>Рабочий поток</span><strong>{openTasks}</strong><small>{readyContent} контент-единиц готовы / сегодня</small></article>
     </section>
 
-    {canView('advertising') && <section className="marketing-hub-section">
+    {canView('advertising') && platformAllows('marketing.meta-ads') && <section className="marketing-hub-section">
       <div className="marketing-hub-section-head"><div><span>РЕКЛАМНЫЕ ДАННЫЕ</span><h2>Платформы в работе</h2><p>Здесь показываем уже полученные рекламные данные. Настройка подключений выполняется в модуле «Интеграции».</p></div><button className="marketing-hub-text-button" type="button" onClick={() => changeView('ads')}>Открыть Ads Workspace <ArrowUpRight size={15}/></button></div>
-      <div className="marketing-platform-grid">{platformDefinitions.map((platform) => {
-        const stat = platformStats.get(platform.key)!;
+      <div className="marketing-platform-grid">{platformDefinitions.map((definition) => {
+        const stat = platformStats.get(definition.key)!;
         const hasData = stat.accounts.size > 0;
-        return <button className="marketing-platform-card" type="button" key={platform.key} onClick={() => changeView('ads')}>
-          <div className="marketing-platform-card-top"><span className={`marketing-platform-mark marketing-platform-mark--${platform.key.toLowerCase()}`}>{platform.short}</span><span className={`marketing-platform-state ${hasData ? 'connected' : ''}`}>{hasData ? 'Есть данные' : 'Нет данных'}</span></div>
-          <div><h3>{platform.title}</h3><p>{platform.subtitle}</p></div>
+        return <button className="marketing-platform-card" type="button" key={definition.key} onClick={() => changeView('ads')}>
+          <div className="marketing-platform-card-top"><span className={`marketing-platform-mark marketing-platform-mark--${definition.key.toLowerCase()}`}>{definition.short}</span><span className={`marketing-platform-state ${hasData ? 'connected' : ''}`}>{hasData ? 'Есть данные' : 'Нет данных'}</span></div>
+          <div><h3>{definition.title}</h3><p>{definition.subtitle}</p></div>
           <div className="marketing-platform-metrics"><span><b>{stat.accounts.size}</b> кабинетов</span><span><b>{number(stat.leads)}</b> лидов</span><span><b>{number(stat.sales)}</b> продаж</span></div>
           <footer><span>{hasData && stat.revenue > 0 ? `CRM-выручка ${money(stat.revenue)}` : hasData ? 'Открыть рекламные объекты' : 'Ожидаем данные из интеграции'}</span><ArrowUpRight size={16}/></footer>
         </button>;
@@ -179,12 +185,12 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
     <section className="marketing-hub-section">
       <div className="marketing-hub-section-head"><div><span>РАБОЧИЕ МОДУЛИ</span><h2>Маркетинг без дублирования платформы</h2><p>В Центре маркетинга остаются только рабочие маркетинговые процессы.</p></div></div>
       <div className="marketing-module-grid">
-        {canView('advertising') && <PreviewCard icon={<Images size={20}/>} title="Креативы" text="Реальные изображения и видео рекламных объявлений" onClick={() => changeView('creatives')}/>} 
+        {canView('advertising') && platformAllows('marketing.meta-ads') && <PreviewCard icon={<Images size={20}/>} title="Креативы" text="Реальные изображения и видео рекламных объявлений" onClick={() => changeView('creatives')}/>} 
         {canView('dashboard') && <PreviewCard icon={<FileText size={20}/>} title="Контент" text={`${content.length} материалов · ${readyContent} готовы / сегодня`} onClick={() => changeView('content')}/>} 
         {canView('dashboard') && <PreviewCard icon={<Goal size={20}/>} title="Медиаплан" text="Бюджеты, каналы, периоды и план-факт" onClick={() => changeView('media-plan')}/>} 
-        {canView('crm.leads') && <PreviewCard icon={<UsersRound size={20}/>} title="Лиды" text="Формы захвата и точки входа в CRM" onClick={() => changeView('leads')}/>} 
-        {canView('analytics.attribution') && <PreviewCard icon={<Target size={20}/>} title="UTM и ссылки" text="Разметка и сохранение рекламных ссылок" onClick={() => changeView('attribution')}/>} 
-        {canView('dashboard') && <PreviewCard icon={<Workflow size={20}/>} title="Автоматизация" text="Journey и маркетинговые сценарии" onClick={() => changeView('automation')}/>} 
+        {canView('crm.leads') && platformAllows('marketing.crm') && <PreviewCard icon={<UsersRound size={20}/>} title="Лиды" text="Формы захвата и точки входа в CRM" onClick={() => changeView('leads')}/>} 
+        {canView('analytics.attribution') && platformAllows('marketing.analytics') && <PreviewCard icon={<Target size={20}/>} title="UTM и ссылки" text="Разметка и сохранение рекламных ссылок" onClick={() => changeView('attribution')}/>} 
+        {canView('dashboard') && platformAllows('marketing.automation') && <PreviewCard icon={<Workflow size={20}/>} title="Автоматизация" text="Journey и маркетинговые сценарии" onClick={() => changeView('automation')}/>} 
       </div>
     </section>
 
@@ -195,11 +201,11 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
   </div>;
 }
 
-function MarketingBoundaryLinks({canView}:{canView:(id:string)=>boolean}) {
+function MarketingBoundaryLinks({canView,platformAllows}:{canView:(id:string)=>boolean;platformAllows:(id?:PlatformModule)=>boolean}) {
   const links = [
     { to:'/integrations', title:'Подключения', text:'Meta, TikTok, Google, GA4 и синхронизация', icon:<Cable size={18}/>, show:canView('integrations') },
-    { to:'/analytics', title:'Анализ рекламы', text:'ROAS, ROMI, CPL, CAC и дерево рекламных объектов', icon:<BarChart3 size={18}/>, show:canView('analytics.reports') },
-    { to:'/growth', title:'Events / CAPI', text:'Conversion events, destinations и доставка событий', icon:<Activity size={18}/>, show:canView('analytics.reports') },
+    { to:'/analytics', title:'Анализ рекламы', text:'ROAS, ROMI, CPL, CAC и дерево рекламных объектов', icon:<BarChart3 size={18}/>, show:canView('analytics.reports') && platformAllows('marketing.analytics') },
+    { to:'/growth', title:'Events / CAPI', text:'Conversion events, destinations и доставка событий', icon:<Activity size={18}/>, show:canView('analytics.reports') && platformAllows('marketing.analytics') },
   ].filter((item) => item.show);
   if (!links.length) return null;
   return <div className="marketing-boundary-links">{links.map((item)=><Link key={item.to} to={item.to}><span>{item.icon}</span><div><strong>{item.title}</strong><small>{item.text}</small></div><ArrowUpRight size={15}/></Link>)}</div>;
