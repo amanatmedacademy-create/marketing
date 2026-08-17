@@ -1,16 +1,16 @@
 import { resolveCompanyId } from './companyContext';
+import { localDataJson, type LocalDataEnv } from './localData';
 import type { WorkerExecutionContext } from './integrations';
 
 type JsonRecord = Record<string, unknown>;
 
-export interface MetaOAuthEnv {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+export interface MetaOAuthEnv extends LocalDataEnv {
   INTEGRATION_ENCRYPTION_KEY?: string;
   META_APP_ID?: string;
   META_APP_SECRET?: string;
   META_GRAPH_VERSION?: string;
   META_OAUTH_REDIRECT_URI?: string;
+  APP_ORIGIN?: string;
   DEFAULT_COMPANY_ID?: string;
   CURRENT_COMPANY_ID?: string;
 }
@@ -21,23 +21,32 @@ interface MetaAdAccount {
   name?: string;
 }
 
-const DEFAULT_REDIRECT_URI = 'https://marketing.amanat-med-academy.workers.dev/api/integrations/meta/callback';
 const STATE_COOKIE = 'amanat_meta_oauth_state';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-const redirectUri = (env: MetaOAuthEnv): string => asString(env.META_OAUTH_REDIRECT_URI) || DEFAULT_REDIRECT_URI;
+const redirectUri = (env: MetaOAuthEnv): string => {
+  const explicit = asString(env.META_OAUTH_REDIRECT_URI);
+  if (explicit) return explicit;
+  const origin = asString(env.APP_ORIGIN).replace(/\/$/, '');
+  if (!origin) throw new Error('APP_ORIGIN не настроен на VPS');
+  return `${origin}/api/integrations/meta/callback`;
+};
 const graphVersion = (env: MetaOAuthEnv): string => {
   const value = asString(env.META_GRAPH_VERSION) || 'v23.0';
   return value.startsWith('v') ? value : `v${value}`;
 };
-const encryptionSecret = (env: MetaOAuthEnv): string => asString(env.INTEGRATION_ENCRYPTION_KEY) || `amanat-integrations:v1:${env.SUPABASE_SERVICE_ROLE_KEY}`;
+const encryptionSecret = (env: MetaOAuthEnv): string => {
+  const secret = asString(env.INTEGRATION_ENCRYPTION_KEY);
+  if (!secret) throw new Error('INTEGRATION_ENCRYPTION_KEY не настроен на VPS');
+  return secret;
+};
 
 function requireMetaApp(env: MetaOAuthEnv): { appId: string; appSecret: string } {
   const appId = asString(env.META_APP_ID);
   const appSecret = asString(env.META_APP_SECRET);
-  if (!appId || !appSecret) throw new Error('META_APP_ID или META_APP_SECRET не настроены в Cloudflare');
+  if (!appId || !appSecret) throw new Error('META_APP_ID или META_APP_SECRET не настроены на VPS');
   return { appId, appSecret };
 }
 
@@ -85,19 +94,8 @@ async function fetchJson<T>(url: string): Promise<T> {
   return parsed as T;
 }
 
-async function supabase(env: MetaOAuthEnv, path: string, init: RequestInit = {}): Promise<unknown> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      'content-type': 'application/json',
-      ...init.headers,
-    },
-  });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Supabase: ${response.status} ${body}`);
-  return body ? JSON.parse(body) : null;
+async function db<T>(env: MetaOAuthEnv, path: string, init: RequestInit = {}): Promise<T> {
+  return localDataJson<T>(env, path, init, 'Meta OAuth storage');
 }
 
 async function exchangeCode(env: MetaOAuthEnv, code: string): Promise<string> {
@@ -151,11 +149,11 @@ async function saveMetaCredentials(env: MetaOAuthEnv, accessToken: string, accou
     updated_at: new Date().toISOString(),
   };
 
-  const existing = await supabase(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.meta&select=id&limit=1`) as Array<{ id?: string }>;
+  const existing = await db<Array<{ id?: string }>>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=eq.meta&select=id&limit=1`);
   if (existing[0]?.id) {
-    await supabase(env, `integration_credentials?id=eq.${encodeURIComponent(existing[0].id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
+    await db(env, `integration_credentials?id=eq.${encodeURIComponent(existing[0].id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
   } else {
-    await supabase(env, 'integration_credentials', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
+    await db(env, 'integration_credentials', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) });
   }
 }
 
