@@ -143,16 +143,21 @@ function normalizeBilling(value: unknown): PlatformBillingState | undefined {
   };
 }
 
-function billingDenied(billing?: PlatformBillingState): Response | null {
+function billingDenied(billing: PlatformBillingState | undefined, method: string): Response | null {
   if (!billing) return null;
   const status = billing.subscriptionStatus;
   const accessEnd = billing.accessEndsAt ? Date.parse(billing.accessEndsAt) : NaN;
   const expiredByDate = Number.isFinite(accessEnd) && accessEnd <= Date.now();
-  if (status === 'suspended') return json({ error: 'SUBSCRIPTION_SUSPENDED', billing }, 403);
-  if (status === 'cancelled' || status === 'expired' || status === 'past_due' || expiredByDate) {
-    return json({ error: 'SUBSCRIPTION_PAYMENT_REQUIRED', billing }, 402);
-  }
-  return null;
+  const readOnlyRequest = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+
+  // past_due is a warning state. The platform can move it to grace_period/suspended
+  // when write access must actually change.
+  if (status === 'past_due') return null;
+
+  const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || expiredByDate;
+  if (!locked || readOnlyRequest) return null;
+  if (status === 'suspended') return json({ error: 'SUBSCRIPTION_SUSPENDED', readOnly: true, billing }, 403);
+  return json({ error: 'SUBSCRIPTION_READ_ONLY', readOnly: true, billing }, 402);
 }
 
 async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name: string; slug: string }>> {
@@ -309,14 +314,21 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
 export async function enforcePlatformEntitlement(request: Request, env: PlatformEnv = process.env): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
-  if (url.pathname === '/api/health' || url.pathname === '/api/platform/entitlements' || url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/webhooks/') || url.pathname.startsWith('/api/public/')) return null;
+  if (url.pathname === '/api/health'
+    || url.pathname === '/api/platform/entitlements'
+    || url.pathname.startsWith('/api/auth/')
+    || url.pathname.startsWith('/api/account/')
+    || url.pathname === '/api/clinics'
+    || url.pathname === '/api/clinics/join'
+    || url.pathname.startsWith('/api/webhooks/')
+    || url.pathname.startsWith('/api/public/')) return null;
 
   const tenantId = tenantIdFromRequest(request);
   if (!tenantId) return null;
   const tenant = await platformEntitlementForTenant(tenantId);
   if (tenant) {
     if (!tenant.productEnabled) return json({ error: 'PRODUCT_DISABLED_BY_PLATFORM', billing: tenant.billing || null }, 403);
-    const billingAccessDenied = billingDenied(tenant.billing);
+    const billingAccessDenied = billingDenied(tenant.billing, request.method);
     if (billingAccessDenied) return billingAccessDenied;
     const rule = routeModules.find((item) => item.test(url.pathname));
     if (rule && tenant.modules[rule.module] !== true) return json({ error: 'MODULE_DISABLED_BY_PLATFORM', module: rule.module }, 403);
@@ -324,7 +336,7 @@ export async function enforcePlatformEntitlement(request: Request, env: Platform
   }
 
   const localTrial = await localTrialForTenant(tenantId, env);
-  const localTrialDenied = billingDenied(localTrial || undefined);
+  const localTrialDenied = billingDenied(localTrial || undefined, request.method);
   if (localTrialDenied) return localTrialDenied;
   return null;
 }

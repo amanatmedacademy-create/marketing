@@ -5,16 +5,21 @@ export interface CompanyContextEnv extends LocalDataEnv {
   CURRENT_COMPANY_ID?: string;
 }
 
+export type PlatformRole = 'user' | 'super_admin';
+
 export interface UserCompany {
   id: string;
   name: string;
   slug: string;
   role: string;
   status: string;
+  accessSource?: 'membership' | 'platform';
 }
 
 type CompanyRow = { id?: string; name?: string; slug?: string };
 type MembershipRow = { company_id?: string; role?: string; status?: string };
+type MarketingUserRow = { auth_user_id?: string };
+type AuthUserRow = { platform_role?: string };
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,6 +27,32 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 function assertUuid(value: string, label: string): string {
   if (!UUID_PATTERN.test(value)) throw new Error(`${label} имеет неверный формат UUID`);
   return value;
+}
+
+async function platformRoleForMarketingUser(env: CompanyContextEnv, userId: string): Promise<PlatformRole> {
+  assertUuid(userId, 'User ID');
+  const marketingResponse = await fetch(
+    `${localDataBase(env)}/rest/v1/marketing_users?id=eq.${encodeURIComponent(userId)}&select=auth_user_id&limit=1`,
+    { headers: localDataHeaders(env) },
+  );
+  const marketingBody = await marketingResponse.text();
+  if (!marketingResponse.ok) throw new Error(`Platform role context: ${marketingResponse.status} ${marketingBody}`);
+  const marketingRows = (marketingBody ? JSON.parse(marketingBody) : []) as MarketingUserRow[];
+  const authUserId = text(marketingRows[0]?.auth_user_id);
+  if (!UUID_PATTERN.test(authUserId)) return 'user';
+
+  const authResponse = await fetch(
+    `${localDataBase(env)}/rest/v1/imds_auth_users?id=eq.${encodeURIComponent(authUserId)}&select=platform_role&limit=1`,
+    { headers: localDataHeaders(env) },
+  );
+  const authBody = await authResponse.text();
+  if (!authResponse.ok) throw new Error(`Platform role context: ${authResponse.status} ${authBody}`);
+  const authRows = (authBody ? JSON.parse(authBody) : []) as AuthUserRow[];
+  return text(authRows[0]?.platform_role) === 'super_admin' ? 'super_admin' : 'user';
+}
+
+async function effectivePlatformRole(env: CompanyContextEnv, userId: string, platformRole?: PlatformRole): Promise<PlatformRole> {
+  return platformRole || platformRoleForMarketingUser(env, userId);
 }
 
 async function activeMemberships(env: CompanyContextEnv, userId: string): Promise<MembershipRow[]> {
@@ -40,7 +71,47 @@ async function activeMembershipCompanyIds(env: CompanyContextEnv, userId: string
   return [...new Set(rows.map((row) => text(row.company_id)).filter((id) => UUID_PATTERN.test(id)))];
 }
 
-export async function listUserCompanies(env: CompanyContextEnv, userId: string): Promise<UserCompany[]> {
+async function listPlatformCompanies(env: CompanyContextEnv): Promise<UserCompany[]> {
+  const response = await fetch(
+    `${localDataBase(env)}/rest/v1/crm_companies?select=id,name,slug&order=name.asc&limit=1000`,
+    { headers: localDataHeaders(env) },
+  );
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Platform company list context: ${response.status} ${body}`);
+  const companies = (body ? JSON.parse(body) : []) as CompanyRow[];
+  return companies.flatMap((company) => {
+    const id = text(company.id);
+    if (!UUID_PATTERN.test(id)) return [];
+    return [{
+      id,
+      name: text(company.name) || id,
+      slug: text(company.slug),
+      role: 'super_admin',
+      status: 'active',
+      accessSource: 'platform' as const,
+    }];
+  });
+}
+
+async function platformCompanyExists(env: CompanyContextEnv, companyId: string): Promise<boolean> {
+  const response = await fetch(
+    `${localDataBase(env)}/rest/v1/crm_companies?id=eq.${encodeURIComponent(companyId)}&select=id&limit=1`,
+    { headers: localDataHeaders(env) },
+  );
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Platform company context: ${response.status} ${body}`);
+  const rows = (body ? JSON.parse(body) : []) as CompanyRow[];
+  return rows.some((row) => text(row.id) === companyId);
+}
+
+export async function listUserCompanies(
+  env: CompanyContextEnv,
+  userId: string,
+  platformRole?: PlatformRole,
+): Promise<UserCompany[]> {
+  const role = await effectivePlatformRole(env, userId, platformRole);
+  if (role === 'super_admin') return listPlatformCompanies(env);
+
   const memberships = await activeMemberships(env, userId);
   const ids = [...new Set(memberships.map((row) => text(row.company_id)).filter((id) => UUID_PATTERN.test(id)))];
   if (!ids.length) return [];
@@ -56,22 +127,45 @@ export async function listUserCompanies(env: CompanyContextEnv, userId: string):
     const id = text(company.id);
     const membership = membershipMap.get(id);
     if (!id || !membership) return [];
-    return [{ id, name: text(company.name) || id, slug: text(company.slug), role: text(membership.role), status: text(membership.status) || 'active' }];
+    return [{
+      id,
+      name: text(company.name) || id,
+      slug: text(company.slug),
+      role: text(membership.role),
+      status: text(membership.status) || 'active',
+      accessSource: 'membership' as const,
+    }];
   });
 }
 
-export async function resolveCompanyId(env: CompanyContextEnv, userId?: string): Promise<string> {
+export async function resolveCompanyId(
+  env: CompanyContextEnv,
+  userId?: string,
+  platformRole?: PlatformRole,
+): Promise<string> {
+  const role = userId ? await effectivePlatformRole(env, userId, platformRole) : 'user';
   const current = text(env.CURRENT_COMPANY_ID);
   if (current) {
     assertUuid(current, 'CURRENT_COMPANY_ID');
     if (userId) {
-      const memberships = await activeMembershipCompanyIds(env, userId);
-      if (!memberships.includes(current)) throw new Error('Пользователь не состоит в текущей компании');
+      if (role === 'super_admin') {
+        if (!(await platformCompanyExists(env, current))) throw new Error('Клиника не найдена');
+      } else {
+        const memberships = await activeMembershipCompanyIds(env, userId);
+        if (!memberships.includes(current)) throw new Error('Пользователь не состоит в текущей компании');
+      }
     }
     return current;
   }
 
   if (userId) {
+    if (role === 'super_admin') {
+      const companies = await listPlatformCompanies(env);
+      if (companies.length === 1) return companies[0].id;
+      if (companies.length === 0) throw new Error('Не найдена клиника для tenant-контекста');
+      throw new Error('Выберите клинику для platform-доступа.');
+    }
+
     const memberships = await activeMembershipCompanyIds(env, userId);
     if (memberships.length === 1) return memberships[0];
     if (memberships.length === 0) throw new Error('Пользователь не привязан ни к одной активной компании');

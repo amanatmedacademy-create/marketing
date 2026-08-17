@@ -1,5 +1,6 @@
 import type { Env } from './integrations';
 import { handleUserAdminRequest } from './userAdmin';
+import { handleAccountSelfServiceRequest } from './accountSelfService';
 import { hasPermission, permissionForRequest, resolveUserAccess, type AccessMap } from './accessControl';
 import { listUserCompanies, resolveCompanyId } from './companyContext';
 import {
@@ -23,6 +24,7 @@ export interface AuthenticatedUser {
   name: string;
   avatarUrl: string | null;
   role: string;
+  platformRole?: 'user' | 'super_admin';
   status: string;
   jobTitle?: string | null;
   positionId?: string | null;
@@ -34,6 +36,12 @@ const json = (data: unknown, status = 200, headers: HeadersInit = {}) => new Res
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
 });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function localAuthEnabled(env: AuthEnv): boolean {
   return Boolean(text(env.IMDS_LOCAL_DB_URL) && text(env.IMDS_LOCAL_SERVICE_ROLE_KEY));
@@ -152,9 +160,9 @@ function origin(request: Request, env: AuthEnv) {
 function requestedCompanyId(request: Request): string { return text(request.headers.get('x-imds-company-id')); }
 async function scopedEnv(request: Request, env: AuthEnv, user: AuthenticatedUser): Promise<AuthEnv> {
   const requested = requestedCompanyId(request);
-  if (requested) return { ...env, CURRENT_COMPANY_ID: await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: requested }, user.id) };
+  if (requested) return { ...env, CURRENT_COMPANY_ID: await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: requested }, user.id, user.platformRole) };
   if (env.CURRENT_COMPANY_ID) return env;
-  const companies = await listUserCompanies(env, user.id);
+  const companies = await listUserCompanies(env, user.id, user.platformRole);
   if (companies.length === 1) return { ...env, CURRENT_COMPANY_ID: companies[0].id };
   return env;
 }
@@ -186,7 +194,7 @@ export async function authenticateRequest(request: Request, env: AuthEnv): Promi
 }
 
 export async function authorizeApplicationRequest(request: Request, env: AuthEnv, user: AuthenticatedUser): Promise<Response | null> {
-  if (user.role === 'administrator') return null;
+  if (user.platformRole === 'super_admin' || user.role === 'administrator') return null;
   const rule = permissionForRequest(new URL(request.url).pathname, request.method);
   if (!rule) return null;
   const tenantEnv = await scopedEnv(request, env, user);
@@ -207,11 +215,75 @@ async function onboardingStatus(env: AuthEnv, userId: string): Promise<string | 
   }
 }
 
+async function authenticatedAccountUser(request: Request, env: AuthEnv, preauthenticatedUser?: AuthenticatedUser): Promise<AuthenticatedUser | Response> {
+  const user = preauthenticatedUser || await authenticateRequest(request, env);
+  if (!user) return json({ error: 'Необходим вход в систему' }, 401);
+  if (user.status !== 'active') return json({ error: 'Пользователь не активен' }, 403);
+  return user;
+}
+
+async function handleClinicAccountRequest(request: Request, env: AuthEnv, url: URL, preauthenticatedUser?: AuthenticatedUser): Promise<Response | null> {
+  if (url.pathname !== '/api/clinics' && url.pathname !== '/api/clinics/join') return null;
+  const candidate = await authenticatedAccountUser(request, env, preauthenticatedUser);
+  if (candidate instanceof Response) return candidate;
+  const user = candidate;
+
+  if (url.pathname === '/api/clinics' && request.method === 'GET') {
+    return json({ items: await listUserCompanies(env, user.id, user.platformRole) });
+  }
+
+  if (url.pathname === '/api/clinics' && request.method === 'POST') {
+    const body = await request.json().catch(() => null) as { name?: string; sourceCompanyId?: string | null } | null;
+    const name = text(body?.name);
+    if (name.length < 2 || name.length > 180) return json({ error: 'Укажите корректное название клиники' }, 400);
+    const companies = await listUserCompanies(env, user.id, user.platformRole);
+    const requested = text(body?.sourceCompanyId) || requestedCompanyId(request);
+    const source = companies.find((company) => company.id === requested);
+    const sourceCompanyId = source && source.accessSource !== 'platform' && ['owner', 'administrator'].includes(source.role) ? source.id : null;
+    const response = await rest(env, 'rpc/imds_create_clinic', {
+      method: 'POST',
+      body: JSON.stringify({ p_user_id: user.id, p_name: name, p_slug: null, p_source_company_id: sourceCompanyId }),
+    });
+    const raw = await response.text();
+    if (!response.ok) return json({ error: raw || 'Не удалось создать клинику' }, response.status === 403 ? 403 : 400);
+    let clinic: unknown = null;
+    try { clinic = raw ? JSON.parse(raw) : null; } catch { clinic = null; }
+    return json({ clinic }, 201);
+  }
+
+  if (url.pathname === '/api/clinics/join' && request.method === 'POST') {
+    const body = await request.json().catch(() => null) as { code?: string } | null;
+    const code = text(body?.code).toUpperCase().replace(/\s+/g, '');
+    if (code.length < 6) return json({ error: 'Введите код клиники' }, 400);
+    const response = await rest(env, 'rpc/imds_join_clinic', {
+      method: 'POST',
+      body: JSON.stringify({ p_user_id: user.id, p_company_code_hash: await sha256Hex(code) }),
+    });
+    const raw = await response.text();
+    if (!response.ok) return json({ error: raw || 'Не удалось присоединиться к клинике' }, 400);
+    let clinic: unknown = null;
+    try { clinic = raw ? JSON.parse(raw) : null; } catch { clinic = null; }
+    return json({ clinic }, 202);
+  }
+
+  return json({ error: 'Method not allowed' }, 405);
+}
+
 export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL, preauthenticatedUser?: AuthenticatedUser): Promise<Response | null> {
   if (localAuthEnabled(env)) {
     const nativeResponse = await handleNativeAuthRequest(request, env, url);
     if (nativeResponse) return nativeResponse;
   }
+
+  if (url.pathname.startsWith('/api/account/')) {
+    const candidate = await authenticatedAccountUser(request, env, preauthenticatedUser);
+    if (candidate instanceof Response) return candidate;
+    const accountResponse = await handleAccountSelfServiceRequest(request, env, url, candidate);
+    if (accountResponse) return accountResponse;
+  }
+
+  const clinicResponse = await handleClinicAccountRequest(request, env, url, preauthenticatedUser);
+  if (clinicResponse) return clinicResponse;
 
   if (url.pathname.startsWith('/api/admin/users')) {
     const user = preauthenticatedUser || await authenticateRequest(request, env);
@@ -261,13 +333,13 @@ export async function handleAuthRequest(request: Request, env: AuthEnv, url: URL
       if (!user) return json({ error: 'Необходим вход в систему' }, 401);
       if (user.status === 'blocked') return json({ error: 'Доступ пользователя заблокирован' }, 403);
       if (user.status !== 'active') return json({ error: 'Аккаунт ожидает подтверждения администратора' }, 403);
-      const companies = await listUserCompanies(env, user.id);
+      const companies = await listUserCompanies(env, user.id, user.platformRole);
       const requested = requestedCompanyId(request);
       let companyId: string | null = null;
-      if (requested) companyId = await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: requested }, user.id);
+      if (requested) companyId = await resolveCompanyId({ ...env, CURRENT_COMPANY_ID: requested }, user.id, user.platformRole);
       else if (companies.length === 1) companyId = companies[0].id;
       const tenantEnv = companyId ? { ...env, CURRENT_COMPANY_ID: companyId } : env;
-      const access = companyId ? await resolveUserAccess(tenantEnv, user.id, user.role) : null;
+      const access = companyId && user.platformRole !== 'super_admin' ? await resolveUserAccess(tenantEnv, user.id, user.role) : null;
       const pending = companyId ? null : await onboardingStatus(env, user.id);
       return json({ user: { ...user, companyId, companies, onboardingStatus: pending, jobTitle: access?.jobTitle || null, positionId: access?.positionId || null, permissions: access?.permissions || {} } });
     } catch (error) {

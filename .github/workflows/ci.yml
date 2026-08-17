@@ -36,6 +36,9 @@ jobs:
       - name: Integration regression tests
         run: npm run test:integrations
 
+      - name: Account and platform regression tests
+        run: npm run test:account-platform
+
       - name: Typecheck
         run: npm run typecheck
 
