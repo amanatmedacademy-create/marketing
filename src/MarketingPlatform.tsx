@@ -161,7 +161,7 @@ function Shell() {
         <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>), 'marketing.crm')} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>, 'marketing.whatsapp-business')} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>, 'marketing.whatsapp-business')} />
-        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
+        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS platform={platform}/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
         <Route path="/advertising" element={platformAllows('marketing.meta-ads') ? <Navigate to="/marketing?view=ads" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/automation" element={platformAllows('marketing.automation') ? <Navigate to="/marketing?view=automation" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/lead-forms" element={platformAllows('marketing.crm') ? <Navigate to="/marketing?view=leads" replace/> : <AccessDenied platformControlled/>} />
