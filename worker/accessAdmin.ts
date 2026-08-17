@@ -1,8 +1,9 @@
 import { resolveCompanyId } from './companyContext';
 import { resolveUserAccess, type AccessAction } from './accessControl';
+import { localDataJson, type LocalDataEnv } from './localData';
 
 type Row = Record<string, unknown>;
-export interface AccessAdminEnv { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string; DEFAULT_COMPANY_ID?: string }
+export interface AccessAdminEnv extends LocalDataEnv { DEFAULT_COMPANY_ID?: string; CURRENT_COMPANY_ID?: string }
 class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
@@ -10,21 +11,19 @@ const record = (value: unknown): Row => value && typeof value === 'object' && !A
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const actions: AccessAction[] = ['view','create','edit','delete','export','manage'];
 
-function headers(env: AccessAdminEnv, extra: HeadersInit = {}): HeadersInit { return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json', ...extra }; }
 async function db<T>(env: AccessAdminEnv, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { ...init, headers: headers(env, init.headers) });
-  const body = await response.text();
-  if (!response.ok) throw new HttpError(502, `Supabase access: ${response.status} ${body.slice(0, 900)}`);
-  return (body ? JSON.parse(body) : null) as T;
+  try { return await localDataJson<T>(env, path, init, 'Access administration'); }
+  catch (error) { throw new HttpError(502, error instanceof Error ? error.message : String(error)); }
 }
 function actorId(request: Request): string { return text(request.headers.get('x-amanat-auth-user')); }
 function actorRole(request: Request): string { return text(request.headers.get('x-amanat-auth-role')); }
 async function requireAdmin(request: Request, env: AccessAdminEnv): Promise<string> {
-  if (actorRole(request) !== 'administrator') throw new HttpError(403, 'Матрица прав доступна только администратору');
+  const role = actorRole(request);
+  if (!['administrator','super_admin'].includes(role)) throw new HttpError(403, 'Матрица прав доступна только администратору');
   const userId = actorId(request); if (!uuid.test(userId)) throw new HttpError(401, 'Не удалось определить пользователя');
-  const companyId = await resolveCompanyId(env);
+  const companyId = await resolveCompanyId(env, userId);
   const rows = await db<Row[]>(env, `crm_company_members?company_id=eq.${companyId}&user_id=eq.${userId}&status=eq.active&role=in.(owner,administrator)&select=user_id`);
-  if (!rows.length) throw new HttpError(403, 'Нет административных прав в компании');
+  if (!rows.length && role !== 'super_admin') throw new HttpError(403, 'Нет административных прав в компании');
   return companyId;
 }
 function permissionPayload(value: unknown, nullable = false): Row {
