@@ -1,0 +1,28 @@
+/* Runtime status hygiene for the global topbar. Keep loaded last. */
+
+/* The Control Plane revision is an internal diagnostic value, not user-facing UI. */
+.platform-sync-indicator:not(.platform-sync-indicator--error){
+  display:none!important;
+}
+
+/* Keep a real runtime failure visible without occupying the clinic switcher space. */
+.platform-sync-indicator--error{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:0 0 auto!important;
+  width:auto!important;
+  min-width:0!important;
+  height:28px!important;
+  padding:0 8px!important;
+  box-sizing:border-box!important;
+  border:1px solid color-mix(in srgb,var(--imds-danger) 30%,transparent)!important;
+  border-radius:8px!important;
+  background:var(--imds-danger-a10)!important;
+  color:var(--imds-danger)!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  letter-spacing:.02em!important;
+  white-space:nowrap!important;
+}
