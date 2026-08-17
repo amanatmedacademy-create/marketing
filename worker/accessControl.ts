@@ -8,6 +8,8 @@ export type AccessMap = Record<string, AccessGrant>;
 export interface AccessControlEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  IMDS_LOCAL_DB_URL?: string;
+  IMDS_LOCAL_SERVICE_ROLE_KEY?: string;
   DEFAULT_COMPANY_ID?: string;
   CURRENT_COMPANY_ID?: string;
 }
@@ -17,12 +19,25 @@ const emptyGrant = (): AccessGrant => ({ view: false, create: false, edit: false
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const bool = (value: unknown): boolean => value === true;
 
+function dataBase(env: AccessControlEnv): string {
+  const base = text(env.IMDS_LOCAL_DB_URL) || text(env.SUPABASE_URL);
+  if (!base) throw new Error('Access control database URL is missing');
+  return base.replace(/\/$/, '').replace(/\/rest\/v1$/, '');
+}
+
+function dataKey(env: AccessControlEnv): string {
+  const key = text(env.IMDS_LOCAL_SERVICE_ROLE_KEY) || text(env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!key) throw new Error('Access control service key is missing');
+  return key;
+}
+
 function headers(env: AccessControlEnv): HeadersInit {
-  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, accept: 'application/json' };
+  const key = dataKey(env);
+  return { apikey: key, authorization: `Bearer ${key}`, accept: 'application/json' };
 }
 
 async function db<T>(env: AccessControlEnv, path: string): Promise<T> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { headers: headers(env) });
+  const response = await fetch(`${dataBase(env)}/rest/v1/${path}`, { headers: headers(env) });
   const body = await response.text();
   if (!response.ok) throw new Error(`Access control ${response.status}: ${body.slice(0, 700)}`);
   return (body ? JSON.parse(body) : null) as T;
