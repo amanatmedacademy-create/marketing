@@ -11,6 +11,7 @@ type Entitlement = {
   updatedAt: string;
 };
 type StateFile = { version: 1; tenants: Record<string, Entitlement> };
+type Company = { id?: unknown; name?: unknown; slug?: unknown };
 
 const stateDir = process.env.IMDS_PLATFORM_STATE_DIR || '/opt/imds-marketing/control';
 const statePath = path.join(stateDir, 'entitlements.json');
@@ -60,6 +61,24 @@ function tenantIdFromRequest(request: Request): string {
   return (request.headers.get('x-imds-company-id') || '').trim();
 }
 
+async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name: string; slug: string }>> {
+  const base = (env.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
+  const key = (env.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
+  if (!base || !key) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
+  const response = await fetch(`${base}/rest/v1/crm_companies?select=id,name,slug&order=name.asc&limit=1000`, {
+    headers: { apikey: key, authorization: `Bearer ${key}` },
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`COMPANY_LIST_${response.status}:${text.slice(0, 300)}`);
+  const rows = (text ? JSON.parse(text) : []) as Company[];
+  return rows.flatMap((row) => {
+    const id = typeof row.id === 'string' ? row.id.trim() : '';
+    const name = typeof row.name === 'string' ? row.name.trim() : '';
+    const slug = typeof row.slug === 'string' ? row.slug.trim() : '';
+    return id ? [{ id, name, slug }] : [];
+  });
+}
+
 export async function handlePlatformInternalRequest(request: Request, env: PlatformEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/internal/platform/')) return null;
@@ -67,6 +86,11 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
 
   if (url.pathname === '/internal/platform/info' && request.method === 'GET') {
     return json({ product: 'imds-marketing', runtime: 'vps', protocol: 1, pid: process.pid, uptimeSeconds: Math.floor(process.uptime()) });
+  }
+
+  if (url.pathname === '/internal/platform/tenants' && request.method === 'GET') {
+    try { return json({ items: await listCompanies(env) }); }
+    catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 503); }
   }
 
   if (url.pathname === '/internal/platform/state' && request.method === 'GET') {
@@ -86,9 +110,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
 
     const state = await readState();
     const current = state.tenants[tenantId];
-    if (current && current.revision > revision) {
-      return json({ applied: false, stale: true, tenant: current }, 409);
-    }
+    if (current && current.revision > revision) return json({ applied: false, stale: true, tenant: current }, 409);
     const tenant: Entitlement = { organizationId, tenantId, revision, productEnabled, modules, updatedAt: new Date().toISOString() };
     state.tenants[tenantId] = tenant;
     await writeState(state);
@@ -104,7 +126,7 @@ export async function enforcePlatformEntitlement(request: Request): Promise<Resp
   if (url.pathname === '/api/health' || url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/webhooks/') || url.pathname.startsWith('/api/public/')) return null;
 
   const tenantId = tenantIdFromRequest(request);
-  if (!tenantId) return null; // Existing auth layer remains responsible for tenant selection.
+  if (!tenantId) return null;
   const state = await readState();
   const tenant = state.tenants[tenantId];
   if (!tenant) return json({ error: 'PRODUCT_ENTITLEMENT_NOT_SYNCED' }, 503);
