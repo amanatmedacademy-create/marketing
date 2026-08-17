@@ -1,7 +1,8 @@
-import { CreditCard, LockKeyhole, TimerReset } from 'lucide-react';
+import { CreditCard, LockKeyhole, TimerReset, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthGate';
 import { loadPlatformEntitlements, type PlatformEntitlements } from '../services/platformEntitlements';
+import './subscription-status.css';
 
 function formatDate(value: string | null) {
   if (!value) return null;
@@ -32,8 +33,7 @@ export default function SubscriptionStatusLayer({ children }: { children: ReactN
         const next = await loadPlatformEntitlements();
         if (active) setState(next);
       } catch {
-        // AuthGate may still be attaching the authenticated fetch wrapper on the
-        // first paint. The next poll resolves the state without blocking login.
+        // AuthGate may still be attaching the authenticated fetch wrapper on first paint.
       }
     };
     timer = window.setTimeout(() => void refresh(), 250);
@@ -49,42 +49,29 @@ export default function SubscriptionStatusLayer({ children }: { children: ReactN
   }, [user.companyId]);
 
   const billing = state?.billing ?? null;
-  const blocked = useMemo(() => {
+  const readOnly = useMemo(() => {
     if (!billing) return false;
     const accessEnd = billing.accessEndsAt ? new Date(billing.accessEndsAt).getTime() : NaN;
     const expiredByDate = Number.isFinite(accessEnd) && accessEnd <= Date.now();
-    return ['expired', 'past_due', 'cancelled', 'suspended'].includes(billing.subscriptionStatus || '') || expiredByDate;
+    return ['expired', 'cancelled', 'suspended'].includes(billing.subscriptionStatus || '') || expiredByDate;
   }, [billing]);
-
-  if (blocked && billing) {
-    return <div className="module-access-denied" style={{ minHeight: '100vh', padding: 32 }}>
-      <LockKeyhole size={38}/>
-      <h2>{billing.subscriptionStatus === 'suspended' ? 'Подписка приостановлена' : 'Срок подписки закончился'}</h2>
-      <p>{billing.subscriptionStatus === 'trial' || !state?.managed
-        ? 'Трёхдневный пробный период завершён. Для продолжения работы продлите IMDS Marketing.'
-        : 'Для продолжения работы необходимо продлить подписку IMDS Marketing.'}</p>
-      {billing.accessEndsAt && <p><strong>Доступ был активен до:</strong> {formatDate(billing.accessEndsAt)}</p>}
-      {billing.paymentMethods.length > 0 ? <div style={{ width: 'min(680px, 100%)', display: 'grid', gap: 10, marginTop: 12 }}>
-        <strong style={{ textAlign: 'left' }}>Доступные способы оплаты</strong>
-        {billing.paymentMethods.map((method) => <div key={method.method} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, border: '1px solid var(--border)', borderRadius: 14, textAlign: 'left' }}>
-          <CreditCard size={19}/><div><strong>{method.displayName}{method.isDefault ? ' · основной' : ''}</strong>{method.instructions && <div style={{ marginTop: 4, opacity: .72 }}>{method.instructions}</div>}</div>
-        </div>)}
-      </div> : <p>Для продления обратитесь к администратору IMDS.</p>}
-    </div>;
-  }
+  const paymentWarning = billing?.subscriptionStatus === 'past_due';
 
   const statusText = billing?.subscriptionStatus === 'trial'
     ? `Trial · осталось ${trialRemaining(billing.trialEndsAt) || '—'}`
     : billing?.subscriptionStatus === 'active'
       ? `Подписка · до ${formatDate(billing.accessEndsAt ?? billing.periodEndsAt) || 'без даты'}`
       : billing?.subscriptionStatus === 'grace_period'
-        ? `Grace · до ${formatDate(billing.accessEndsAt) || '—'}`
+        ? `Grace · до ${formatDate(billing.graceEndsAt ?? billing.accessEndsAt) || '—'}`
         : null;
 
   return <>
     {children}
-    {statusText && <div title="Статус подписки IMDS Marketing" style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 80, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 13px', borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface, rgba(6,28,38,.92))', boxShadow: '0 8px 28px rgba(0,0,0,.16)', fontSize: 12, fontWeight: 700 }}>
-      <TimerReset size={15}/><span>{statusText}</span>
+    {readOnly && billing && <div className="subscription-state-banner subscription-state-banner--locked" role="status">
+      <LockKeyhole size={17}/><div><strong>Режим только для чтения</strong><span>{billing.subscriptionStatus === 'suspended' ? 'Подписка приостановлена.' : 'Срок доступа закончился.'} Данные сохранены; просмотр остаётся доступным, изменения будут недоступны до продления.</span></div>
+      {billing.paymentMethods.length > 0 && <span className="subscription-state-banner__payment"><CreditCard size={14}/>{billing.paymentMethods[0].displayName}</span>}
     </div>}
+    {paymentWarning && billing && <div className="subscription-state-banner subscription-state-banner--warning" role="status"><TriangleAlert size={17}/><div><strong>Требуется оплата</strong><span>Есть задолженность по подписке. Проверьте Billing Center до окончания льготного периода.</span></div></div>}
+    {statusText && !readOnly && !paymentWarning && <div title="Статус подписки IMDS Marketing" className="subscription-status-pill"><TimerReset size={15}/><span>{statusText}</span></div>}
   </>;
 }
