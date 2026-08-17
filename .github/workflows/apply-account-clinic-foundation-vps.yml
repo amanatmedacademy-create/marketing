@@ -8,6 +8,7 @@ on:
       - 'supabase/migrations/20260818033500_account_organization_clinic_foundation.sql'
       - 'supabase/migrations/20260818035000_account_clinic_runtime_flows.sql'
       - '.github/workflows/apply-account-clinic-foundation-vps.yml'
+      - '.github/workflows/publish-runtime-status.yml'
 
 permissions:
   contents: read
