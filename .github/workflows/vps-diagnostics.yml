@@ -1,0 +1,35 @@
+name: VPS Diagnostics
+
+on:
+  push:
+    branches: [agent/vps-diagnostics]
+    paths: ['.github/workflows/vps-diagnostics.yml']
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Read runtime diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+            echo "=== service status ==="
+            systemctl status imds-marketing.service --no-pager -l || true
+            echo "=== recent journal ==="
+            journalctl -u imds-marketing.service -n 120 --no-pager -o cat || true
+            echo "=== release link ==="
+            readlink -f /opt/imds-marketing/current || true
+            echo "=== runtime files ==="
+            ls -la /opt/imds-marketing/current/server /opt/imds-marketing/current/worker 2>/dev/null | head -n 80 || true
+          '
