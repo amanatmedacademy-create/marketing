@@ -1,0 +1,82 @@
+name: Apply Registration Notifications VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20260818030000_registration_superadmin_notifications.sql'
+      - '.github/workflows/apply-registration-notifications-vps.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-registration-notifications-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: Upload migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" \
+            supabase/migrations/20260818030000_registration_superadmin_notifications.sql \
+            "$VPS_USER@$VPS_HOST:/tmp/20260818030000_registration_superadmin_notifications.sql"
+
+      - name: Apply migration to Marketing PostgreSQL
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          migration=/tmp/20260818030000_registration_superadmin_notifications.sql
+          test -s "$migration"
+          docker inspect imds-postgres >/dev/null
+          docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
+          outbox_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_platform_event_outbox') is not null)::int")
+          phone_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='imds_auth_users' and column_name='phone'))::int")
+          rpc_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_native_register_account(text,text,text,text,text,text,text,text)') is not null)::int")
+          test "$outbox_ok" = 1
+          test "$phone_ok" = 1
+          test "$rpc_ok" = 1
+          echo 'REGISTRATION_SCHEMA=outbox:ok phone:ok rpc:ok'
+          rm -f "$migration"
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set +e
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818030000_registration_superadmin_notifications.sql' || true
