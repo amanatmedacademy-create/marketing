@@ -1,0 +1,33 @@
+name: DB Diagnostics
+
+on:
+  push:
+    branches: [agent/selfhosted-postgres-migration]
+    paths: ['.github/workflows/db-diagnostics.yml']
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Check database bootstrap state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" '
+            echo "=== docker ==="
+            docker ps -a 2>/dev/null || true
+            echo "=== compose ==="
+            cd /opt/imds-db 2>/dev/null && (docker compose ps 2>/dev/null || docker-compose ps 2>/dev/null || true)
+            echo "=== migrations ==="
+            docker exec imds-postgres psql -U imds_owner -d imds_marketing -Atqc "select count(*), coalesce(max(filename), chr(45)) from public.imds_schema_migrations" 2>/dev/null || true
+            echo "=== bootstrap processes ==="
+            ps -ef | grep -E "bootstrap-db|apt-get|docker|psql" | grep -v grep || true
+          '
