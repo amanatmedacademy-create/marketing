@@ -1,0 +1,95 @@
+name: Apply Account Clinic Foundation VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20260818033500_account_organization_clinic_foundation.sql'
+      - 'supabase/migrations/20260818035000_account_clinic_runtime_flows.sql'
+      - '.github/workflows/apply-account-clinic-foundation-vps.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-account-clinic-foundation-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload migrations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" supabase/migrations/20260818033500_account_organization_clinic_foundation.sql "$VPS_USER@$VPS_HOST:/tmp/20260818033500_account_organization_clinic_foundation.sql"
+          sshpass -e scp "${SSH_ARGS[@]}" supabase/migrations/20260818035000_account_clinic_runtime_flows.sql "$VPS_USER@$VPS_HOST:/tmp/20260818035000_account_clinic_runtime_flows.sql"
+
+      - name: Apply and verify migrations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          docker inspect imds-postgres >/dev/null
+          for migration in \
+            /tmp/20260818033500_account_organization_clinic_foundation.sql \
+            /tmp/20260818035000_account_clinic_runtime_flows.sql
+          do
+            test -s "$migration"
+            docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
+          done
+
+          organization_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_organizations') is not null)::int")
+          organization_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='crm_companies' and column_name='organization_id'))::int")
+          create_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_create_clinic(uuid,text,text,uuid)') is not null)::int")
+          join_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_join_clinic(uuid,text)') is not null)::int")
+          trigger_ok=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from pg_trigger where tgname='crm_companies_assign_organization' and not tgisinternal))::int")
+          orphan_count=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.crm_companies where organization_id is null")
+
+          test "$organization_table" = "1" || { echo 'imds_organizations missing'; exit 1; }
+          test "$organization_column" = "1" || { echo 'organization_id missing'; exit 1; }
+          test "$create_rpc" = "1" || { echo 'imds_create_clinic missing'; exit 1; }
+          test "$join_rpc" = "1" || { echo 'imds_join_clinic missing'; exit 1; }
+          test "$trigger_ok" = "1" || { echo 'organization trigger missing'; exit 1; }
+          test "$orphan_count" = "0" || { echo "clinics without organization: $orphan_count"; exit 1; }
+          echo 'ACCOUNT_CLINIC_SCHEMA=ok'
+          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set +e
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql' || true
