@@ -1,0 +1,68 @@
+name: Apply Account Security VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20260818101500_account_security_mfa_email.sql'
+      - '.github/workflows/apply-account-security-vps.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-account-security-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          command -v sshpass >/dev/null
+      - uses: actions/checkout@v4
+      - name: Upload migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          sshpass -e scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 supabase/migrations/20260818101500_account_security_mfa_email.sql "$VPS_USER@$VPS_HOST:/tmp/20260818101500_account_security_mfa_email.sql"
+      - name: Apply and verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < /tmp/20260818101500_account_security_mfa_email.sql
+          mfa_factor=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_auth_mfa_factors') is not null)::int")
+          challenge=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_auth_mfa_challenges') is not null)::int")
+          recovery=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_auth_mfa_recovery_codes') is not null)::int")
+          email_verify=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_auth_email_verifications') is not null)::int")
+          events=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_auth_security_events') is not null)::int")
+          mfa_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='imds_auth_users' and column_name='mfa_enabled'))::int")
+          test "$mfa_factor" = 1
+          test "$challenge" = 1
+          test "$recovery" = 1
+          test "$email_verify" = 1
+          test "$events" = 1
+          test "$mfa_column" = 1
+          echo 'ACCOUNT_SECURITY_SCHEMA=ok'
+          rm -f /tmp/20260818101500_account_security_mfa_email.sql
+          REMOTE

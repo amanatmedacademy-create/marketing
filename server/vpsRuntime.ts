@@ -8,6 +8,7 @@ import type { AssetFetcher, WorkerExecutionContext } from '../worker/integration
 import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
 import { handleBillingGatewayRequest } from './billingGateway';
 import { handleBillingControlPlaneRequest } from './billingControlPlane';
+import { enforceGoogleMfaRedirect, handleAccountSecurityGatewayRequest } from './accountSecurityGateway';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -103,27 +104,13 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
   const localBilling = entitlement ? null : await localTrialForTenant(tenantId, env);
   const quota = entitlement ? await platformQuotaSnapshotForTenant(entitlement, env).catch(() => null) : null;
   const payload = entitlement ? {
-    managed: true,
-    tenantId,
-    organizationId: entitlement.organizationId,
-    revision: entitlement.revision,
-    productEnabled: entitlement.productEnabled,
-    modules: entitlement.modules,
-    limits: entitlement.limits || {},
-    quota,
-    billing: entitlement.billing || null,
-    updatedAt: entitlement.updatedAt,
+    managed: true, tenantId, organizationId: entitlement.organizationId, revision: entitlement.revision,
+    productEnabled: entitlement.productEnabled, modules: entitlement.modules, limits: entitlement.limits || {}, quota,
+    billing: entitlement.billing || null, updatedAt: entitlement.updatedAt,
   } : {
-    managed: false,
-    tenantId,
-    organizationId: null,
-    revision: null,
+    managed: false, tenantId, organizationId: null, revision: null,
     productEnabled: localBilling?.subscriptionStatus !== 'expired' && localBilling?.subscriptionStatus !== 'suspended',
-    modules: {},
-    limits: {},
-    quota: null,
-    billing: localBilling,
-    updatedAt: null,
+    modules: {}, limits: {}, quota: null, billing: localBilling, updatedAt: null,
   };
   return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 }
@@ -132,6 +119,8 @@ const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
     const request = await toRequest(req);
+    const securityResponse = await handleAccountSecurityGatewayRequest(request, env);
+    if (securityResponse) { await sendResponse(res, securityResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: securityResponse.status, durationMs: Date.now() - startedAt, accountSecurity: true })); return; }
     const billingControlResponse = await handleBillingControlPlaneRequest(request, env);
     if (billingControlResponse) { await sendResponse(res, billingControlResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: billingControlResponse.status, durationMs: Date.now() - startedAt, billingControl: true })); return; }
     const platformResponse = await handlePlatformInternalRequest(request, env);
@@ -142,7 +131,8 @@ const server = createServer(async (req, res) => {
     if (browserEntitlement) { await sendResponse(res, browserEntitlement); console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' })); return; }
     const entitlementDenied = await enforcePlatformEntitlement(request, env);
     if (entitlementDenied) { await sendResponse(res, entitlementDenied); console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' })); return; }
-    const response = await worker.fetch(request, env as never, executionContext());
+    let response = await worker.fetch(request, env as never, executionContext());
+    response = await enforceGoogleMfaRedirect(request, response, env);
     await sendResponse(res, response);
     console.log(JSON.stringify({ method: req.method, path: req.url, status: response.status, durationMs: Date.now() - startedAt }));
   } catch (error) {

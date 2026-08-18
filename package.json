@@ -16,9 +16,10 @@
     "test:operating-overview": "node --test tests/operatingOverview.test.mjs",
     "test:quotas": "node --test tests/quotaEnforcement.test.mjs",
     "test:billing": "node --test tests/billingCenter.test.mjs",
+    "test:account-security": "node --test tests/accountSecurity.test.mjs",
+    "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
     "deploy": "bun run build && wrangler deploy",
-    "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY",
-    "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs"
+    "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7",

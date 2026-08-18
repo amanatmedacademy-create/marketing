@@ -17,45 +17,34 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-
       - name: Schedule CRM regression tests
         run: npm run test:schedule-crm
-
       - name: Integration regression tests
         run: npm run test:integrations
-
       - name: Account and platform regression tests
         run: npm run test:account-platform
-
       - name: Team administration regression tests
         run: npm run test:team-admin
-
       - name: Operating overview regression tests
         run: npm run test:operating-overview
-
       - name: Quota enforcement regression tests
         run: npm run test:quotas
-
       - name: Billing Center regression tests
         run: npm run test:billing
-
+      - name: Account security regression tests
+        run: npm run test:account-security
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Production build
         run: npm run build
