@@ -1,5 +1,5 @@
 import type { UniversalTelephonyEnv } from './telephonyGateway';
-import { loadTelephonyProviderCredential, type ConfigurableTelephonyProvider } from './telephonyProviderCredentials';
+import { loadTelephonyProviderCredential, markTelephonyProviderStatus, type ConfigurableTelephonyProvider } from './telephonyProviderCredentials';
 
 type Row = Record<string, unknown>;
 type CloudProvider = Extract<ConfigurableTelephonyProvider, 'binotel' | 'sipuni'>;
@@ -36,6 +36,14 @@ function normalizedPhone(value: unknown): string {
   if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
   if (digits.length === 10) digits = `7${digits}`;
   return digits.length >= 10 ? `+${digits.slice(0, 15)}` : '';
+}
+
+function normalizedDate(value: unknown): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const numeric = Number(raw);
+  const candidate = Number.isFinite(numeric) && numeric > 1_000_000_000 ? new Date(numeric > 10_000_000_000 ? numeric : numeric * 1000) : new Date(raw);
+  return Number.isNaN(candidate.getTime()) ? null : candidate.toISOString();
 }
 
 async function payloadFrom(request: Request, url: URL): Promise<Row> {
@@ -75,7 +83,7 @@ function sipuniEvent(payload: Row) {
   } as const;
 }
 
-function binotelEvent(payload: Row) {
+function binotelEvent(payload: Row): ReturnType<typeof sipuniEvent> {
   const callId = text(payload.generalCallID || payload.generalCallId || payload.callID || payload.callId || payload.id);
   const type = text(payload.eventName || payload.event || payload.type || payload.disposition).toLowerCase();
   const directionValue = text(payload.callType || payload.direction).toLowerCase();
@@ -92,11 +100,11 @@ function binotelEvent(payload: Row) {
     direction: inbound ? 'INBOUND' : 'OUTBOUND',
     answered,
     finalStatus,
-    startedAt: text(payload.startTime || payload.callStart || payload.startedAt) || new Date().toISOString(),
-    answeredAt: text(payload.answerTime || payload.answeredAt) || null,
+    startedAt: normalizedDate(payload.startTime || payload.callStart || payload.startedAt) || new Date().toISOString(),
+    answeredAt: normalizedDate(payload.answerTime || payload.answeredAt),
     recordingUrl: text(payload.linkToRecord || payload.recordingUrl || payload.recordUrl),
     operator: text(payload.internalNumber || payload.employeeNumber || payload.manager || payload.extension),
-  } as const;
+  };
 }
 
 async function findLead(env: UniversalTelephonyEnv, companyId: string, phone: string): Promise<Row | null> {
@@ -160,10 +168,17 @@ async function createMissedTask(env: UniversalTelephonyEnv, companyId: string, p
 }
 
 async function processEvent(env: UniversalTelephonyEnv, companyId: string, provider: CloudProvider, payload: Row): Promise<Row | null> {
-  const normalized = provider === 'sipuni' ? sipuniEvent(payload) : binotelEvent(payload) as ReturnType<typeof sipuniEvent>;
+  const normalized = provider === 'sipuni' ? sipuniEvent(payload) : binotelEvent(payload);
   if (!normalized.callId || normalized.event === 'unknown' || normalized.event === 'secondary_end') return null;
   let call = await findCall(env, companyId, provider, normalized.callId);
-  if (!call) call = await createCall(env, companyId, provider, normalized, payload);
+  if (!call) {
+    try { call = await createCall(env, companyId, provider, normalized, payload); }
+    catch (error) {
+      const replay = await findCall(env, companyId, provider, normalized.callId);
+      if (!replay) throw error;
+      call = replay;
+    }
+  }
 
   if (normalized.event === 'answer') {
     return patchCall(env, companyId, text(call.id), { call_status: 'COMPLETED', answered_at: normalized.answeredAt || new Date().toISOString(), operator_name: normalized.operator || call.operator_name || null, recording_url: normalized.recordingUrl || call.recording_url || null, recording_ingest_status: normalized.recordingUrl ? 'pending' : call.recording_ingest_status, transcription_status: normalized.recordingUrl ? 'pending' : call.transcription_status, metadata: { ...rec(call.metadata), webhook: payload } });
@@ -188,11 +203,6 @@ async function processEvent(env: UniversalTelephonyEnv, companyId: string, provi
   return call;
 }
 
-export function cloudTelephonyWebhookUrl(env: UniversalTelephonyEnv, provider: CloudProvider, companyId: string, token: string): string {
-  const origin = text(env.APP_ORIGIN).replace(/\/$/, '');
-  return origin ? `${origin}/api/telephony/${provider}/webhook/${companyId}?token=${encodeURIComponent(token)}` : '';
-}
-
 export async function handleCloudTelephonyWebhook(request: Request, env: UniversalTelephonyEnv, url: URL): Promise<Response | null> {
   const match = url.pathname.match(/^\/api\/telephony\/(binotel|sipuni)\/webhook\/([0-9a-f-]{36})$/i);
   if (!match) return null;
@@ -207,9 +217,11 @@ export async function handleCloudTelephonyWebhook(request: Request, env: Univers
     if (!secureEqual(supplied, expected)) return json({ success: false, error: 'Invalid webhook token' }, 401);
     const payload = await payloadFrom(request, url);
     const call = await processEvent(env, companyId, provider, payload);
+    await markTelephonyProviderStatus(env, companyId, provider, true);
     return json({ success: true, provider, callId: text(call?.id) || null });
   } catch (error) {
     console.error(`${provider} webhook failed`, error);
+    await markTelephonyProviderStatus(env, companyId, provider, false, error).catch(() => undefined);
     return json({ success: false, error: error instanceof Error ? error.message : String(error) }, 500);
   }
 }
