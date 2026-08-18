@@ -1,0 +1,8 @@
+[Unit]
+Description=IMDS Marketing PostgreSQL backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/imds-marketing/repository/infra/backup/backup.sh
