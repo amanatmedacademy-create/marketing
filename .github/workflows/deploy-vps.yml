@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'worker/**'
       - 'server/**'
       - 'services/**'
       - 'supabase/**'
@@ -17,6 +18,7 @@ on:
       - 'package-lock.json'
       - 'tsconfig.worker.json'
       - 'wrangler.jsonc'
+      - '.github/workflows/deploy-vps.yml'
 
 permissions:
   contents: read
@@ -33,7 +35,6 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
-      VPS_PORT: '24'
       CLOUDPAYMENTS_PUBLIC_ID: ${{ secrets.CLOUDPAYMENTS_PUBLIC_ID }}
       CLOUDPAYMENTS_API_SECRET: ${{ secrets.CLOUDPAYMENTS_API_SECRET }}
       IMDS_OAUTH_ENV: ${{ secrets.IMDS_OAUTH_ENV }}
@@ -46,7 +47,6 @@ jobs:
           test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
           test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
           test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
-          test -n "$VPS_PORT" || { echo 'VPS_PORT is missing'; exit 1; }
           test -n "$DEPLOY_SHA" || { echo 'DEPLOY_SHA is missing'; exit 1; }
           command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
 
@@ -86,7 +86,7 @@ jobs:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o "Port=$VPS_PORT")
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           export SSHPASS
           sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/bootstrap-host.sh "$VPS_USER@$VPS_HOST:/tmp/imds-bootstrap.sh"
           sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/install-release.sh "$VPS_USER@$VPS_HOST:/tmp/imds-install-release.sh"
@@ -117,12 +117,12 @@ jobs:
           fi
           umask 077
           printf '%s\n' "$IMDS_OAUTH_ENV" > /tmp/imds-oauth.env
-          if grep -nEv '^[[:space:]]*$|^[[:space:]]*#|^(APP_ORIGIN|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_ADS_DEVELOPER_TOKEN|META_APP_ID|META_APP_SECRET|META_WABA_CONFIG_ID|META_GRAPH_VERSION|META_OAUTH_REDIRECT_URI)=[^[:cntrl:]]*$' /tmp/imds-oauth.env; then
+          if grep -nEv '^[[:space:]]*$|^[[:space:]]*#|^(APP_ORIGIN|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_ADS_DEVELOPER_TOKEN|META_APP_ID|META_APP_SECRET|META_WABA_CONFIG_ID|META_GRAPH_VERSION|META_OAUTH_REDIRECT_URI|BINOTEL_OAUTH_CLIENT_ID|BINOTEL_OAUTH_CLIENT_SECRET|BINOTEL_OAUTH_AUTHORIZE_URL|BINOTEL_OAUTH_TOKEN_URL|BINOTEL_OAUTH_SCOPES|BINOTEL_OAUTH_REDIRECT_URI|BINOTEL_OAUTH_TOKEN_AUTH_METHOD|BINOTEL_OAUTH_AUTHORIZE_PARAMS|BINOTEL_OAUTH_TOKEN_PARAMS)=[^[:cntrl:]]*$' /tmp/imds-oauth.env; then
             echo 'IMDS_OAUTH_ENV contains unsupported keys or invalid lines.'
             rm -f /tmp/imds-oauth.env
             exit 1
           fi
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o "Port=$VPS_PORT")
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           export SSHPASS
           sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-oauth.env "$VPS_USER@$VPS_HOST:/tmp/imds-oauth.env"
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-oauth.env /etc/imds-oauth.env && rm -f /tmp/imds-oauth.env'
@@ -141,7 +141,7 @@ jobs:
           fi
           umask 077
           printf 'CLOUDPAYMENTS_PUBLIC_ID=%s\nCLOUDPAYMENTS_API_SECRET=%s\n' "$CLOUDPAYMENTS_PUBLIC_ID" "$CLOUDPAYMENTS_API_SECRET" > /tmp/imds-cloudpayments.env
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o "Port=$VPS_PORT")
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           export SSHPASS
           sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-cloudpayments.env "$VPS_USER@$VPS_HOST:/tmp/imds-cloudpayments.env"
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-cloudpayments.env /etc/imds-cloudpayments.env && rm -f /tmp/imds-cloudpayments.env'
@@ -153,7 +153,7 @@ jobs:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o "Port=$VPS_PORT")
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
           export SSHPASS
           RELEASE_ID="${DEPLOY_SHA:0:12}"
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "/tmp/imds-install-release.sh /tmp/imds-marketing-release.tgz '$RELEASE_ID'"
