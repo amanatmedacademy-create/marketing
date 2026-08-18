@@ -1,4 +1,5 @@
--- Enable Binotel and Sipuni as first-class tenant telephony providers.
+-- Enable Binotel and Sipuni as first-class tenant telephony providers without
+-- narrowing the integration provider set introduced by earlier modules.
 alter table public.integration_credentials
   drop constraint if exists integration_credentials_provider_check;
 
@@ -10,6 +11,9 @@ alter table public.integration_credentials
     'tiktok'::text,
     'n8n'::text,
     'waba'::text,
+    'google_ads'::text,
+    'ga4'::text,
+    'mis'::text,
     'zadarma'::text,
     'asterisk'::text,
     'freepbx'::text,
