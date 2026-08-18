@@ -16,13 +16,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
       - name: Run billing regression
         id: billing
         shell: bash
         run: |
           set +e
-          npm run test:billing > billing-test.log 2>&1
+          node --test tests/billingCenter.test.mjs > billing-test.log 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
