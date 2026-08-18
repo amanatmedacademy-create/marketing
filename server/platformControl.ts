@@ -20,7 +20,8 @@ export type PlatformBillingState = {
   defaultPaymentMethod: string | null;
 };
 export type PlatformLimitKey = 'clinics' | 'users' | 'leads' | 'openTasks' | 'integrations';
-export type PlatformLimits = Partial<Record<PlatformLimitKey, number>>;
+export type PlatformCommercialLimitKey = PlatformLimitKey | 'branches' | 'whatsapp_channels' | 'waba_accounts' | 'whatsapp_numbers' | 'telephony_channels' | 'call_minutes' | 'transcription_minutes' | 'call_recording_days' | 'ai_requests' | 'automation_runs' | 'storage_gb' | 'meta_ad_accounts' | 'meta_pages' | 'meta_datasets';
+export type PlatformLimits = Partial<Record<PlatformCommercialLimitKey, number>>;
 export type PlatformUsageState = Record<PlatformLimitKey, number>;
 export type PlatformQuotaLevel = 'ok' | 'warning' | 'critical' | 'exceeded';
 export type PlatformQuotaMetric = {
@@ -60,13 +61,27 @@ const statePath = path.join(stateDir, 'entitlements.json');
 const tmpPath = path.join(stateDir, 'entitlements.json.tmp');
 const usageCache = new Map<string, UsageCacheEntry>();
 const usageCacheTtlMs = 10_000;
-const limitKeys: PlatformLimitKey[] = ['clinics', 'users', 'leads', 'openTasks', 'integrations'];
-const entitlementLimitKeys: Array<[string, PlatformLimitKey]> = [
+const limitKeys: PlatformCommercialLimitKey[] = ['clinics', 'users', 'leads', 'openTasks', 'integrations', 'branches', 'whatsapp_channels', 'waba_accounts', 'whatsapp_numbers', 'telephony_channels', 'call_minutes', 'transcription_minutes', 'call_recording_days', 'ai_requests', 'automation_runs', 'storage_gb', 'meta_ad_accounts', 'meta_pages', 'meta_datasets'];
+const entitlementLimitKeys: Array<[string, PlatformCommercialLimitKey]> = [
   ['limits.clinics', 'clinics'], ['marketing.limits.clinics', 'clinics'],
   ['limits.users', 'users'], ['marketing.limits.users', 'users'],
   ['limits.leads', 'leads'], ['marketing.limits.leads', 'leads'],
   ['limits.open_tasks', 'openTasks'], ['marketing.limits.open_tasks', 'openTasks'],
   ['limits.integrations', 'integrations'], ['marketing.limits.integrations', 'integrations'],
+  ['limits.branches', 'branches'], ['marketing.limits.branches', 'branches'],
+  ['limits.whatsapp_channels', 'whatsapp_channels'], ['marketing.limits.whatsapp_channels', 'whatsapp_channels'],
+  ['limits.waba_accounts', 'waba_accounts'], ['marketing.limits.waba_accounts', 'waba_accounts'],
+  ['limits.whatsapp_numbers', 'whatsapp_numbers'], ['marketing.limits.whatsapp_numbers', 'whatsapp_numbers'],
+  ['limits.telephony_channels', 'telephony_channels'], ['marketing.limits.telephony_channels', 'telephony_channels'],
+  ['limits.call_minutes', 'call_minutes'], ['marketing.limits.call_minutes', 'call_minutes'],
+  ['limits.transcription_minutes', 'transcription_minutes'], ['marketing.limits.transcription_minutes', 'transcription_minutes'],
+  ['limits.call_recording_days', 'call_recording_days'], ['marketing.limits.call_recording_days', 'call_recording_days'],
+  ['limits.ai_requests', 'ai_requests'], ['marketing.limits.ai_requests', 'ai_requests'],
+  ['limits.automation_runs', 'automation_runs'], ['marketing.limits.automation_runs', 'automation_runs'],
+  ['limits.storage_gb', 'storage_gb'], ['marketing.limits.storage_gb', 'storage_gb'],
+  ['limits.meta_ad_accounts', 'meta_ad_accounts'], ['marketing.limits.meta_ad_accounts', 'meta_ad_accounts'],
+  ['limits.meta_pages', 'meta_pages'], ['marketing.limits.meta_pages', 'meta_pages'],
+  ['limits.meta_datasets', 'meta_datasets'], ['marketing.limits.meta_datasets', 'meta_datasets'],
 ];
 const quotaLabels: Record<PlatformLimitKey, string> = {
   clinics: 'Клиники', users: 'Пользователи', leads: 'Лиды', openTasks: 'Открытые задачи', integrations: 'Интеграции',
@@ -79,7 +94,7 @@ const routeModules: Array<{ test: (pathname: string) => boolean; module: string 
   { test: (p) => p.startsWith('/api/ads') || p.startsWith('/api/meta'), module: 'marketing.meta-ads' },
   { test: (p) => p.startsWith('/api/analytics') || p.startsWith('/api/conversion') || p.startsWith('/api/web-analytics'), module: 'marketing.analytics' },
   { test: (p) => p.startsWith('/api/automation'), module: 'marketing.automation' },
-  { test: (p) => p.startsWith('/api/transcription') || p.startsWith('/api/voice-transcription'), module: 'marketing.voice-transcription' },
+  { test: (p) => p.startsWith('/api/transcription') || p.startsWith('/api/voice-transcription'), module: 'marketing.call-center' },
   { test: (p) => p.startsWith('/api/funnel') || p.startsWith('/api/deal-workspace') || p.startsWith('/api/leads') || p.startsWith('/api/crm'), module: 'marketing.crm' },
 ];
 
