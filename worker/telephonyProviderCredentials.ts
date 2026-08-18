@@ -3,7 +3,7 @@ import { requireCompanyId } from './tenantScope';
 
 type Row = Record<string, unknown>;
 export type ConfigurableTelephonyProvider = 'asterisk' | 'freepbx' | 'twilio' | 'voximplant' | 'binotel' | 'sipuni';
-type Definition = { required: string[]; secrets: string[]; mapping: Record<string, keyof UniversalTelephonyEnv> };
+type Definition = { required: string[]; secrets: string[]; mapping: Record<string, string> };
 
 const definitions: Record<ConfigurableTelephonyProvider, Definition> = {
   asterisk: { required: ['ariBaseUrl', 'ariUsername', 'ariPassword', 'stasisApp', 'endpointTemplate'], secrets: ['ariPassword'], mapping: { ariBaseUrl: 'ASTERISK_ARI_BASE_URL', ariUsername: 'ASTERISK_ARI_USERNAME', ariPassword: 'ASTERISK_ARI_PASSWORD', stasisApp: 'ASTERISK_STASIS_APP', endpointTemplate: 'ASTERISK_ENDPOINT_TEMPLATE', callerId: 'ASTERISK_CALLER_ID' } },
@@ -28,7 +28,7 @@ async function encrypt(payload: Row, value: string) { const iv = crypto.getRando
 async function decrypt(row: Row, value: string): Promise<Row> { const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(text(row.iv)) }, await key(value), fromB64(text(row.encrypted_payload))); return rec(JSON.parse(new TextDecoder().decode(decrypted))); }
 function provider(value: unknown): ConfigurableTelephonyProvider | null { const normalized = text(value).toLowerCase(); return normalized in definitions ? normalized as ConfigurableTelephonyProvider : null; }
 function randomSecret(): string { const bytes = crypto.getRandomValues(new Uint8Array(32)); return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''); }
-function webhookUrl(env: UniversalTelephonyEnv, selectedProvider: ConfigurableTelephonyProvider, companyId: string, secret: string): string | null { if (selectedProvider !== 'binotel' && selectedProvider !== 'sipuni') return null; const origin = text(env.APP_ORIGIN).replace(/\/$/, ''); return origin && secret ? `${origin}/api/telephony/${selectedProvider}/webhook/${companyId}?token=${encodeURIComponent(secret)}` : null; }
+function webhookUrl(env: UniversalTelephonyEnv, selectedProvider: ConfigurableTelephonyProvider, companyId: string, secret: string): string | null { if (selectedProvider !== 'binotel' && selectedProvider !== 'sipuni') return null; const origin = text((env as unknown as Row).APP_ORIGIN).replace(/\/$/, ''); return origin && secret ? `${origin}/api/telephony/${selectedProvider}/webhook/${companyId}?token=${encodeURIComponent(secret)}` : null; }
 
 async function rows(env: UniversalTelephonyEnv) { const companyId = requireCompanyId(env); return db<Row[]>(env, `integration_credentials?company_id=eq.${encodeURIComponent(companyId)}&user_id=is.null&provider=in.(asterisk,freepbx,twilio,voximplant,binotel,sipuni)&select=*`); }
 function summary(row: Row) { return { provider: text(row.provider), configured: true, status: text(row.status) || 'configured', values: rec(rec(row.config_summary).values), secretFields: rec(rec(row.config_summary).secretFields), lastVerifiedAt: row.last_verified_at || null, lastError: row.last_error || null }; }
