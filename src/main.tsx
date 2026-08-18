@@ -49,6 +49,7 @@ import './auth-palette-final.css';
 import './topbar-runtime-status.css';
 import './schedule-imds-theme.css';
 import './schedule-search-icon-fix.css';
+import './beles-brand.css';
 
 type ThemeMode = 'light' | 'dark';
 
