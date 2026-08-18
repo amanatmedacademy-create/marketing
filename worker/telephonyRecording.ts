@@ -3,12 +3,13 @@ import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 import { zadarmaRequest, type ZadarmaTelephonyEnv } from './zadarmaTelephony';
 
 type Row = Record<string, unknown>;
-export type TelephonyProvider = 'zadarma' | 'asterisk' | 'freepbx' | 'twilio' | 'voximplant' | 'sip';
+export type TelephonyProvider = 'zadarma' | 'asterisk' | 'freepbx' | 'twilio' | 'voximplant' | 'sip' | 'binotel' | 'sipuni';
 export type TelephonyRecordingEnv = Env & TenantScopedEnv & ZadarmaTelephonyEnv;
 
 const BUCKET = 'telephony-recordings';
 const MAX_TRANSCRIPTION_BYTES = 24 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
+const PROVIDERS: TelephonyProvider[] = ['zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip', 'binotel', 'sipuni'];
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
 
 function serviceHeaders(env: TelephonyRecordingEnv, extra: HeadersInit = {}): Headers {
@@ -37,10 +38,10 @@ async function patchCall(env: TelephonyRecordingEnv, companyId: string, callId: 
 
 function providerFor(call: Row): TelephonyProvider {
   const explicit = text(call.telephony_provider).toLowerCase();
-  if (['zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip'].includes(explicit)) return explicit as TelephonyProvider;
+  if (PROVIDERS.includes(explicit as TelephonyProvider)) return explicit as TelephonyProvider;
   const metadata = call.metadata && typeof call.metadata === 'object' && !Array.isArray(call.metadata) ? call.metadata as Row : {};
   const fromMetadata = text(metadata.provider).toLowerCase();
-  if (['zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip'].includes(fromMetadata)) return fromMetadata as TelephonyProvider;
+  if (PROVIDERS.includes(fromMetadata as TelephonyProvider)) return fromMetadata as TelephonyProvider;
   if (text(call.source).toUpperCase() === 'ZADARMA') return 'zadarma';
   return 'sip';
 }
@@ -57,11 +58,24 @@ function extensionFor(contentType: string, url = ''): string {
   return 'mp3';
 }
 
+function privateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:')) return true;
+  const parts = host.split('.').map(Number);
+  if (parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+    const [a, b] = parts;
+    return a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 0;
+  }
+  return false;
+}
+
 function safeHttpsRecordingUrl(raw: unknown, provider: TelephonyProvider): string {
   const value = text(raw);
   if (!value) return '';
   const url = new URL(value);
   if (url.protocol !== 'https:') throw new Error('Recording URL must use HTTPS');
+  if (url.username || url.password || privateHostname(url.hostname)) throw new Error('Недопустимый URL записи телефонии');
   if (provider === 'zadarma' && url.hostname !== 'api.zadarma.com') throw new Error('Недопустимый URL записи Zadarma');
   return url.toString();
 }
