@@ -1,0 +1,47 @@
+name: Apply Fail Closed Control Plane Enforcement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-fail-closed-main.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-fail-closed-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply fail-closed production patch
+        run: python3 scripts/apply-fail-closed-control-plane.py
+      - name: Validate production code
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run test:fail-closed
+          npm run typecheck
+          npm run build
+          git diff --check
+      - name: Commit validated fail-closed enforcement
+        run: |
+          set -euo pipefail
+          git config user.name 'IMDS Automation'
+          git config user.email 'automation@imds.local'
+          git rm .github/workflows/apply-fail-closed-main.yml scripts/apply-fail-closed-control-plane.py
+          git add server/platformControl.ts package.json tests/failClosedEntitlements.test.mjs supabase/migrations/20260818093000_fail_closed_control_plane.sql .github/workflows/ci.yml deploy/vps/install-release.sh
+          git diff --cached --check
+          git commit -m 'enforce fail-closed Control Plane entitlements'
+          git push origin HEAD:main
