@@ -1,0 +1,99 @@
+name: Provision VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_origin:
+        description: Public application origin, for example http://89.207.250.55
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-vps
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      APP_ORIGIN: ${{ inputs.app_origin }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate inputs and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+          test -n "$APP_ORIGIN"
+
+      - name: Install dependencies and build
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+
+      - name: Package reproducible release
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GITHUB_SHA" > dist/deploy-revision.txt
+          tar --exclude=.git --exclude=node_modules --exclude=.env --exclude=.env.local -czf /tmp/imds-marketing-provision.tgz .
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Upload repository release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing-provision.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-provision.tgz"
+
+      - name: Bootstrap and install server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=60)
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "APP_ORIGIN='$APP_ORIGIN' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          rm -rf /opt/imds-marketing/repository
+          mkdir -p /opt/imds-marketing/repository
+          tar -xzf /tmp/imds-marketing-provision.tgz -C /opt/imds-marketing/repository
+          chmod +x /opt/imds-marketing/repository/infra/bootstrap-server.sh
+          chmod +x /opt/imds-marketing/repository/infra/health-check.sh
+          chmod +x /opt/imds-marketing/repository/infra/backup/backup.sh
+          chmod +x /opt/imds-marketing/repository/infra/backup/restore.sh
+          chmod +x /opt/imds-marketing/repository/deploy/vps/install-release.sh
+
+          APP_ORIGIN="$APP_ORIGIN" /opt/imds-marketing/repository/infra/bootstrap-server.sh /opt/imds-marketing/repository
+          /opt/imds-marketing/repository/deploy/vps/install-release.sh /tmp/imds-marketing-provision.tgz "${GITHUB_SHA:0:12}"
+          /opt/imds-marketing/repository/infra/health-check.sh
+          REMOTE
+
+      - name: Verify public application
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 "$APP_ORIGIN/api/health"
+          curl --fail --silent --show-error --max-time 15 "$APP_ORIGIN/integrations" | grep -qi '<html'
