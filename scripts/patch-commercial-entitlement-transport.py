@@ -27,4 +27,10 @@ if old not in s and new not in s:
     raise SystemExit('transcription route anchor missing')
 s = s.replace(old, new, 1)
 
+old = "const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || expiredByDate;"
+new = "const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || status === 'read_only' || expiredByDate;"
+if old not in s and new not in s:
+    raise SystemExit('billing read-only anchor missing')
+s = s.replace(old, new, 1)
+
 p.write_text(s)
