@@ -53,7 +53,21 @@ jobs:
           sshpass -e scp "${SCP_ARGS[@]}" "$VPS_USER@$VPS_HOST:$REMOTE_FILE.sha256" backup/imds-marketing.dump.sha256
           (cd backup && sha256sum -c imds-marketing.dump.sha256)
 
-      - name: Upload encrypted-repository backup artifact
+      - name: Encrypt backup
+        shell: bash
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_ENCRYPTION_KEY" || { echo 'BACKUP_ENCRYPTION_KEY secret is missing'; exit 1; }
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in backup/imds-marketing.dump \
+            -out backup/imds-marketing.dump.enc \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          sha256sum backup/imds-marketing.dump.enc > backup/imds-marketing.dump.enc.sha256
+          rm -f backup/imds-marketing.dump backup/imds-marketing.dump.sha256
+
+      - name: Upload encrypted backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: imds-postgres-backup
