@@ -8,7 +8,6 @@ import { handleCloudTelephonyWebhook } from '../worker/cloudTelephonyWebhooks';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
 import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
 import { handleBillingGatewayRequest } from './billingGateway';
-import { handleBillingControlPlaneRequest } from './billingControlPlane';
 import { enforceGoogleMfaRedirect, handleAccountSecurityGatewayRequest } from './accountSecurityGateway';
 import { enforceBranchQuota } from './branchQuotaGateway';
 
@@ -124,7 +123,7 @@ const server = createServer(async (req, res) => {
 
     // Provider webhooks are authenticated by a tenant-specific secret embedded in
     // their generated callback URL. They must be accepted before user/session and
-    // subscription gates because Binotel/Sipuni call servers do not have an IMDS session.
+    // subscription gates because telephony providers do not have an IMDS session.
     const cloudTelephonyWebhook = await handleCloudTelephonyWebhook(request, env as never, new URL(request.url));
     if (cloudTelephonyWebhook) {
       await sendResponse(res, cloudTelephonyWebhook);
@@ -134,8 +133,6 @@ const server = createServer(async (req, res) => {
 
     const securityResponse = await handleAccountSecurityGatewayRequest(request, env);
     if (securityResponse) { await sendResponse(res, securityResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: securityResponse.status, durationMs: Date.now() - startedAt, accountSecurity: true })); return; }
-    const billingControlResponse = await handleBillingControlPlaneRequest(request, env);
-    if (billingControlResponse) { await sendResponse(res, billingControlResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: billingControlResponse.status, durationMs: Date.now() - startedAt, billingControl: true })); return; }
     const platformResponse = await handlePlatformInternalRequest(request, env);
     if (platformResponse) { await sendResponse(res, platformResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true })); return; }
     const billingResponse = await handleBillingGatewayRequest(request, env);
