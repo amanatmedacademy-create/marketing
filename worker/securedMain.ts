@@ -1,6 +1,7 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
+import { handleBranchManagementRequest } from './branchManagement';
 import { resolveCompanyId } from './companyContext';
 import { handleContactAvatars } from './contactAvatars';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
@@ -89,6 +90,13 @@ export default {
         if (denied) return denied;
 
         forwardedRequest = trustedRequest(cleanRequest, role, user.id);
+
+        if (url.pathname.startsWith('/api/branches')) {
+          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
+          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
+          const response = await handleBranchManagementRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
+          if (response) return response;
+        }
 
         if (url.pathname === '/api/operating-overview') {
           const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
