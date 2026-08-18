@@ -16,7 +16,7 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,9 +53,12 @@ jobs:
           test -f docs/internal/fail-closed-apply-failure.log
           git add docs/internal/fail-closed-apply-failure.log
           git commit -m 'capture fail-closed apply validation failure' || true
+          git fetch origin main
+          git rebase origin/main || true
           git push origin HEAD:main || true
       - name: Commit validated fail-closed enforcement
         if: success()
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'IMDS Automation'
@@ -65,4 +68,10 @@ jobs:
           git add server/platformControl.ts package.json tests/failClosedEntitlements.test.mjs supabase/migrations/20260818093000_fail_closed_control_plane.sql .github/workflows/ci.yml deploy/vps/install-release.sh
           git diff --cached --check
           git commit -m 'enforce fail-closed Control Plane entitlements'
+          git fetch origin main
+          git rebase origin/main
+          npm run test:fail-closed
+          npm run typecheck
+          npm run build
+          git diff --check
           git push origin HEAD:main
