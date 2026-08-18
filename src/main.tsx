@@ -30,7 +30,6 @@ import './imds-screen-normalization.css';
 import './imds-chart-normalization.css';
 import './imds-exact-background.css';
 import './imds-color-legacy-bridge.css';
-import './imds-color-system-final.css';
 import './imds-light-reference.css';
 import './imds-deal-workspace-theme.css';
 import './imds-global-theme-coverage.css';
@@ -49,6 +48,8 @@ import './auth-palette-final.css';
 import './topbar-runtime-status.css';
 import './schedule-imds-theme.css';
 import './schedule-search-icon-fix.css';
+/* Final UI authority: tokens/theme first, then brand and readability overrides. */
+import './imds-color-system-final.css';
 import './beles-brand.css';
 import './ui-readability-final.css';
 
