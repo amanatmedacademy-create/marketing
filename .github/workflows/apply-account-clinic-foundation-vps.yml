@@ -10,6 +10,7 @@ on:
       - 'supabase/migrations/20260818044500_team_invitations_roles.sql'
       - 'supabase/migrations/20260818045000_team_admin_rpcs.sql'
       - 'supabase/migrations/20260818050000_notification_center.sql'
+      - 'supabase/migrations/20260818061000_clinic_timezone.sql'
       - '.github/workflows/apply-account-clinic-foundation-vps.yml'
       - '.github/workflows/publish-runtime-status.yml'
 
@@ -54,7 +55,8 @@ jobs:
             20260818035000_account_clinic_runtime_flows.sql \
             20260818044500_team_invitations_roles.sql \
             20260818045000_team_admin_rpcs.sql \
-            20260818050000_notification_center.sql
+            20260818050000_notification_center.sql \
+            20260818061000_clinic_timezone.sql
           do
             sshpass -e scp "${SSH_ARGS[@]}" "supabase/migrations/$migration" "$VPS_USER@$VPS_HOST:/tmp/$migration"
           done
@@ -75,7 +77,8 @@ jobs:
             /tmp/20260818035000_account_clinic_runtime_flows.sql \
             /tmp/20260818044500_team_invitations_roles.sql \
             /tmp/20260818045000_team_admin_rpcs.sql \
-            /tmp/20260818050000_notification_center.sql
+            /tmp/20260818050000_notification_center.sql \
+            /tmp/20260818061000_clinic_timezone.sql
           do
             test -s "$migration"
             docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
@@ -83,6 +86,8 @@ jobs:
 
           organization_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_organizations') is not null)::int")
           organization_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='crm_companies' and column_name='organization_id'))::int")
+          timezone_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='crm_companies' and column_name='timezone' and is_nullable='NO'))::int")
+          timezone_missing=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.crm_companies where timezone is null or btrim(timezone) = ''")
           create_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_create_clinic(uuid,text,text,uuid)') is not null)::int")
           join_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_join_clinic(uuid,text)') is not null)::int")
           ownership_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_transfer_company_ownership(uuid,uuid,uuid,boolean)') is not null)::int")
@@ -93,6 +98,8 @@ jobs:
 
           test "$organization_table" = "1" || { echo 'imds_organizations missing'; exit 1; }
           test "$organization_column" = "1" || { echo 'organization_id missing'; exit 1; }
+          test "$timezone_column" = "1" || { echo 'clinic timezone missing or nullable'; exit 1; }
+          test "$timezone_missing" = "0" || { echo "clinics without timezone: $timezone_missing"; exit 1; }
           test "$create_rpc" = "1" || { echo 'imds_create_clinic missing'; exit 1; }
           test "$join_rpc" = "1" || { echo 'imds_join_clinic missing'; exit 1; }
           test "$ownership_rpc" = "1" || { echo 'ownership transfer RPC missing'; exit 1; }
@@ -100,8 +107,8 @@ jobs:
           test "$notifications_table" = "1" || { echo 'crm_notifications missing'; exit 1; }
           test "$operator_role" = "1" || { echo 'expanded membership role constraint missing'; exit 1; }
           test "$orphan_count" = "0" || { echo "clinics without organization: $orphan_count"; exit 1; }
-          echo 'ACCOUNT_CLINIC_TEAM_NOTIFICATION_SCHEMA=ok'
-          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql
+          echo 'ACCOUNT_CLINIC_TEAM_NOTIFICATION_TIMEZONE_SCHEMA=ok'
+          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql
           REMOTE
 
       - name: Cleanup
@@ -112,4 +119,4 @@ jobs:
         run: |
           set +e
           export SSHPASS
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql' || true
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql' || true
