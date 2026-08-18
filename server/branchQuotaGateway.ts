@@ -30,7 +30,7 @@ export async function enforceBranchQuota(request: Request, env: Env): Promise<Re
     const role = await resolveTenantMembershipRole({ ...env, CURRENT_COMPANY_ID: companyId } as never, user.id);
     if (role !== 'owner' && role !== 'administrator') return null;
   }
-  const entitlement = await platformEntitlementForTenant(companyId);
+  const entitlement = await platformEntitlementForTenant(companyId, env);
   const limit = entitlement?.limits?.branches;
   if (typeof limit !== 'number') return null;
   const used = await branchCount(env, companyId);
