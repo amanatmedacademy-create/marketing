@@ -46,6 +46,8 @@ jobs:
         run: npm run test:branches
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
+      - name: UI shell and theme smoke regression tests
+        run: npm run test:ui-smoke
       - name: Typecheck
         run: npm run typecheck
       - name: Production build
