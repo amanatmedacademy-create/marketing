@@ -38,7 +38,9 @@ jobs:
           if [ $rc -eq 0 ]; then
             sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y sshpass >/dev/null 2>&1
             export SSHPASS="$VPS_PASSWORD"
-            sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'sudo bash -s' >>/tmp/diag.log 2>&1 <<'REMOTE'
+            success=''
+            for _ in $(seq 1 60); do
+              if sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'sudo bash -s' >>/tmp/diag.log 2>&1 <<'REMOTE'
           set -euo pipefail
           systemctl is-active --quiet imds-marketing.service
           curl -fsS --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
@@ -46,7 +48,12 @@ jobs:
           test -n "$CURRENT"
           grep -q "platformModule: 'marketing.ai'" "$CURRENT/src/MarketingPlatform.tsx"
           grep -q "<MarketingAiPage/>, 'marketing.ai'" "$CURRENT/src/MarketingPlatform.tsx"
+          grep -q "'ai_requests'" "$CURRENT/src/services/platformEntitlements.ts"
           REMOTE
+              then success=1; break; fi
+              sleep 5
+            done
+            test "$success" = 1
             rc=$?
           fi
           mkdir -p docs/internal
@@ -59,3 +66,4 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
           exit 0
+# rerun after deploy workflow convergence fix
