@@ -4,6 +4,7 @@ import path from 'node:path';
 import worker from '../worker/securedMain';
 import { authenticateRequest } from '../worker/auth';
 import { resolveCompanyId } from '../worker/companyContext';
+import { handleCloudTelephonyWebhook } from '../worker/cloudTelephonyWebhooks';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
 import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
 import { handleBillingGatewayRequest } from './billingGateway';
@@ -120,6 +121,17 @@ const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
     const request = await toRequest(req);
+
+    // Provider webhooks are authenticated by a tenant-specific secret embedded in
+    // their generated callback URL. They must be accepted before user/session and
+    // subscription gates because Binotel/Sipuni call servers do not have an IMDS session.
+    const cloudTelephonyWebhook = await handleCloudTelephonyWebhook(request, env as never, new URL(request.url));
+    if (cloudTelephonyWebhook) {
+      await sendResponse(res, cloudTelephonyWebhook);
+      console.log(JSON.stringify({ method: req.method, path: new URL(request.url).pathname, status: cloudTelephonyWebhook.status, durationMs: Date.now() - startedAt, telephonyWebhook: true }));
+      return;
+    }
+
     const securityResponse = await handleAccountSecurityGatewayRequest(request, env);
     if (securityResponse) { await sendResponse(res, securityResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: securityResponse.status, durationMs: Date.now() - startedAt, accountSecurity: true })); return; }
     const billingControlResponse = await handleBillingControlPlaneRequest(request, env);
