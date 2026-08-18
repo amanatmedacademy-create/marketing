@@ -2,12 +2,14 @@ import app from './index';
 import { handleAdManager } from './adManager';
 import { handleAdPreview, type AdPreviewEnv } from './adPreview';
 import { handleAnalytics } from './analytics';
+import { handleAnalyticsQuality } from './analyticsQuality';
 import { correlationId, handleAuditApi, planAudit, recordAudit, recordErrorEvent, requestClient, requestUserId } from './auditLog';
 import { authError, authenticateRequest, handleAuthRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { handleCallCenterChat } from './callCenterChat';
 import { handleCallTranscription, type CallTranscriptionEnv } from './callTranscription';
 import { handleClinicSchedule } from './clinicSchedule';
 import { resolveCompanyId } from './companyContext';
+import { handleCompanySettings } from './companySettings';
 import { handleConversionMatrix } from './conversionMatrix';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
@@ -191,6 +193,10 @@ export default {
       const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
       if (webhookGuard) return webhookGuard;
 
+      const companySettings = await handleCompanySettings(forwardedRequest, runtimeEnv, url);
+      if (companySettings) return companySettings;
+      const analyticsQuality = await handleAnalyticsQuality(forwardedRequest, runtimeEnv, url);
+      if (analyticsQuality) return analyticsQuality;
       const clinicSchedule = await handleClinicSchedule(forwardedRequest, runtimeEnv, url);
       if (clinicSchedule) return clinicSchedule;
       const callTranscription = await handleCallTranscription(forwardedRequest, runtimeEnv, url);
