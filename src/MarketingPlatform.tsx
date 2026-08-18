@@ -189,7 +189,7 @@ function Shell() {
       </Routes>{user.role === 'administrator' && <DataInspectorAutoLayer/>}</div>
     </main>
     <DealWorkspaceHost/>
-    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)/>} 
+    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
   </div>;
 }
 
