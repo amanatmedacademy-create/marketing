@@ -60,6 +60,11 @@ fi
 cd "$RELEASE_DIR"
 npm install --omit=dev --no-audit --no-fund || npm install --no-audit --no-fund
 
+FAIL_CLOSED_MIGRATION="$RELEASE_DIR/supabase/migrations/20260818093000_fail_closed_control_plane.sql"
+if [ -f "$FAIL_CLOSED_MIGRATION" ]; then
+  cat "$FAIL_CLOSED_MIGRATION" | docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing
+fi
+
 nginx -t
 systemctl daemon-reload
 systemctl enable nginx imds-marketing imds-marketing-scheduler

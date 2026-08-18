@@ -272,6 +272,36 @@ async function dataPost(env: PlatformEnv, pathName: string, body: unknown): Prom
   if (!response.ok) throw new Error(`LOCAL_POST_${response.status}:${(await response.text()).slice(0, 300)}`);
 }
 
+type PlatformManagementStatus = 'managed' | 'unmanaged' | 'unknown';
+
+async function dataPatch(env: PlatformEnv, pathName: string, body: unknown): Promise<void> {
+  const config = dataConfig(env);
+  if (!config) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
+  const response = await fetch(`${config.base}/rest/v1/${pathName.replace(/^\/+/, '')}`, {
+    method: 'PATCH',
+    headers: { apikey: config.key, authorization: `Bearer ${config.key}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`LOCAL_PATCH_${response.status}:${(await response.text()).slice(0, 300)}`);
+}
+
+async function platformManagementStatus(tenantId: string, env: PlatformEnv): Promise<PlatformManagementStatus> {
+  try {
+    const rows = await dataRows<Array<{ platform_managed_at?: unknown }>>(
+      env,
+      `crm_companies?id=eq.${encodeURIComponent(tenantId)}&select=platform_managed_at&limit=1`,
+    );
+    if (!rows.length) return 'unknown';
+    return text(rows[0]?.platform_managed_at) ? 'managed' : 'unmanaged';
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function markPlatformManagedTenant(tenantId: string, env: PlatformEnv): Promise<void> {
+  await dataPatch(env, `crm_companies?id=eq.${encodeURIComponent(tenantId)}`, { platform_managed_at: new Date().toISOString() });
+}
+
 async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name: string; slug: string }>> {
   const rows = await dataRows<Company[]>(env, 'crm_companies?select=id,name,slug&order=name.asc&limit=1000');
   return rows.flatMap((row) => {
@@ -432,7 +462,7 @@ export async function platformEntitlementForTenant(tenantId: string): Promise<Pl
   return state.tenants[normalized] || null;
 }
 
-async function applyStandardCommand(command: StandardPlatformCommand): Promise<Response> {
+async function applyStandardCommand(command: StandardPlatformCommand, env: PlatformEnv): Promise<Response> {
   const organizationId = text(command.organizationId) || '';
   const payload = command.payload && typeof command.payload === 'object' ? command.payload : {};
   const tenantId = text(command.externalTenantId) || text(payload.external_tenant_id) || '';
@@ -468,6 +498,7 @@ async function applyStandardCommand(command: StandardPlatformCommand): Promise<R
     billing: billingFromEntitlements(entitlements, current?.billing),
     updatedAt: new Date().toISOString(),
   };
+  await markPlatformManagedTenant(tenantId, env);
   state.tenants[tenantId] = tenant;
   await writeState(state);
   return json({ commandId, status: 'completed', externalTenantId: tenantId, completedAt: new Date().toISOString(), data: { revision: tenant.revision } });
@@ -483,11 +514,11 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
   if (standardCommand && request.method === 'POST') {
     const command = await request.json().catch(() => null) as StandardPlatformCommand | null;
     if (!command) return json({ error: 'INVALID_COMMAND_PAYLOAD' }, 400);
-    return applyStandardCommand(command);
+    return applyStandardCommand(command, env);
   }
 
   if (url.pathname === '/internal/platform/info' && request.method === 'GET') {
-    return json({ product: 'imds-marketing', runtime: 'vps', protocol: 3, pid: process.pid, uptimeSeconds: Math.floor(process.uptime()) });
+    return json({ product: 'imds-marketing', runtime: 'vps', protocol: 3, entitlementMode: 'fail-closed-managed', pid: process.pid, uptimeSeconds: Math.floor(process.uptime()) });
   }
 
   if (url.pathname === '/internal/platform/tenants' && request.method === 'GET') {
@@ -523,6 +554,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
       billing: normalizeBilling(body?.billing) ?? current?.billing,
       updatedAt: new Date().toISOString(),
     };
+    await markPlatformManagedTenant(tenantId, env);
     state.tenants[tenantId] = tenant;
     await writeState(state);
     return json({ applied: true, tenant });
@@ -556,6 +588,14 @@ export async function enforcePlatformEntitlement(request: Request, env: Platform
     const rule = routeModules.find((item) => item.test(url.pathname));
     if (rule && tenant.modules[rule.module] !== true) return json({ error: 'MODULE_DISABLED_BY_PLATFORM', module: rule.module }, 403);
     return null;
+  }
+
+  const managementStatus = await platformManagementStatus(tenantId, env);
+  if (managementStatus === 'managed') {
+    return json({ error: 'PLATFORM_ENTITLEMENT_UNAVAILABLE', retryable: true }, 503);
+  }
+  if (managementStatus === 'unknown') {
+    return json({ error: 'PLATFORM_MANAGEMENT_STATE_UNAVAILABLE', retryable: true }, 503);
   }
 
   const localTrial = await localTrialForTenant(tenantId, env);
