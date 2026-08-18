@@ -34,8 +34,7 @@ alter table public.marketing_calls
   add constraint marketing_calls_telephony_provider_check
   check (telephony_provider in ('zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip', 'binotel', 'sipuni'));
 
-create unique index if not exists marketing_calls_company_provider_pbx_uidx
-  on public.marketing_calls(company_id, telephony_provider, pbx_call_id)
-  where pbx_call_id is not null;
+-- Idempotency is already enforced globally by marketing_calls_company_pbx_call_uidx
+-- on (company_id, pbx_call_id). Reuse it instead of introducing a second overlapping index.
 
 notify pgrst, 'reload schema';
