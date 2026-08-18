@@ -18,6 +18,7 @@
     "test:billing": "node --test tests/billingCenter.test.mjs",
     "test:account-security": "node --test tests/accountSecurity.test.mjs",
     "test:branches": "node --test tests/branchHierarchy.test.mjs",
+    "test:integration-routing": "node --test tests/integrationBranchRouting.test.mjs",
     "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
     "deploy": "bun run build && wrangler deploy"
   },
