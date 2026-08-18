@@ -109,8 +109,6 @@ const googleSupported: GoogleProviderDefinition[] = [
 
 const planned: Array<{ id: CardIntegrationProvider; title: string; description: string }> = [
   { id: 'wazzup', title: 'Wazzup', description: 'WhatsApp и Instagram с историей сообщений.' },
-  { id: 'binotel', title: 'Binotel', description: 'Телефония, записи разговоров и пропущенные звонки.' },
-  { id: 'sipuni', title: 'Sipuni', description: 'Виртуальная АТС и аналитика звонков.' },
 ];
 
 const historyPeriods = [7, 30, 90, 180, 365] as const;
