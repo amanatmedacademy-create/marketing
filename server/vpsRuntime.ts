@@ -5,7 +5,7 @@ import worker from '../worker/securedMain';
 import { authenticateRequest } from '../worker/auth';
 import { resolveCompanyId } from '../worker/companyContext';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
-import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant } from './platformControl';
+import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -16,18 +16,7 @@ const port = Number(process.env.PORT || 8787);
 const appOrigin = (process.env.APP_ORIGIN || '').replace(/\/$/, '');
 
 const contentTypes: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
 };
 
 function safeAssetPath(url: URL): string {
@@ -46,13 +35,7 @@ const assets: AssetFetcher = {
       const info = await stat(filePath);
       if (info.isDirectory()) filePath = path.join(filePath, 'index.html');
       const body = await readFile(filePath);
-      return new Response(body, {
-        status: 200,
-        headers: {
-          'content-type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-          'cache-control': filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable',
-        },
-      });
+      return new Response(body, { status: 200, headers: { 'content-type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'cache-control': filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable' } });
     } catch {
       try {
         const index = path.join(distDir, 'index.html');
@@ -68,24 +51,16 @@ const assets: AssetFetcher = {
 const runtimeValues: Record<string, string | undefined> = { ...process.env };
 const localDbUrl = (runtimeValues.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
 const localServiceKey = (runtimeValues.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
-
 delete runtimeValues.FRONTEND_ADMIN_KEY;
-
 if (localDbUrl && localServiceKey) {
   runtimeValues.SUPABASE_URL = localDbUrl;
   runtimeValues.SUPABASE_SERVICE_ROLE_KEY = localServiceKey;
 }
-
 const env: RuntimeEnv = { ...runtimeValues, ASSETS: assets };
 
 function executionContext(): WorkerExecutionContext {
-  return {
-    waitUntil(task: Promise<unknown>) {
-      void task.catch((error) => console.error('[waitUntil]', error));
-    },
-  };
+  return { waitUntil(task: Promise<unknown>) { void task.catch((error) => console.error('[waitUntil]', error)); } };
 }
-
 async function readBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
@@ -93,13 +68,11 @@ async function readBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
   if (!chunks.length) return undefined;
   return new Uint8Array(Buffer.concat(chunks));
 }
-
 function requestUrl(req: IncomingMessage): string {
   const hostHeader = req.headers.host || `${host}:${port}`;
   const origin = appOrigin || `http://${hostHeader}`;
   return new URL(req.url || '/', `${origin}/`).toString();
 }
-
 async function toRequest(req: IncomingMessage): Promise<Request> {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
@@ -107,22 +80,13 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
     else if (value != null) headers.set(name, value);
   }
   const body = await readBody(req);
-  return new Request(requestUrl(req), {
-    method: req.method || 'GET',
-    headers,
-    body,
-  });
+  return new Request(requestUrl(req), { method: req.method || 'GET', headers, body });
 }
-
 async function sendResponse(res: ServerResponse, response: Response): Promise<void> {
   res.statusCode = response.status;
   response.headers.forEach((value, name) => res.setHeader(name, value));
-  if (!response.body) {
-    res.end();
-    return;
-  }
-  const body = Buffer.from(await response.arrayBuffer());
-  res.end(body);
+  if (!response.body) { res.end(); return; }
+  res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 async function browserEntitlementResponse(request: Request): Promise<Response | null> {
@@ -135,6 +99,7 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
   const tenantId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } as never : env as never, user.id);
   const entitlement = await platformEntitlementForTenant(tenantId);
   const localBilling = entitlement ? null : await localTrialForTenant(tenantId, env);
+  const quota = entitlement ? await platformQuotaSnapshotForTenant(entitlement, env).catch(() => null) : null;
   const payload = entitlement ? {
     managed: true,
     tenantId,
@@ -142,6 +107,8 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
     revision: entitlement.revision,
     productEnabled: entitlement.productEnabled,
     modules: entitlement.modules,
+    limits: entitlement.limits || {},
+    quota,
     billing: entitlement.billing || null,
     updatedAt: entitlement.updatedAt,
   } : {
@@ -151,6 +118,8 @@ async function browserEntitlementResponse(request: Request): Promise<Response | 
     revision: null,
     productEnabled: localBilling?.subscriptionStatus !== 'expired' && localBilling?.subscriptionStatus !== 'suspended',
     modules: {},
+    limits: {},
+    quota: null,
     billing: localBilling,
     updatedAt: null,
   };
@@ -161,28 +130,12 @@ const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
     const request = await toRequest(req);
-
     const platformResponse = await handlePlatformInternalRequest(request, env);
-    if (platformResponse) {
-      await sendResponse(res, platformResponse);
-      console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true }));
-      return;
-    }
-
+    if (platformResponse) { await sendResponse(res, platformResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true })); return; }
     const browserEntitlement = await browserEntitlementResponse(request);
-    if (browserEntitlement) {
-      await sendResponse(res, browserEntitlement);
-      console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' }));
-      return;
-    }
-
+    if (browserEntitlement) { await sendResponse(res, browserEntitlement); console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' })); return; }
     const entitlementDenied = await enforcePlatformEntitlement(request, env);
-    if (entitlementDenied) {
-      await sendResponse(res, entitlementDenied);
-      console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' }));
-      return;
-    }
-
+    if (entitlementDenied) { await sendResponse(res, entitlementDenied); console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' })); return; }
     const response = await worker.fetch(request, env as never, executionContext());
     await sendResponse(res, response);
     console.log(JSON.stringify({ method: req.method, path: req.url, status: response.status, durationMs: Date.now() - startedAt }));
@@ -194,10 +147,5 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, host, () => {
-  console.log(`IMDS Marketing VPS runtime listening on http://${host}:${port}`);
-});
-
-for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-  process.on(signal, () => server.close(() => process.exit(0)));
-}
+server.listen(port, host, () => console.log(`IMDS Marketing VPS runtime listening on http://${host}:${port}`));
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => server.close(() => process.exit(0)));

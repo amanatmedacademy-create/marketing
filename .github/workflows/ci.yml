@@ -45,6 +45,9 @@ jobs:
       - name: Operating overview regression tests
         run: npm run test:operating-overview
 
+      - name: Quota enforcement regression tests
+        run: npm run test:quotas
+
       - name: Typecheck
         run: npm run typecheck
 

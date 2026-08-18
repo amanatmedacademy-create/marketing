@@ -19,18 +19,32 @@ export type PlatformBillingState = {
   paymentMethods: PlatformPaymentMethod[];
   defaultPaymentMethod: string | null;
 };
+export type PlatformLimitKey = 'clinics' | 'users' | 'leads' | 'openTasks' | 'integrations';
+export type PlatformLimits = Partial<Record<PlatformLimitKey, number>>;
+export type PlatformUsageState = Record<PlatformLimitKey, number>;
+export type PlatformQuotaLevel = 'ok' | 'warning' | 'critical' | 'exceeded';
+export type PlatformQuotaMetric = {
+  key: PlatformLimitKey;
+  used: number;
+  limit: number;
+  remaining: number;
+  percent: number;
+  level: PlatformQuotaLevel;
+  enforcement: 'hard' | 'soft';
+};
+export type PlatformQuotaSnapshot = { usage: PlatformUsageState; quotas: PlatformQuotaMetric[] };
 export type PlatformEntitlement = {
   organizationId: string;
   tenantId: string;
   revision: number;
   productEnabled: boolean;
   modules: Record<string, boolean>;
+  limits?: PlatformLimits;
   billing?: PlatformBillingState;
   updatedAt: string;
 };
 type StateFile = { version: 1; tenants: Record<string, PlatformEntitlement> };
 type Company = { id?: unknown; name?: unknown; slug?: unknown };
-
 type StandardPlatformCommand = {
   commandId?: string;
   command?: string;
@@ -39,9 +53,24 @@ type StandardPlatformCommand = {
   payload?: Record<string, unknown>;
 };
 
+type UsageCacheEntry = { expiresAt: number; usage: PlatformUsageState };
+
 const stateDir = process.env.IMDS_PLATFORM_STATE_DIR || '/opt/imds-marketing/control';
 const statePath = path.join(stateDir, 'entitlements.json');
 const tmpPath = path.join(stateDir, 'entitlements.json.tmp');
+const usageCache = new Map<string, UsageCacheEntry>();
+const usageCacheTtlMs = 10_000;
+const limitKeys: PlatformLimitKey[] = ['clinics', 'users', 'leads', 'openTasks', 'integrations'];
+const entitlementLimitKeys: Array<[string, PlatformLimitKey]> = [
+  ['limits.clinics', 'clinics'], ['marketing.limits.clinics', 'clinics'],
+  ['limits.users', 'users'], ['marketing.limits.users', 'users'],
+  ['limits.leads', 'leads'], ['marketing.limits.leads', 'leads'],
+  ['limits.open_tasks', 'openTasks'], ['marketing.limits.open_tasks', 'openTasks'],
+  ['limits.integrations', 'integrations'], ['marketing.limits.integrations', 'integrations'],
+];
+const quotaLabels: Record<PlatformLimitKey, string> = {
+  clinics: 'Клиники', users: 'Пользователи', leads: 'Лиды', openTasks: 'Открытые задачи', integrations: 'Интеграции',
+};
 
 const routeModules: Array<{ test: (pathname: string) => boolean; module: string }> = [
   { test: (p) => p.startsWith('/api/tasks'), module: 'marketing.tasks' },
@@ -93,6 +122,38 @@ function text(value: unknown): string | null {
 
 function bool(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
+}
+
+function numericLimit(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.floor(parsed);
+}
+
+function limitsFromEntitlements(entitlements: Record<string, unknown>, fallback: PlatformLimits = {}): PlatformLimits {
+  const next: PlatformLimits = { ...fallback };
+  for (const [externalKey, key] of entitlementLimitKeys) {
+    if (!(externalKey in entitlements)) continue;
+    if (entitlements[externalKey] === null) {
+      delete next[key];
+      continue;
+    }
+    const value = numericLimit(entitlements[externalKey]);
+    if (value !== null) next[key] = value;
+  }
+  return next;
+}
+
+function normalizeLimits(value: unknown): PlatformLimits | undefined {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const next: PlatformLimits = {};
+  for (const key of limitKeys) {
+    const value = numericLimit(raw[key]);
+    if (value !== null) next[key] = value;
+  }
+  return next;
 }
 
 function paymentMethods(value: unknown): PlatformPaymentMethod[] {
@@ -149,27 +210,55 @@ function billingDenied(billing: PlatformBillingState | undefined, method: string
   const accessEnd = billing.accessEndsAt ? Date.parse(billing.accessEndsAt) : NaN;
   const expiredByDate = Number.isFinite(accessEnd) && accessEnd <= Date.now();
   const readOnlyRequest = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-
-  // past_due is a warning state. The platform can move it to grace_period/suspended
-  // when write access must actually change.
   if (status === 'past_due') return null;
-
   const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || expiredByDate;
   if (!locked || readOnlyRequest) return null;
   if (status === 'suspended') return json({ error: 'SUBSCRIPTION_SUSPENDED', readOnly: true, billing }, 403);
   return json({ error: 'SUBSCRIPTION_READ_ONLY', readOnly: true, billing }, 402);
 }
 
-async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name: string; slug: string }>> {
+function dataConfig(env: PlatformEnv): { base: string; key: string } | null {
   const base = (env.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
   const key = (env.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
-  if (!base || !key) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
-  const response = await fetch(`${base}/rest/v1/crm_companies?select=id,name,slug&order=name.asc&limit=1000`, {
-    headers: { apikey: key, authorization: `Bearer ${key}` },
+  return base && key ? { base, key } : null;
+}
+
+async function dataRows<T>(env: PlatformEnv, pathName: string): Promise<T> {
+  const config = dataConfig(env);
+  if (!config) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
+  const response = await fetch(`${config.base}/rest/v1/${pathName.replace(/^\/+/, '')}`, {
+    headers: { apikey: config.key, authorization: `Bearer ${config.key}`, 'content-type': 'application/json' },
   });
   const raw = await response.text();
-  if (!response.ok) throw new Error(`COMPANY_LIST_${response.status}:${raw.slice(0, 300)}`);
-  const rows = (raw ? JSON.parse(raw) : []) as Company[];
+  if (!response.ok) throw new Error(`LOCAL_DATA_${response.status}:${raw.slice(0, 300)}`);
+  return (raw ? JSON.parse(raw) : null) as T;
+}
+
+async function dataCount(env: PlatformEnv, pathName: string): Promise<number> {
+  const config = dataConfig(env);
+  if (!config) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
+  const response = await fetch(`${config.base}/rest/v1/${pathName.replace(/^\/+/, '')}`, {
+    method: 'HEAD',
+    headers: { apikey: config.key, authorization: `Bearer ${config.key}`, prefer: 'count=exact' },
+  });
+  if (!response.ok) throw new Error(`LOCAL_COUNT_${response.status}`);
+  const total = Number((response.headers.get('content-range') || '').split('/').pop());
+  return Number.isFinite(total) ? total : 0;
+}
+
+async function dataPost(env: PlatformEnv, pathName: string, body: unknown): Promise<void> {
+  const config = dataConfig(env);
+  if (!config) throw new Error('LOCAL_DATA_NOT_CONFIGURED');
+  const response = await fetch(`${config.base}/rest/v1/${pathName.replace(/^\/+/, '')}`, {
+    method: 'POST',
+    headers: { apikey: config.key, authorization: `Bearer ${config.key}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`LOCAL_POST_${response.status}:${(await response.text()).slice(0, 300)}`);
+}
+
+async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name: string; slug: string }>> {
+  const rows = await dataRows<Company[]>(env, 'crm_companies?select=id,name,slug&order=name.asc&limit=1000');
   return rows.flatMap((row) => {
     const id = typeof row.id === 'string' ? row.id.trim() : '';
     const name = typeof row.name === 'string' ? row.name.trim() : '';
@@ -178,14 +267,128 @@ async function listCompanies(env: PlatformEnv): Promise<Array<{ id: string; name
   });
 }
 
+async function organizationIdForTenant(tenantId: string, env: PlatformEnv): Promise<string | null> {
+  const rows = await dataRows<Array<{ organization_id?: unknown }>>(env, `crm_companies?id=eq.${encodeURIComponent(tenantId)}&select=organization_id&limit=1`).catch(() => []);
+  return text(rows[0]?.organization_id);
+}
+
+export async function platformUsageForTenant(tenantId: string, env: PlatformEnv, organizationId?: string | null, fresh = false): Promise<PlatformUsageState> {
+  const normalized = tenantId.trim();
+  if (!normalized) return { clinics: 0, users: 0, leads: 0, openTasks: 0, integrations: 0 };
+  const cached = usageCache.get(normalized);
+  if (!fresh && cached && cached.expiresAt > Date.now()) return cached.usage;
+  const orgId = organizationId || await organizationIdForTenant(normalized, env);
+  const [clinics, users, leads, openTasks, integrations] = await Promise.all([
+    orgId ? dataCount(env, `crm_companies?organization_id=eq.${encodeURIComponent(orgId)}&select=id&limit=1`).catch(() => 1) : Promise.resolve(1),
+    dataCount(env, `crm_company_members?company_id=eq.${encodeURIComponent(normalized)}&status=eq.active&select=id&limit=1`).catch(() => 0),
+    dataCount(env, `marketing_leads?company_id=eq.${encodeURIComponent(normalized)}&select=id&limit=1`).catch(() => 0),
+    dataCount(env, `crm_tasks?company_id=eq.${encodeURIComponent(normalized)}&source=eq.work_tasks&status=not.in.(done,cancelled)&select=id&limit=1`).catch(() => 0),
+    dataCount(env, `integration_credentials?company_id=eq.${encodeURIComponent(normalized)}&user_id=is.null&status=in.(connected,active,configured,verified)&select=id&limit=1`).catch(() => 0),
+  ]);
+  const usage = { clinics, users, leads, openTasks, integrations };
+  usageCache.set(normalized, { expiresAt: Date.now() + usageCacheTtlMs, usage });
+  return usage;
+}
+
+function quotaLevel(used: number, limit: number): PlatformQuotaLevel {
+  const percent = limit <= 0 ? 100 : used * 100 / limit;
+  if (percent >= 100) return 'exceeded';
+  if (percent >= 90) return 'critical';
+  if (percent >= 80) return 'warning';
+  return 'ok';
+}
+
+export async function platformQuotaSnapshotForTenant(tenant: PlatformEntitlement, env: PlatformEnv, fresh = false): Promise<PlatformQuotaSnapshot> {
+  const usage = await platformUsageForTenant(tenant.tenantId, env, tenant.organizationId, fresh);
+  const quotas = limitKeys.flatMap((key): PlatformQuotaMetric[] => {
+    const limit = tenant.limits?.[key];
+    if (typeof limit !== 'number') return [];
+    const used = usage[key];
+    return [{
+      key,
+      used,
+      limit,
+      remaining: Math.max(0, limit - used),
+      percent: limit <= 0 ? 100 : Math.round(used * 1000 / limit) / 10,
+      level: quotaLevel(used, limit),
+      enforcement: key === 'leads' ? 'soft' : 'hard',
+    }];
+  });
+  return { usage, quotas };
+}
+
+async function pendingInvitationCount(tenantId: string, env: PlatformEnv): Promise<number> {
+  return dataCount(env, `crm_company_invitations?company_id=eq.${encodeURIComponent(tenantId)}&status=eq.pending&select=id&limit=1`).catch(() => 0);
+}
+
+async function integrationExistsForConfig(pathname: string, tenantId: string, env: PlatformEnv): Promise<boolean> {
+  const match = pathname.match(/^\/api\/integrations\/config\/([^/]+)$/);
+  if (!match) return false;
+  const provider = decodeURIComponent(match[1]);
+  const rows = await dataRows<Array<{ id?: unknown }>>(env, `integration_credentials?company_id=eq.${encodeURIComponent(tenantId)}&user_id=is.null&provider=eq.${encodeURIComponent(provider)}&select=id&limit=1`).catch(() => []);
+  return rows.length > 0;
+}
+
+function quotaKeyForRequest(pathname: string, method: string): PlatformLimitKey | null {
+  if (method === 'POST' && pathname === '/api/clinics') return 'clinics';
+  if (method === 'POST' && pathname === '/api/leads') return 'leads';
+  if (method === 'POST' && pathname === '/api/tasks') return 'openTasks';
+  if (method === 'POST' && pathname === '/api/admin/users/invitations') return 'users';
+  if (method === 'POST' && /^\/api\/admin\/users\/onboarding\/[^/]+\/approve$/.test(pathname)) return 'users';
+  if ((method === 'POST' || method === 'PUT') && /^\/api\/integrations\/config\/[^/]+$/.test(pathname)) return 'integrations';
+  return null;
+}
+
+async function quotaDenied(request: Request, tenant: PlatformEntitlement, env: PlatformEnv): Promise<Response | null> {
+  const url = new URL(request.url);
+  const key = quotaKeyForRequest(url.pathname, request.method.toUpperCase());
+  if (!key || key === 'leads') return null;
+  const limit = tenant.limits?.[key];
+  if (typeof limit !== 'number') return null;
+  if (key === 'integrations' && await integrationExistsForConfig(url.pathname, tenant.tenantId, env)) return null;
+  const snapshot = await platformQuotaSnapshotForTenant(tenant, env, true);
+  let used = snapshot.usage[key];
+  if (key === 'users' && url.pathname === '/api/admin/users/invitations') used += await pendingInvitationCount(tenant.tenantId, env);
+  if (used < limit) return null;
+  return json({
+    error: 'QUOTA_EXCEEDED',
+    quota: { key, used, limit, remaining: 0, enforcement: 'hard' },
+    upgradeRequired: true,
+  }, 403);
+}
+
+export async function syncQuotaNotificationsForUser(tenantId: string, userId: string, snapshot: PlatformQuotaSnapshot, env: PlatformEnv): Promise<void> {
+  for (const quota of snapshot.quotas) {
+    if (quota.level === 'ok') continue;
+    const threshold = quota.level === 'exceeded' ? 100 : quota.level === 'critical' ? 90 : 80;
+    const dedupeKey = `quota:${quota.key}:${quota.limit}:${threshold}`;
+    const found = await dataRows<Array<{ id?: unknown }>>(env, `crm_notifications?company_id=eq.${encodeURIComponent(tenantId)}&user_id=eq.${encodeURIComponent(userId)}&dedupe_key=eq.${encodeURIComponent(dedupeKey)}&select=id&limit=1`).catch(() => []);
+    if (found.length) continue;
+    const title = quota.level === 'exceeded' ? `Лимит исчерпан: ${quotaLabels[quota.key]}` : `Использовано ${threshold}% лимита: ${quotaLabels[quota.key]}`;
+    const body = quota.enforcement === 'hard'
+      ? `${quota.used} из ${quota.limit}. При достижении лимита новые операции этого типа блокируются до увеличения квоты.`
+      : `${quota.used} из ${quota.limit}. Входящие лиды продолжают сохраняться, но требуется увеличить квоту.`;
+    await dataPost(env, 'crm_notifications', {
+      company_id: tenantId,
+      user_id: userId,
+      type: 'billing.quota',
+      severity: quota.level === 'exceeded' ? 'error' : 'warning',
+      title,
+      body,
+      action_url: '/settings?tab=subscription',
+      dedupe_key: dedupeKey,
+      metadata: { key: quota.key, used: quota.used, limit: quota.limit, threshold, enforcement: quota.enforcement },
+    }).catch(() => undefined);
+  }
+}
+
 export async function localTrialForTenant(tenantId: string, env: PlatformEnv): Promise<PlatformBillingState | null> {
   const normalized = tenantId.trim();
-  const base = (env.IMDS_LOCAL_DB_URL || '').trim().replace(/\/$/, '');
-  const key = (env.IMDS_LOCAL_SERVICE_ROLE_KEY || '').trim();
-  if (!normalized || !base || !key) return null;
-  const response = await fetch(`${base}/rest/v1/rpc/imds_marketing_trial_state`, {
+  const config = dataConfig(env);
+  if (!normalized || !config) return null;
+  const response = await fetch(`${config.base}/rest/v1/rpc/imds_marketing_trial_state`, {
     method: 'POST',
-    headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    headers: { apikey: config.key, authorization: `Bearer ${config.key}`, 'content-type': 'application/json' },
     body: JSON.stringify({ target_company_id: normalized }),
   });
   if (!response.ok) return null;
@@ -230,7 +433,7 @@ async function applyStandardCommand(command: StandardPlatformCommand): Promise<R
     : {};
   const modules = { ...(current?.modules || {}) };
   for (const [key, value] of Object.entries(entitlements)) {
-    if (key.startsWith('marketing.') && bool(value) !== null) modules[key] = value === true;
+    if (key.startsWith('marketing.') && !key.startsWith('marketing.limits.') && bool(value) !== null) modules[key] = value === true;
   }
 
   let productEnabled = current?.productEnabled ?? true;
@@ -246,6 +449,7 @@ async function applyStandardCommand(command: StandardPlatformCommand): Promise<R
     revision: (current?.revision || 0) + 1,
     productEnabled,
     modules,
+    limits: limitsFromEntitlements(entitlements, current?.limits || {}),
     billing: billingFromEntitlements(entitlements, current?.billing),
     updatedAt: new Date().toISOString(),
   };
@@ -268,7 +472,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
   }
 
   if (url.pathname === '/internal/platform/info' && request.method === 'GET') {
-    return json({ product: 'imds-marketing', runtime: 'vps', protocol: 2, pid: process.pid, uptimeSeconds: Math.floor(process.uptime()) });
+    return json({ product: 'imds-marketing', runtime: 'vps', protocol: 3, pid: process.pid, uptimeSeconds: Math.floor(process.uptime()) });
   }
 
   if (url.pathname === '/internal/platform/tenants' && request.method === 'GET') {
@@ -300,6 +504,7 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
       revision,
       productEnabled,
       modules,
+      limits: normalizeLimits(body?.limits) ?? current?.limits ?? {},
       billing: normalizeBilling(body?.billing) ?? current?.billing,
       updatedAt: new Date().toISOString(),
     };
@@ -314,11 +519,12 @@ export async function handlePlatformInternalRequest(request: Request, env: Platf
 export async function enforcePlatformEntitlement(request: Request, env: PlatformEnv = process.env): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
+  const method = request.method.toUpperCase();
   if (url.pathname === '/api/health'
     || url.pathname === '/api/platform/entitlements'
     || url.pathname.startsWith('/api/auth/')
     || url.pathname.startsWith('/api/account/')
-    || url.pathname === '/api/clinics'
+    || (url.pathname === '/api/clinics' && (method === 'GET' || method === 'HEAD'))
     || url.pathname === '/api/clinics/join'
     || url.pathname.startsWith('/api/webhooks/')
     || url.pathname.startsWith('/api/public/')) return null;
@@ -328,15 +534,17 @@ export async function enforcePlatformEntitlement(request: Request, env: Platform
   const tenant = await platformEntitlementForTenant(tenantId);
   if (tenant) {
     if (!tenant.productEnabled) return json({ error: 'PRODUCT_DISABLED_BY_PLATFORM', billing: tenant.billing || null }, 403);
-    const billingAccessDenied = billingDenied(tenant.billing, request.method);
+    const billingAccessDenied = billingDenied(tenant.billing, method);
     if (billingAccessDenied) return billingAccessDenied;
+    const quotaAccessDenied = await quotaDenied(request, tenant, env);
+    if (quotaAccessDenied) return quotaAccessDenied;
     const rule = routeModules.find((item) => item.test(url.pathname));
     if (rule && tenant.modules[rule.module] !== true) return json({ error: 'MODULE_DISABLED_BY_PLATFORM', module: rule.module }, 403);
     return null;
   }
 
   const localTrial = await localTrialForTenant(tenantId, env);
-  const localTrialDenied = billingDenied(localTrial || undefined, request.method);
+  const localTrialDenied = billingDenied(localTrial || undefined, method);
   if (localTrialDenied) return localTrialDenied;
   return null;
 }
