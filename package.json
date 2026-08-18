@@ -19,6 +19,7 @@
     "test:account-security": "node --test tests/accountSecurity.test.mjs",
     "test:branches": "node --test tests/branchHierarchy.test.mjs",
     "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
+    "test:ui-smoke": "node --test tests/uiShellSmoke.test.mjs",
     "deploy": "bun run build && wrangler deploy",
     "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },
