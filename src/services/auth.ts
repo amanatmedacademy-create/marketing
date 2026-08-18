@@ -48,7 +48,7 @@ export async function currentSession(): Promise<StoredSession | null> {
 
 export async function signInWithPassword(email: string, password: string, remember = true): Promise<AuthLoginResult> {
   const payload = await authJson<AuthSessionResponse | MfaChallengeResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: email.trim().toLowerCase(), password, remember }) });
-  if ('mfa_required' in payload && payload.mfa_required) return { mfaRequired: true, mfaToken: payload.mfa_token };
+  if ('mfa_required' in payload) return { mfaRequired: true, mfaToken: payload.mfa_token };
   if (!payload.access_token) throw new Error('Сервер не вернул сессию');
   storeAuthSession(payload); return { mfaRequired: false };
 }
