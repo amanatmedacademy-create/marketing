@@ -23,6 +23,12 @@ function trialRemaining(value: string | null) {
 
 const quotaLabels: Record<string, string> = { clinics: 'клиник', users: 'пользователей', leads: 'лидов', openTasks: 'открытых задач', integrations: 'интеграций' };
 
+function normalizedStatus(value: string | null | undefined) {
+  if (value === 'cancelled') return 'canceled';
+  if (value === 'grace_period') return 'grace';
+  return value || '';
+}
+
 export default function SubscriptionStatusLayer({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [state, setState] = useState<PlatformEntitlements | null>(null);
@@ -51,13 +57,14 @@ export default function SubscriptionStatusLayer({ children }: { children: ReactN
   }, [user.companyId]);
 
   const billing = state?.billing ?? null;
+  const status = normalizedStatus(billing?.subscriptionStatus);
   const readOnly = useMemo(() => {
     if (!billing) return false;
     const accessEnd = billing.accessEndsAt ? new Date(billing.accessEndsAt).getTime() : NaN;
     const expiredByDate = Number.isFinite(accessEnd) && accessEnd <= Date.now();
-    return ['expired', 'cancelled', 'suspended'].includes(billing.subscriptionStatus || '') || expiredByDate;
-  }, [billing]);
-  const paymentWarning = billing?.subscriptionStatus === 'past_due';
+    return ['read_only', 'expired', 'canceled', 'suspended'].includes(status) || expiredByDate;
+  }, [billing, status]);
+  const paymentWarning = ['pending_payment', 'past_due', 'grace'].includes(status);
   const quotaWarning = useMemo(() => {
     const quotas = state?.quota?.quotas || [];
     return [...quotas]
@@ -65,18 +72,18 @@ export default function SubscriptionStatusLayer({ children }: { children: ReactN
       .sort((a, b) => b.percent - a.percent)[0] || null;
   }, [state?.quota]);
 
-  const statusText = billing?.subscriptionStatus === 'trial'
-    ? `Trial · осталось ${trialRemaining(billing.trialEndsAt) || '—'}`
-    : billing?.subscriptionStatus === 'active'
-      ? `Подписка · до ${formatDate(billing.accessEndsAt ?? billing.periodEndsAt) || 'без даты'}`
-      : billing?.subscriptionStatus === 'grace_period'
-        ? `Grace · до ${formatDate(billing.graceEndsAt ?? billing.accessEndsAt) || '—'}`
+  const statusText = status === 'trial'
+    ? `Trial · осталось ${trialRemaining(billing?.trialEndsAt || null) || '—'}`
+    : ['active', 'free', 'beta'].includes(status)
+      ? `Подписка · до ${formatDate(billing?.accessEndsAt ?? billing?.periodEndsAt ?? null) || 'без даты'}`
+      : status === 'grace'
+        ? `Grace · до ${formatDate(billing?.graceEndsAt ?? billing?.accessEndsAt ?? null) || '—'}`
         : null;
 
   return <>
     {children}
-    {readOnly && billing && <div className="subscription-state-banner subscription-state-banner--locked" role="status"><LockKeyhole size={17}/><div><strong>Режим только для чтения</strong><span>{billing.subscriptionStatus === 'suspended' ? 'Подписка приостановлена.' : 'Срок доступа закончился.'} Данные сохранены; просмотр остаётся доступным, изменения будут недоступны до продления.</span></div>{billing.paymentMethods.length > 0 && <span className="subscription-state-banner__payment"><CreditCard size={14}/>{billing.paymentMethods[0].displayName}</span>}</div>}
-    {paymentWarning && billing && <div className="subscription-state-banner subscription-state-banner--warning" role="status"><TriangleAlert size={17}/><div><strong>Требуется оплата</strong><span>Есть задолженность по подписке. Проверьте Billing Center до окончания льготного периода.</span></div></div>}
+    {readOnly && billing && <div className="subscription-state-banner subscription-state-banner--locked" role="status"><LockKeyhole size={17}/><div><strong>Режим только для чтения</strong><span>{status === 'suspended' ? 'Подписка приостановлена.' : 'Коммерческий доступ ограничен.'} Данные сохранены; просмотр остаётся доступным, изменения будут недоступны до восстановления подписки в IMDS Control Center.</span></div>{(billing.paymentMethods?.length ?? 0) > 0 && <span className="subscription-state-banner__payment"><CreditCard size={14}/>{billing.paymentMethods[0].displayName}</span>}</div>}
+    {paymentWarning && billing && <div className="subscription-state-banner subscription-state-banner--warning" role="status"><TriangleAlert size={17}/><div><strong>{status === 'pending_payment' ? 'Ожидается оплата' : 'Требуется оплата'}</strong><span>{status === 'grace' ? `Льготный период действует до ${formatDate(billing.graceEndsAt ?? billing.accessEndsAt) || 'указанной даты'}.` : 'Проверьте счёт и статус оплаты в разделе «Тариф и оплата».'}</span></div></div>}
     {!readOnly && quotaWarning && <div className="subscription-state-banner subscription-state-banner--warning" role="status"><TriangleAlert size={17}/><div><strong>{quotaWarning.level === 'exceeded' ? 'Лимит достигнут' : `Использовано ${Math.floor(quotaWarning.percent)}% лимита`}</strong><span>{quotaLabels[quotaWarning.key] || quotaWarning.key}: {quotaWarning.used} из {quotaWarning.limit}. {quotaWarning.enforcement === 'hard' && quotaWarning.level === 'exceeded' ? 'Новые операции этого типа заблокированы до увеличения квоты.' : quotaWarning.enforcement === 'soft' ? 'Данные продолжают приниматься, но квоту нужно увеличить.' : 'Рекомендуется увеличить квоту заранее.'}</span></div></div>}
     {statusText && !readOnly && !paymentWarning && !quotaWarning && <div title="Статус подписки BELES" className="subscription-status-pill"><TimerReset size={15}/><span>{statusText}</span></div>}
   </>;
