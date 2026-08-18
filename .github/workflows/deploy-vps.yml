@@ -40,6 +40,9 @@ jobs:
       IMDS_OAUTH_ENV: ${{ secrets.IMDS_OAUTH_ENV }}
       DEPLOY_SHA: ${{ github.sha }}
     steps:
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
       - name: Validate deployment access
         shell: bash
         run: |
