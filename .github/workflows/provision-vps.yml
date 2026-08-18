@@ -7,6 +7,11 @@ on:
         description: Public application origin, for example http://89.207.250.55
         required: true
         type: string
+      ssh_port:
+        description: SSH port on target VPS
+        required: true
+        default: '22'
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +29,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       APP_ORIGIN: ${{ inputs.app_origin }}
+      SSH_PORT: ${{ inputs.ssh_port }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +46,7 @@ jobs:
           test -n "$VPS_USER"
           test -n "$VPS_PASSWORD"
           test -n "$APP_ORIGIN"
+          test -n "$SSH_PORT"
 
       - name: Install dependencies and build
         run: |
@@ -64,8 +71,8 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing-provision.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-provision.tgz"
+          SCP_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -P "$SSH_PORT")
+          sshpass -e scp "${SCP_ARGS[@]}" /tmp/imds-marketing-provision.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-provision.tgz"
 
       - name: Bootstrap and install server
         shell: bash
@@ -74,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=60)
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=60 -p "$SSH_PORT")
           sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "APP_ORIGIN='$APP_ORIGIN' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
           rm -rf /opt/imds-marketing/repository
