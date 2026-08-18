@@ -13,6 +13,15 @@ import { handleCompanySettings } from './companySettings';
 import { handleConversionMatrix } from './conversionMatrix';
 import { hydrateIntegrationEnv } from './credentials';
 import { handleDealWorkspace } from './dealWorkspace';
+import {
+  handleBranchScopedMarketingData,
+  integrationRoutingDiagnostics,
+  prepareInboundIntegrationRoute,
+  prepareManualIntegrationRoute,
+  releaseIntegrationRouteLease,
+  runBranchRoutedScheduledSync,
+  type RouteLease,
+} from './integrationBranchRouting';
 import { handleLeadCaptureRequest, type LeadCaptureEnv } from './leadCapture';
 import { handleMarketingChat } from './marketingChat';
 import { handleMetaAdsetMetrics } from './metaAdsetMetrics';
@@ -26,7 +35,7 @@ import { handleMetaSelectionRequest, type MetaSelectionEnv } from './metaSelecti
 import { guardMetaSignedWebhook } from './metaWebhookGuard';
 import { handleOperationsRequest } from './operations';
 import { handleSalesFunnel } from './salesFunnel';
-import { handleTenantSyncRequest, runTenantScheduledSync, type TenantSyncEnv } from './tenantSync';
+import { handleTenantSyncRequest, type TenantSyncEnv } from './tenantSync';
 import { handleTenantWebhookRequest, type TenantWebhookEnv } from './tenantWebhooks';
 import { handleVoiceTranscriptionRequest, type VoiceTranscriptionEnv } from './voiceTranscription';
 import { handleWabaClinicFlowOutreachRequest, type WabaClinicFlowOutreachEnv } from './wabaClinicFlowOutreach';
@@ -62,10 +71,11 @@ type MainEnv = AuthEnv
   & VoiceTranscriptionEnv
   & ZadarmaTelephonyEnv
   & CallTranscriptionEnv
-  & { CURRENT_COMPANY_ID?: string };
+  & { CURRENT_COMPANY_ID?: string; CURRENT_BRANCH_ID?: string };
 
 function isIntegrationAdminPath(pathname: string): boolean {
   return pathname === '/api/integrations/sync'
+    || pathname === '/api/integrations/routing'
     || pathname.startsWith('/api/integrations/config')
     || pathname.startsWith('/api/integrations/test/')
     || pathname === '/api/integrations/meta/start'
@@ -138,12 +148,18 @@ export default {
     const forwardingSource = request.clone() as Request;
     let forwardedRequest = request;
     let requestEnv: MainEnv = env;
+    let routeLease: RouteLease | null = null;
 
     const route = async (): Promise<Response> => {
       // Health must never depend on tenant context, telephony or integration credentials.
       if (url.pathname === '/api/health') return app.fetch(withTrustedIdentity(forwardingSource), env);
 
-      const zadarmaWebhook = await handleZadarmaWebhook(request, env, url);
+      const inboundRoute = await prepareInboundIntegrationRoute(request, env, url);
+      routeLease = inboundRoute.lease;
+      if (inboundRoute.response) return inboundRoute.response;
+      requestEnv = inboundRoute.env as MainEnv;
+
+      const zadarmaWebhook = await handleZadarmaWebhook(request, requestEnv, url);
       if (zadarmaWebhook) return zadarmaWebhook;
 
       if (url.pathname === '/api/integrations/meta/callback') {
@@ -189,9 +205,20 @@ export default {
       }
 
       if (forwardedRequest === request) forwardedRequest = withTrustedIdentity(forwardingSource);
+
+      if (!isPublicApiPath(url.pathname) && url.pathname !== '/api/integrations/meta/callback') {
+        const manualRoute = await prepareManualIntegrationRoute(forwardedRequest, requestEnv, url);
+        if (manualRoute.response) return manualRoute.response;
+        if (manualRoute.lease.ids.length) routeLease = manualRoute.lease;
+      }
+
       const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
       const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
       if (webhookGuard) return webhookGuard;
+
+      if (url.pathname === '/api/integrations/routing' && request.method === 'GET') return integrationRoutingDiagnostics(runtimeEnv);
+      const branchMarketingData = await handleBranchScopedMarketingData(forwardedRequest, runtimeEnv, url);
+      if (branchMarketingData) return branchMarketingData;
 
       const companySettings = await handleCompanySettings(forwardedRequest, runtimeEnv, url);
       if (companySettings) return companySettings;
@@ -286,15 +313,16 @@ export default {
         background(ctx, recordErrorEvent(requestEnv, { source: url.pathname.split('/').filter(Boolean)[1] || 'worker', endpoint: `${request.method} ${url.pathname}`, code: '500', message, correlationId: requestCorrelationId }));
       }
       return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-correlation-id': requestCorrelationId } });
+    } finally {
+      await releaseIntegrationRouteLease(env, routeLease);
     }
   },
 
   async scheduled(controller: WorkerScheduledController, env: MainEnv, ctx: WorkerExecutionContext): Promise<void> {
-    const runtimeEnv = await hydrateIntegrationEnv(env);
     ctx.waitUntil(
-      runTenantScheduledSync(controller, runtimeEnv)
-        .then((results) => console.log('Scheduled tenant sync completed', results))
-        .catch((error) => console.error('Scheduled tenant sync failed', error)),
+      runBranchRoutedScheduledSync(controller, env)
+        .then((results) => console.log('Scheduled branch-routed tenant sync completed', results))
+        .catch((error) => console.error('Scheduled branch-routed tenant sync failed', error)),
     );
   },
 };
