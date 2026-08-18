@@ -1,0 +1,62 @@
+name: Backup VPS Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh_port:
+        description: SSH port
+        required: true
+        default: '24'
+        type: string
+  schedule:
+    - cron: '35 22 * * *'
+
+permissions:
+  contents: read
+
+env:
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USER: ${{ secrets.VPS_USER }}
+  VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Create and download backup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+          INPUT_PORT: ${{ inputs.ssh_port }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          PORT="${INPUT_PORT:-24}"
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$PORT")
+          SCP_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -P "$PORT")
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_PASSWORD"
+
+          sshpass -e scp "${SCP_ARGS[@]}" infra/backup/backup.sh "$VPS_USER@$VPS_HOST:/tmp/imds-backup.sh"
+          REMOTE_FILE=$(sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'chmod 700 /tmp/imds-backup.sh && /tmp/imds-backup.sh')
+          REMOTE_FILE=$(printf '%s\n' "$REMOTE_FILE" | tail -n 1)
+          test -n "$REMOTE_FILE"
+          mkdir -p backup
+          sshpass -e scp "${SCP_ARGS[@]}" "$VPS_USER@$VPS_HOST:$REMOTE_FILE" backup/imds-marketing.dump
+          sshpass -e scp "${SCP_ARGS[@]}" "$VPS_USER@$VPS_HOST:$REMOTE_FILE.sha256" backup/imds-marketing.dump.sha256
+          (cd backup && sha256sum -c imds-marketing.dump.sha256)
+
+      - name: Upload encrypted-repository backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: imds-postgres-backup
+          path: backup/
+          retention-days: 30
+          if-no-files-found: error
