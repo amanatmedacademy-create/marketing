@@ -60,12 +60,12 @@ export async function handleConversionMatrix(_request: Request, env: Env, url: U
 
     if (lead.appointment_at) {
       const appointment = new Date(text(lead.appointment_at));
+      if (Number.isNaN(appointment.getTime())) continue;
       const delay = Math.max(1, Math.min(7, Math.floor((appointment.getTime() - created.getTime()) / 86400000) + 1)) - 1;
       for (const row of targets) {
         row.hours[hour].appointments += 1;
         row.weekdays[weekday].appointments += 1;
         row.delays[delay].appointments += 1;
-        row.delays[delay].leads += 1;
       }
     }
   }
@@ -73,7 +73,12 @@ export async function handleConversionMatrix(_request: Request, env: Env, url: U
   for (const row of rows.values()) {
     for (const bucket of [...row.hours, ...row.weekdays]) bucket.rate = bucket.leads ? bucket.appointments * 100 / bucket.leads : 0;
     const totalLeads = row.hours.reduce((sum, bucket) => sum + bucket.leads, 0);
-    for (const bucket of row.delays) bucket.rate = totalLeads ? bucket.appointments * 100 / totalLeads : 0;
+    for (const bucket of row.delays) {
+      // Delay conversion is measured against all leads created in the period.
+      // Keep the denominator in the payload consistent with the displayed rate.
+      bucket.leads = totalLeads;
+      bucket.rate = totalLeads ? bucket.appointments * 100 / totalLeads : 0;
+    }
   }
 
   return new Response(JSON.stringify({ period: { from, to, days }, rows: [...rows.values()] }), {
