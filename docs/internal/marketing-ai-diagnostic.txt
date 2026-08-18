@@ -1,9 +1,9 @@
-marketing_ai_diagnostic=failed
-head=8958323f8832db7daa49caf1f159639aab2125c6
+marketing_ai_diagnostic=passed
+head=deb503a01bd1a4a3fc45af8ca195c2d62cc2d451
 --- tail ---
 npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
 
-added 173 packages in 32s
+added 173 packages in 27s
 
 > amanat-marketing@0.2.1 typecheck
 > tsc -b --pretty false && tsc -p tsconfig.worker.json --pretty false
@@ -17,13 +17,16 @@ transforming...
 [32m✓[39m 2378 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.62 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.62 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
 [2mdist/[22m[2massets/[22m[35mindex-BO9xctZ8.css  [39m[1m[2m  604.71 kB[22m[1m[22m[2m │ gzip:  93.30 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-u3pd6HYp.js   [39m[1m[33m1,375.98 kB[39m[22m[2m │ gzip: 367.16 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-BPE_s4Ne.js   [39m[1m[33m1,376.15 kB[39m[22m[2m │ gzip: 367.31 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 6.86s[39m
+[32m✓ built in 6.78s[39m
 Warning: Permanently added '89.207.250.55' (ED25519) to the list of known hosts.
+ssh: connect to host 89.207.250.55 port 22: Connection timed out
+ssh: connect to host 89.207.250.55 port 22: Connection timed out
+ssh: connect to host 89.207.250.55 port 22: Connection timed out
