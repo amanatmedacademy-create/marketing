@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Copy, LoaderCircle, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, LoaderCircle, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { authFetch } from '../services/auth';
 
 type Provider = 'binotel' | 'sipuni';
@@ -13,7 +13,8 @@ type ProviderSummary = {
   lastError?: string | null;
 };
 type ConfigResponse = { provider?: ProviderSummary; webhookUrl?: string | null };
-
+type OAuthConfig = { configured?: boolean; missing?: string[]; redirectUri?: string; scopes?: string; tokenAuthMethod?: string };
+type OAuthStart = { ok?: boolean; authorizationUrl?: string; redirectUri?: string };
 type Props = { provider: Provider; onChanged?: () => void };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -27,10 +28,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+function clearOAuthParams() {
+  const url = new URL(window.location.href);
+  ['code', 'state', 'error', 'error_description', 'error_message'].forEach((key) => url.searchParams.delete(key));
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
 export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: Props) {
   const isSipuni = provider === 'sipuni';
   const title = isSipuni ? 'Sipuni' : 'Binotel';
   const [config, setConfig] = useState<ConfigResponse>({});
+  const [oauth, setOauth] = useState<OAuthConfig | null>(null);
   const [form, setForm] = useState<Record<string, string>>({ outboundMethod: 'GET' });
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
@@ -41,29 +49,72 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
       const next = await request<ConfigResponse>(`/api/telephony/providers/${provider}`);
       setConfig(next);
       setForm((previous) => ({ outboundMethod: 'GET', ...previous, ...(next.provider?.values || {}) }));
+      if (!isSipuni) {
+        const oauthConfig = await request<OAuthConfig>('/api/telephony/providers/binotel/oauth-config').catch(() => ({ configured: false }));
+        setOauth(oauthConfig);
+      }
       setMessage(null);
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
     } finally { setBusy(''); }
   };
 
-  useEffect(() => { void load(); }, [provider]);
+  useEffect(() => { void load(); }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const save = async () => {
+  useEffect(() => {
+    if (isSipuni) return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code') || '';
+    const state = params.get('state') || '';
+    const providerError = params.get('error_description') || params.get('error_message') || params.get('error') || '';
+    if (!state.startsWith('binotel:')) return;
+    if (providerError) {
+      setMessage({ type: 'error', text: providerError });
+      clearOAuthParams();
+      return;
+    }
+    if (!code) return;
+    setBusy('oauth-complete');
+    void request<{ ok?: boolean; connected?: boolean }>('/api/telephony/providers/binotel/oauth/complete', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    }).then(async () => {
+      clearOAuthParams();
+      setMessage({ type: 'ok', text: 'Binotel подключён через OAuth.' });
+      await load();
+      onChanged?.();
+    }).catch((error) => {
+      clearOAuthParams();
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
+    }).finally(() => setBusy(''));
+  }, [isSipuni]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startOAuth = async () => {
+    setBusy('oauth-start'); setMessage(null);
+    try {
+      const next = await request<OAuthStart>('/api/telephony/providers/binotel/oauth/start', { method: 'POST', body: '{}' });
+      if (!next.authorizationUrl) throw new Error('Сервер не вернул Binotel OAuth URL');
+      window.location.assign(next.authorizationUrl);
+    } catch (error) {
+      setBusy('');
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
+  const saveSipuni = async () => {
     setBusy('save'); setMessage(null);
     try {
-      const shared = {
+      const payload = {
+        userId: form.userId || '',
+        apiKey: form.apiKey || '',
         outboundUrlTemplate: form.outboundUrlTemplate || '',
         outboundMethod: form.outboundMethod || 'GET',
         activate: true,
       };
-      const payload = isSipuni
-        ? { ...shared, userId: form.userId || '', apiKey: form.apiKey || '' }
-        : { ...shared, apiKey: form.apiKey || '', apiSecret: form.apiSecret || '', apiBaseUrl: form.apiBaseUrl || '' };
-      const next = await request<ConfigResponse>(`/api/telephony/providers/${provider}`, { method: 'PUT', body: JSON.stringify(payload) });
+      const next = await request<ConfigResponse>('/api/telephony/providers/sipuni', { method: 'PUT', body: JSON.stringify(payload) });
       setConfig(next);
-      setForm((previous) => ({ ...previous, apiKey: '', apiSecret: '', outboundUrlTemplate: '' }));
-      setMessage({ type: 'ok', text: `${title}: настройки сохранены и провайдер выбран для текущего филиала.` });
+      setForm((previous) => ({ ...previous, apiKey: '', outboundUrlTemplate: '' }));
+      setMessage({ type: 'ok', text: 'Sipuni: настройки сохранены и провайдер выбран для текущего филиала.' });
       onChanged?.();
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
@@ -89,14 +140,13 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
   const configured = Boolean(config.provider?.configured);
   const connected = config.provider?.status === 'connected' && !config.provider?.lastError;
   const savedApiKey = Boolean(config.provider?.secretFields?.apiKey);
-  const savedApiSecret = Boolean(config.provider?.secretFields?.apiSecret);
   const savedOutbound = Boolean(config.provider?.secretFields?.outboundUrlTemplate);
 
   return <section className="zadarma-integration" aria-label={`Настройка ${title}`}>
     <header className="zadarma-integration__head">
       <div className="zadarma-integration__brand">
         <span>{connected ? <CheckCircle2 size={22}/> : <RefreshCw size={22}/>}</span>
-        <div><small>CLOUD TELEPHONY</small><h2>{title}</h2><p>{isSipuni ? 'Виртуальная АТС: события звонков, записи, пропущенные и CRM-аналитика.' : 'Облачная телефония: события звонков, записи, пропущенные и CRM-аналитика.'}</p></div>
+        <div><small>CLOUD TELEPHONY</small><h2>{title}</h2><p>{isSipuni ? 'Виртуальная АТС: события звонков, записи, пропущенные и CRM-аналитика.' : 'Подключение Binotel через OAuth с привязкой к выбранному филиалу.'}</p></div>
       </div>
       <button type="button" onClick={() => void load()} disabled={Boolean(busy)}>{busy === 'load' ? <LoaderCircle className="spin" size={16}/> : <RefreshCw size={16}/>} Обновить</button>
     </header>
@@ -106,28 +156,38 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
 
     <div className="zadarma-integration__grid">
       <div className="zadarma-integration__form">
-        {isSipuni && <label><span>User ID *</span><input value={form.userId || ''} onChange={(event) => setForm((value) => ({ ...value, userId: event.target.value }))} placeholder="ID пользователя Sipuni"/></label>}
-        <label><span>API key *</span><input type="password" value={form.apiKey || ''} onChange={(event) => setForm((value) => ({ ...value, apiKey: event.target.value }))} placeholder={savedApiKey ? 'Ключ уже сохранён. Оставьте пустым, чтобы не менять.' : 'API key'}/></label>
-        {!isSipuni && <>
-          <label><span>API secret *</span><input type="password" value={form.apiSecret || ''} onChange={(event) => setForm((value) => ({ ...value, apiSecret: event.target.value }))} placeholder={savedApiSecret ? 'Secret уже сохранён. Оставьте пустым, чтобы не менять.' : 'API secret'}/></label>
-          <label><span>API base URL</span><input value={form.apiBaseUrl || ''} onChange={(event) => setForm((value) => ({ ...value, apiBaseUrl: event.target.value }))} placeholder="Необязательно; если Binotel выдал отдельный API host"/></label>
+        {!isSipuni ? <>
+          <div className="zadarma-integration__automation">
+            <div>
+              <span>OAuth подключение</span>
+              <p>{connected ? 'Binotel уже подключён. Токены хранятся зашифрованно на VPS.' : oauth?.configured ? 'OAuth готов. Нажмите кнопку и подтвердите доступ в Binotel.' : 'OAuth-каркас готов. Для активации нужно внести официальные параметры приложения Binotel на VPS.'}</p>
+            </div>
+          </div>
+
+          {!oauth?.configured && <div className="zadarma-integration__automation">
+            <div><span>Что осталось настроить</span><p>{oauth?.missing?.length ? oauth.missing.join(' · ') : 'BINOTEL_OAUTH_CLIENT_ID · BINOTEL_OAUTH_CLIENT_SECRET · BINOTEL_OAUTH_AUTHORIZE_URL · BINOTEL_OAUTH_TOKEN_URL'}</p></div>
+          </div>}
+
+          {oauth?.redirectUri && <div className="zadarma-integration__automation"><div><span>Redirect URI</span><p style={{ wordBreak: 'break-all' }}>{oauth.redirectUri}</p></div></div>}
+          {oauth?.scopes && <div className="zadarma-integration__automation"><div><span>Scopes</span><p>{oauth.scopes}</p></div></div>}
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => void startOAuth()} disabled={Boolean(busy) || !oauth?.configured}>{busy === 'oauth-start' || busy === 'oauth-complete' ? <LoaderCircle className="spin" size={16}/> : <ExternalLink size={16}/>} {connected ? 'Переподключить Binotel' : 'Подключить через OAuth'}</button>
+            {configured && <button type="button" onClick={() => void disconnect()} disabled={Boolean(busy)}><Trash2 size={16}/> Отключить</button>}
+          </div>
+        </> : <>
+          <label><span>User ID *</span><input value={form.userId || ''} onChange={(event) => setForm((value) => ({ ...value, userId: event.target.value }))} placeholder="ID пользователя Sipuni"/></label>
+          <label><span>API key *</span><input type="password" value={form.apiKey || ''} onChange={(event) => setForm((value) => ({ ...value, apiKey: event.target.value }))} placeholder={savedApiKey ? 'Ключ уже сохранён. Оставьте пустым, чтобы не менять.' : 'API key'}/></label>
+          <label><span>URL исходящего вызова</span><input type="password" value={form.outboundUrlTemplate || ''} onChange={(event) => setForm((value) => ({ ...value, outboundUrlTemplate: event.target.value }))} placeholder={savedOutbound ? 'Callback URL уже сохранён. Оставьте пустым, чтобы не менять.' : 'https://provider.example/call?phone={phone}&user={userId}&key={apiKey}'}/></label>
+          <label><span>Метод исходящего вызова</span><select value={form.outboundMethod || 'GET'} onChange={(event) => setForm((value) => ({ ...value, outboundMethod: event.target.value }))}><option value="GET">GET</option><option value="POST">POST</option></select></label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={() => void saveSipuni()} disabled={Boolean(busy)}>{busy === 'save' ? <LoaderCircle className="spin" size={16}/> : <Save size={16}/>} Сохранить и активировать</button>{configured && <button type="button" onClick={() => void disconnect()} disabled={Boolean(busy)}><Trash2 size={16}/> Отключить</button>}</div>
         </>}
 
-        <label><span>URL исходящего вызова</span><input type="password" value={form.outboundUrlTemplate || ''} onChange={(event) => setForm((value) => ({ ...value, outboundUrlTemplate: event.target.value }))} placeholder={savedOutbound ? 'Callback URL уже сохранён. Оставьте пустым, чтобы не менять.' : 'https://provider.example/call?phone={phone}&user={userId}&key={apiKey}'}/></label>
-        <label><span>Метод исходящего вызова</span><select value={form.outboundMethod || 'GET'} onChange={(event) => setForm((value) => ({ ...value, outboundMethod: event.target.value }))}><option value="GET">GET</option><option value="POST">POST</option></select></label>
-        <div className="zadarma-integration__automation"><div><span>Плейсхолдеры callback URL</span><p><code>{'{phone}'}</code> · <code>{'{userId}'}</code> · <code>{'{apiKey}'}</code> · <code>{'{apiSecret}'}</code>. URL хранится зашифрованно и не возвращается в браузер после сохранения.</p></div></div>
-
-        <div className="zadarma-integration__automation"><div><span>Статус</span><p>{connected ? 'Webhook получает реальные события' : configured ? 'Credentials сохранены · ожидаем первое событие webhook' : 'Не подключено'}</p></div></div>
+        <div className="zadarma-integration__automation"><div><span>Статус</span><p>{connected ? 'Подключено' : configured ? 'Настройки сохранены · ожидаем события' : 'Не подключено'}</p></div></div>
 
         {config.webhookUrl && <div className="zadarma-integration__automation"><div><span>Webhook URL</span><p style={{ wordBreak: 'break-all' }}>{config.webhookUrl}</p></div><button type="button" onClick={() => void copyWebhook()}><Copy size={15}/> Копировать</button></div>}
 
-        <div className="zadarma-integration__automation"><div><span>Что включается</span><p>Входящие/исходящие события · история звонков · пропущенные · записи · транскрипция · AI Call Intelligence · CRM-связка. Исходящий click-to-call включается после сохранения callback URL.</p></div></div>
-        <div className="zadarma-integration__automation"><div><span>Настройка у провайдера</span><p>{isSipuni ? 'В Sipuni включите «События на АТС» и вставьте Webhook URL. Для звонков из CRM включите услугу «Звонок на номер» и сохраните предоставленный кабинетом callback URL выше.' : 'В Binotel добавьте Webhook URL в API/WebHook настройках. Для звонков из CRM сохраните точный click-to-call URL, выданный вашим Binotel API, в поле выше.'}</p></div></div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => void save()} disabled={Boolean(busy)}>{busy === 'save' ? <LoaderCircle className="spin" size={16}/> : <Save size={16}/>} Сохранить и активировать</button>
-          {configured && <button type="button" onClick={() => void disconnect()} disabled={Boolean(busy)}><Trash2 size={16}/> Отключить</button>}
-        </div>
+        <div className="zadarma-integration__automation"><div><span>Что включается</span><p>Входящие/исходящие события · история звонков · пропущенные · записи · транскрипция · AI Call Intelligence · CRM-связка.</p></div></div>
       </div>
     </div>
   </section>;
