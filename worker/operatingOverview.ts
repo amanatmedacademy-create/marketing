@@ -2,6 +2,21 @@ import { listUserCompanies, resolveCompanyId, type PlatformRole, type UserCompan
 import { localDataJson, localDataRequest, type LocalDataEnv } from './localData';
 
 type Row = Record<string, unknown>;
+type MetricTotals = { leads: number; sales: number; revenue: number };
+type NetworkTotals = { clinics: number; users: number; leads: number; sales: number; revenueKzt: number; openTasks: number };
+type ClinicSnapshot = {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  accessSource: 'membership' | 'platform';
+  current: boolean;
+  onboarding: { progress: number; completed: number; total: number; items: Array<{ id: string; label: string; done: boolean; hint: string }> };
+  usage: { users: number; leads: number; openTasks: number; integrations: number };
+  performance: { leads: number; sales: number; revenueKzt: number };
+  health: { whatsapp: boolean; telephony: boolean; meta: boolean; google: boolean; mis: boolean };
+};
+
 export interface OperatingOverviewEnv extends LocalDataEnv {
   CURRENT_COMPANY_ID?: string;
 }
@@ -37,7 +52,7 @@ function connectedProvider(providers: Map<string, Row>, provider: string): boole
   return connectedStatus(providers.get(provider)?.status);
 }
 
-async function clinicSnapshot(env: OperatingOverviewEnv, company: UserCompany, currentCompanyId: string) {
+async function clinicSnapshot(env: OperatingOverviewEnv, company: UserCompany, currentCompanyId: string): Promise<ClinicSnapshot> {
   const companyId = company.id;
   const [companyRows, memberCount, leadCount, openTaskCount, integrationRows, dailyRows] = await Promise.all([
     rows<Row>(env, `crm_companies?id=eq.${encodeURIComponent(companyId)}&select=id,name,slug&limit=1`).catch(() => []),
@@ -50,7 +65,7 @@ async function clinicSnapshot(env: OperatingOverviewEnv, company: UserCompany, c
 
   const providers = new Map(integrationRows.map((row) => [text(row.provider).toLowerCase(), row]));
   const connectedIntegrations = integrationRows.filter((row) => connectedStatus(row.status)).length;
-  const totals = dailyRows.reduce((acc, row) => ({
+  const totals = dailyRows.reduce<MetricTotals>((acc, row) => ({
     leads: acc.leads + number(row.leads),
     sales: acc.sales + number(row.sales),
     revenue: acc.revenue + number(row.revenue),
@@ -108,9 +123,9 @@ export async function handleOperatingOverviewRequest(
     const allCompanies = await listUserCompanies(env, userId, platformRole);
     const cap = platformRole === 'super_admin' ? 50 : 25;
     const selected = allCompanies.slice(0, cap);
-    const clinics = await Promise.all(selected.map((company) => clinicSnapshot(env, company, currentCompanyId)));
+    const clinics: ClinicSnapshot[] = await Promise.all(selected.map((company) => clinicSnapshot(env, company, currentCompanyId)));
     const current = clinics.find((clinic) => clinic.current) || null;
-    const network = clinics.reduce((acc, clinic) => ({
+    const network = clinics.reduce<NetworkTotals>((acc, clinic) => ({
       clinics: acc.clinics + 1,
       users: acc.users + clinic.usage.users,
       leads: acc.leads + clinic.performance.leads,
