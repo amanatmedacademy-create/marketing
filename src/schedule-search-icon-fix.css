@@ -1,24 +1,15 @@
-/* Keep the Schedule patient-search icon visually contained inside the field. Loaded last. */
+/* Remove the decorative magnifier from Schedule patient search. Loaded last. */
 .mis-topbar-controls .search{
   position:relative!important;
   overflow:hidden!important;
   border-radius:10px!important;
 }
 
+.mis-topbar-controls label.search svg,
 .mis-topbar-controls .search>svg{
-  position:absolute!important;
-  left:20px!important;
-  top:50%!important;
-  width:14px!important;
-  height:14px!important;
-  margin:0!important;
-  transform:translateY(-50%)!important;
-  z-index:2!important;
-  pointer-events:none!important;
-  color:var(--imds-muted)!important;
-  opacity:.82!important;
+  display:none!important;
 }
 
 .mis-topbar-controls .search input{
-  padding-left:50px!important;
+  padding-left:16px!important;
 }
