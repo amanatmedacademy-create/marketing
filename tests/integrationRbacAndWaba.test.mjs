@@ -118,3 +118,13 @@ test('Binotel and Sipuni outbound callback URLs stay encrypted and configurable 
   assert.match(panel, /\{phone\}/);
   assert.match(panel, /outboundMethod/);
 });
+
+test('active Binotel or Sipuni provider is isolated to the selected branch', () => {
+  const credentials = read('worker/telephonyProviderCredentials.ts');
+  const cloud = read('worker/cloudTelephonyStatus.ts');
+  assert.match(credentials, /activeBranchCloudTelephonyProvider/);
+  assert.match(credentials, /config_summary: \{ values, secretFields, active \}/);
+  assert.match(credentials, /deactivateOtherCloudProviders/);
+  assert.match(credentials, /incoming\.activate === true && !isCloudProvider\(selectedProvider\)/);
+  assert.match(cloud, /activeBranchCloudTelephonyProvider\(env, companyId, branchId\)/);
+});
