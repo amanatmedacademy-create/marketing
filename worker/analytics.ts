@@ -260,9 +260,23 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   const hourly=Array.from({length:24},(_,hour)=>({hour,leads:0,appointments:0,rate:0}));
   const weekdays=Array.from({length:7},(_,day)=>({day,leads:0,appointments:0,rate:0}));
   const delays=Array.from({length:7},(_,index)=>({day:index+1,appointments:0,rate:0}));
-  for(const lead of leads){const created=new Date(text(lead.lead_created_at));if(Number.isNaN(created.getTime()))continue;const h=created.getUTCHours(),d=(created.getUTCDay()+6)%7;hourly[h].leads+=1;weekdays[d].leads+=1;if(lead.appointment_at){hourly[h].appointments+=1;weekdays[d].appointments+=1;const appointment=new Date(text(lead.appointment_at));if(!Number.isNaN(appointment.getTime())){const delay=Math.max(1,Math.min(7,Math.floor((appointment.getTime()-created.getTime())/86400000)+1));delays[delay-1].appointments+=1;}}}
+  for(const lead of leads){
+    const created=new Date(text(lead.lead_created_at));
+    if(Number.isNaN(created.getTime()))continue;
+    const h=created.getUTCHours(),d=(created.getUTCDay()+6)%7;
+    hourly[h].leads+=1;
+    weekdays[d].leads+=1;
+    if(lead.appointment_at){
+      const appointment=new Date(text(lead.appointment_at));
+      if(Number.isNaN(appointment.getTime()))continue;
+      hourly[h].appointments+=1;
+      weekdays[d].appointments+=1;
+      const delay=Math.max(1,Math.min(7,Math.floor((appointment.getTime()-created.getTime())/86400000)+1));
+      delays[delay-1].appointments+=1;
+    }
+  }
   hourly.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});weekdays.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});delays.forEach((row)=>{row.rate=leads.length?row.appointments*100/leads.length:0;});
   const totals=platforms.reduce<{leads:number;target_leads:number;arrived:number;sales:number;spend:number;revenue:number}>((acc,row)=>({leads:acc.leads+num(row.crm_leads),target_leads:acc.target_leads+num(row.target_leads),arrived:acc.arrived+num(row.arrived),sales:acc.sales+num(row.sales),spend:acc.spend+num(row.spend),revenue:acc.revenue+num(row.revenue)}),{leads:0,target_leads:0,arrived:0,sales:0,spend:0,revenue:0});
   const attribution={total_leads:leads.length,unattributed_leads:unattributedLeads,unattributed_rate:leads.length?unattributedLeads*100/leads.length:0};
-  return new Response(JSON.stringify({period:{from,to,days},totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,data_complete:true}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+  return new Response(JSON.stringify({period:{from,to,days},totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,data_complete:unavailable.length===0}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 }
