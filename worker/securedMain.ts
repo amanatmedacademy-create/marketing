@@ -1,7 +1,8 @@
 import app from './main';
 import { authenticateRequest, authorizeApplicationRequest, isPublicApiPath, type AuthEnv } from './auth';
 import { runAutomationEngine } from './automationEngine';
-import { handleBranchManagementRequest } from './branchManagement';
+import { handleBranchManagementRequest, resolveRequestedBranchId } from './branchManagement';
+import { finalizeInboxBranchResponse, finalizeTaskBranchResponse, guardInboxBranch, guardTaskBranch } from './branchOperationalScope';
 import { resolveCompanyId } from './companyContext';
 import { handleContactAvatars } from './contactAvatars';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
@@ -17,7 +18,7 @@ import { assertTaskDependenciesComplete, handleTaskPhase2, runTaskRecurrenceScan
 import { handleTaskSuite, runTaskAutomationScan } from './taskSuite';
 import { handleTasks } from './tasks';
 
-type SecuredEnv = AuthEnv & { CURRENT_COMPANY_ID?: string };
+type SecuredEnv = AuthEnv & { CURRENT_COMPANY_ID?: string; CURRENT_BRANCH_ID?: string };
 const INTERNAL_ROLE_HEADER = 'x-amanat-auth-role';
 const INTERNAL_USER_HEADER = 'x-amanat-auth-user';
 const INTERNAL_VERIFIED_HEADER = 'x-amanat-auth-verified';
@@ -28,132 +29,87 @@ function bypassPermissionBoundary(pathname: string): boolean {
     || pathname === '/api/integrations/meta/callback'
     || pathname.startsWith('/api/telephony/zadarma/webhook/');
 }
-
 function sanitizedRequest(request: Request): Request {
   const headers = new Headers(request.headers);
-  headers.delete(INTERNAL_ROLE_HEADER);
-  headers.delete(INTERNAL_USER_HEADER);
-  headers.delete(INTERNAL_VERIFIED_HEADER);
-  headers.delete('x-admin-key');
+  headers.delete(INTERNAL_ROLE_HEADER); headers.delete(INTERNAL_USER_HEADER); headers.delete(INTERNAL_VERIFIED_HEADER); headers.delete('x-admin-key');
   return new Request(request, { headers });
 }
-
-function effectiveRole(user: { role: string; platformRole?: string }): string {
-  return user.platformRole === 'super_admin' ? 'administrator' : user.role;
-}
-
-function trustedRequest(request: Request, role: string, userId: string): Request {
+function effectiveRole(user: { role: string; platformRole?: string }): string { return user.platformRole === 'super_admin' ? 'administrator' : user.role; }
+function trustedRequest(request: Request, role: string, userId: string, branchId?: string | null): Request {
   const headers = new Headers(request.headers);
-  headers.delete(INTERNAL_ROLE_HEADER);
-  headers.delete(INTERNAL_USER_HEADER);
-  headers.delete(INTERNAL_VERIFIED_HEADER);
-  headers.delete('x-admin-key');
-  headers.set(INTERNAL_ROLE_HEADER, role);
-  headers.set(INTERNAL_USER_HEADER, userId);
-  headers.set(INTERNAL_VERIFIED_HEADER, '1');
+  headers.delete(INTERNAL_ROLE_HEADER); headers.delete(INTERNAL_USER_HEADER); headers.delete(INTERNAL_VERIFIED_HEADER); headers.delete('x-admin-key');
+  headers.set(INTERNAL_ROLE_HEADER, role); headers.set(INTERNAL_USER_HEADER, userId); headers.set(INTERNAL_VERIFIED_HEADER, '1');
+  if (branchId) headers.set('x-imds-branch-id', branchId); else headers.delete('x-imds-branch-id');
   return new Request(request, { headers });
 }
 
-async function scheduleAssignedNotification(
-  request: Request,
-  env: SecuredEnv,
-  ctx: WorkerExecutionContext | undefined,
-  userId: string,
-  task: { id: string; title: string; dueAt?: unknown },
-): Promise<void> {
+async function scheduleAssignedNotification(request: Request, env: SecuredEnv, ctx: WorkerExecutionContext | undefined, userId: string, task: { id: string; title: string; dueAt?: unknown }): Promise<void> {
   try {
     const requestedCompany = (request.headers.get('x-imds-company-id') || '').trim();
     const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, userId);
-    const notify = notifyAssignedTask(env as unknown as Env, task, companyId)
-      .catch((error) => console.error('Task assigned notification failed', error));
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(notify);
-    else await notify;
-  } catch (error) {
-    console.error('Task assigned notification scheduling failed', error);
-  }
+    const notify = notifyAssignedTask(env as unknown as Env, task, companyId).catch((error) => console.error('Task assigned notification failed', error));
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(notify); else await notify;
+  } catch (error) { console.error('Task assigned notification scheduling failed', error); }
 }
 
 export default {
   async fetch(request: Request, env: SecuredEnv, ctx?: WorkerExecutionContext): Promise<Response> {
     try {
-      const cleanRequest = sanitizedRequest(request);
-      const url = new URL(cleanRequest.url);
-      let forwardedRequest: Request | null = null;
+      const cleanRequest = sanitizedRequest(request); const url = new URL(cleanRequest.url);
+      let forwardedRequest: Request | null = null; let requestEnv: SecuredEnv = env;
 
       if (url.pathname.startsWith('/api/') && !bypassPermissionBoundary(url.pathname)) {
         const user = await authenticateRequest(cleanRequest, env);
         if (!user) return json({ error: 'Необходим вход в систему', code: 'AUTH_REQUIRED' }, 401);
         if (user.status !== 'active') return json({ error: 'Пользователь не активен', code: 'USER_INACTIVE' }, 403);
+        const role = effectiveRole(user); const denied = await authorizeApplicationRequest(cleanRequest, env, { ...user, role }); if (denied) return denied;
 
-        const role = effectiveRole(user);
-        const denied = await authorizeApplicationRequest(cleanRequest, env, { ...user, role });
-        if (denied) return denied;
-
-        forwardedRequest = trustedRequest(cleanRequest, role, user.id);
+        const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
+        const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
+        const companyEnv = { ...env, CURRENT_COMPANY_ID: companyId };
+        let branchId: string | null = null;
+        try { branchId = await resolveRequestedBranchId(cleanRequest, companyEnv, user.id, user.platformRole); }
+        catch (error) { return json({ error: error instanceof Error ? error.message : String(error), code: 'BRANCH_ACCESS_DENIED' }, 403); }
+        requestEnv = { ...companyEnv, CURRENT_BRANCH_ID: branchId || undefined };
+        forwardedRequest = trustedRequest(cleanRequest, role, user.id, branchId);
 
         if (url.pathname.startsWith('/api/branches')) {
-          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
-          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
-          const response = await handleBranchManagementRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
-          if (response) return response;
+          const response = await handleBranchManagementRequest(cleanRequest, requestEnv, url, user.id, user.platformRole); if (response) return response;
         }
-
         if (url.pathname === '/api/operating-overview') {
-          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
-          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
-          const response = await handleOperatingOverviewRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
-          if (response) return response;
+          const response = await handleOperatingOverviewRequest(cleanRequest, requestEnv, url, user.id, user.platformRole); if (response) return response;
         }
-
         if (url.pathname.startsWith('/api/notifications') || url.pathname === '/api/system-health') {
-          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
-          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
-          const response = await handleNotificationCenterRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
-          if (response) return response;
+          const response = await handleNotificationCenterRequest(cleanRequest, requestEnv, url, user.id, user.platformRole); if (response) return response;
+        }
+        if (url.pathname.startsWith('/api/contact-avatars/')) {
+          const avatarResponse = await handleContactAvatars(forwardedRequest, requestEnv as unknown as Env, url); if (avatarResponse) return avatarResponse;
         }
 
-        if (url.pathname.startsWith('/api/contact-avatars/')) {
-          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
-          const avatarCompanyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
-          const avatarResponse = await handleContactAvatars(forwardedRequest, { ...env, CURRENT_COMPANY_ID: avatarCompanyId } as unknown as Env, url);
-          if (avatarResponse) return avatarResponse;
-        }
+        const inboxDenied = await guardInboxBranch(forwardedRequest, requestEnv, url); if (inboxDenied) return inboxDenied;
 
         if (url.pathname.startsWith('/api/tasks')) {
-          if (url.pathname.startsWith('/api/tasks/notifications')) {
-            const response = await handleTaskNotifications(forwardedRequest, env as unknown as Env, url);
-            if (response) return response;
-          }
-          if (url.pathname.startsWith('/api/tasks/phase2')) {
-            const response = await handleTaskPhase2(forwardedRequest, env as unknown as Env, url);
-            if (response) return response;
-          }
-          if (url.pathname === '/api/tasks/suite/postpone') {
-            const response = await handleTaskQuickActions(forwardedRequest, env as unknown as Env, url);
-            if (response) return response;
-          }
-          if (url.pathname.startsWith('/api/tasks/suite')) {
-            const response = await handleTaskSuite(forwardedRequest, env as unknown as Env, url);
-            if (response) return response;
-          }
-          const dependencyDenied = await assertTaskDependenciesComplete(forwardedRequest, env as unknown as Env, url);
-          if (dependencyDenied) return dependencyDenied;
-          const response = await handleTasks(forwardedRequest, env as unknown as Env, url);
+          const branchDenied = await guardTaskBranch(forwardedRequest, requestEnv, url); if (branchDenied) return branchDenied;
+          if (url.pathname.startsWith('/api/tasks/notifications')) { const response = await handleTaskNotifications(forwardedRequest, requestEnv as unknown as Env, url); if (response) return response; }
+          if (url.pathname.startsWith('/api/tasks/phase2')) { const response = await handleTaskPhase2(forwardedRequest, requestEnv as unknown as Env, url); if (response) return response; }
+          if (url.pathname === '/api/tasks/suite/postpone') { const response = await handleTaskQuickActions(forwardedRequest, requestEnv as unknown as Env, url); if (response) return response; }
+          if (url.pathname.startsWith('/api/tasks/suite')) { const response = await handleTaskSuite(forwardedRequest, requestEnv as unknown as Env, url); if (response) return response; }
+          const dependencyDenied = await assertTaskDependenciesComplete(forwardedRequest, requestEnv as unknown as Env, url); if (dependencyDenied) return dependencyDenied;
+          const response = await handleTasks(forwardedRequest, requestEnv as unknown as Env, url);
           if (response) {
-            if (url.pathname === '/api/tasks' && request.method === 'POST' && response.ok) {
-              const body = await response.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null;
-              const task = body?.task;
-              if (task?.id && task.title) {
-                await scheduleAssignedNotification(cleanRequest, env, ctx, user.id, { id: task.id, title: task.title, dueAt: task.dueAt });
-              }
+            const scopedResponse = await finalizeTaskBranchResponse(forwardedRequest, requestEnv, url, response);
+            if (url.pathname === '/api/tasks' && request.method === 'POST' && scopedResponse.ok) {
+              const body = await scopedResponse.clone().json().catch(() => null) as { task?: { id?: string; title?: string; dueAt?: unknown } } | null; const task = body?.task;
+              if (task?.id && task.title) await scheduleAssignedNotification(cleanRequest, requestEnv, ctx, user.id, { id: task.id, title: task.title, dueAt: task.dueAt });
             }
-            return response;
+            return scopedResponse;
           }
         }
       }
 
       if (!forwardedRequest) forwardedRequest = cleanRequest;
-      return app.fetch(forwardedRequest, env, ctx);
+      const response = await app.fetch(forwardedRequest, requestEnv, ctx);
+      return finalizeInboxBranchResponse(forwardedRequest, requestEnv, url, response);
     } catch (error) {
       console.error('Secured worker runtime error', error);
       return json({ error: error instanceof Error ? error.message : String(error), code: 'WORKER_RUNTIME_ERROR' }, 500);

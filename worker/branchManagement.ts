@@ -1,14 +1,16 @@
 import { resolveTenantMembershipRole } from './accessControl';
 import { resolveCompanyId, type PlatformRole } from './companyContext';
 import { localDataJson, localDataRequest, type LocalDataEnv } from './localData';
+import { ALL_BRANCHES } from './tenantScope';
 
 type Row = Record<string, unknown>;
-export interface BranchManagementEnv extends LocalDataEnv { CURRENT_COMPANY_ID?: string; DEFAULT_COMPANY_ID?: string }
+export interface BranchManagementEnv extends LocalDataEnv { CURRENT_COMPANY_ID?: string; DEFAULT_COMPANY_ID?: string; CURRENT_BRANCH_ID?: string }
 export type BranchSummary = {
   id: string; companyId: string; name: string; code: string | null; status: string; isPrimary: boolean;
   city: string | null; address: string | null; phone: string | null; timezone: string; memberCount: number;
 };
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+const num = (value: unknown): number => Number(value || 0) || 0;
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -17,6 +19,7 @@ async function canManage(env: BranchManagementEnv, userId: string, platformRole?
   const role = await resolveTenantMembershipRole(env, userId);
   return role === 'owner' || role === 'administrator';
 }
+
 async function listBranches(env: BranchManagementEnv, companyId: string): Promise<BranchSummary[]> {
   const rows = await localDataJson<Row[]>(env, `crm_branches?company_id=eq.${encodeURIComponent(companyId)}&status=neq.archived&select=id,company_id,name,code,status,is_primary,city,address,phone,timezone&order=is_primary.desc,name.asc`, {}, 'Branches');
   const memberships = await localDataJson<Row[]>(env, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&status=eq.active&select=branch_id`, {}, 'Branch memberships').catch(() => []);
@@ -28,10 +31,12 @@ async function listBranches(env: BranchManagementEnv, companyId: string): Promis
     address: text(row.address) || null, phone: text(row.phone) || null, timezone: text(row.timezone) || 'Asia/Almaty', memberCount: counts.get(text(row.id)) || 0,
   }));
 }
+
 async function branchExists(env: BranchManagementEnv, companyId: string, branchId: string): Promise<boolean> {
   const rows = await localDataJson<Row[]>(env, `crm_branches?id=eq.${encodeURIComponent(branchId)}&company_id=eq.${encodeURIComponent(companyId)}&status=neq.archived&select=id&limit=1`, {}, 'Branch');
   return Boolean(rows[0]);
 }
+
 async function ensureCompanyMember(env: BranchManagementEnv, companyId: string, userId: string): Promise<void> {
   const rows = await localDataJson<Row[]>(env, `crm_company_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id&limit=1`, {}, 'Company member');
   if (!rows[0]) throw new Error('Пользователь не является активным сотрудником клиники');
@@ -39,20 +44,68 @@ async function ensureCompanyMember(env: BranchManagementEnv, companyId: string, 
 
 export async function resolveRequestedBranchId(request: Request, env: BranchManagementEnv, userId: string, platformRole?: PlatformRole): Promise<string | null> {
   const companyId = await resolveCompanyId(env, userId, platformRole);
+  const manage = platformRole === 'super_admin' || await canManage(env, userId, platformRole);
   const requested = text(request.headers.get('x-imds-branch-id'));
+
+  if (requested.toLowerCase() === 'all') {
+    if (!manage) throw new Error('Режим «Все филиалы» доступен только владельцу или администратору клиники');
+    return ALL_BRANCHES;
+  }
+
   if (requested) {
     if (!UUID.test(requested) || !(await branchExists(env, companyId, requested))) throw new Error('Филиал не найден в текущей клинике');
-    if (platformRole === 'super_admin' || await canManage(env, userId, platformRole)) return requested;
+    if (manage) return requested;
     const assigned = await localDataJson<Row[]>(env, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&branch_id=eq.${encodeURIComponent(requested)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id&limit=1`, {}, 'Branch membership');
     if (assigned[0]) return requested;
     const anyAssignments = await localDataJson<Row[]>(env, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id&limit=1`, {}, 'Branch membership');
     if (anyAssignments.length) throw new Error('Нет доступа к выбранному филиалу');
     return requested;
   }
-  const assigned = platformRole === 'super_admin' || await canManage(env, userId, platformRole) ? [] : await localDataJson<Row[]>(env, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=branch_id&limit=2`, {}, 'Branch membership').catch(() => []);
-  if (assigned.length === 1) return text(assigned[0].branch_id) || null;
+
+  if (!manage) {
+    const assigned = await localDataJson<Row[]>(env, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=branch_id`, {}, 'Branch membership').catch(() => []);
+    const allowed = assigned.map((row) => text(row.branch_id)).filter((id) => UUID.test(id));
+    if (allowed.length) {
+      const primary = await localDataJson<Row[]>(env, `crm_branches?company_id=eq.${encodeURIComponent(companyId)}&is_primary=eq.true&status=eq.active&select=id&limit=1`, {}, 'Primary branch').catch(() => []);
+      const primaryId = text(primary[0]?.id);
+      return allowed.includes(primaryId) ? primaryId : allowed[0];
+    }
+  }
+
   const primary = await localDataJson<Row[]>(env, `crm_branches?company_id=eq.${encodeURIComponent(companyId)}&is_primary=eq.true&status=eq.active&select=id&limit=1`, {}, 'Primary branch').catch(() => []);
   return text(primary[0]?.id) || null;
+}
+
+async function analytics(env: BranchManagementEnv, companyId: string): Promise<Response> {
+  const branches = await listBranches(env, companyId);
+  const [leads, calls, tasks] = await Promise.all([
+    localDataJson<Row[]>(env, `marketing_leads?company_id=eq.${encodeURIComponent(companyId)}&select=branch_id,is_target,arrived_at,sold_at,sale_amount&limit=50000`, {}, 'Branch leads').catch(() => []),
+    localDataJson<Row[]>(env, `marketing_calls?company_id=eq.${encodeURIComponent(companyId)}&select=branch_id,call_status,appointment_created,duration_seconds&limit=50000`, {}, 'Branch calls').catch(() => []),
+    localDataJson<Row[]>(env, `crm_tasks?company_id=eq.${encodeURIComponent(companyId)}&select=branch_id,status&limit=50000`, {}, 'Branch tasks').catch(() => []),
+  ]);
+  const byId = new Map(branches.map((branch) => [branch.id, {
+    branchId: branch.id, name: branch.name, code: branch.code, isPrimary: branch.isPrimary,
+    leads: 0, targetLeads: 0, arrivals: 0, sales: 0, revenue: 0, calls: 0, appointments: 0, callMinutes: 0, openTasks: 0, doneTasks: 0,
+  }]));
+  for (const row of leads) {
+    const item = byId.get(text(row.branch_id)); if (!item) continue;
+    item.leads += 1; if (row.is_target === true) item.targetLeads += 1; if (row.arrived_at) item.arrivals += 1;
+    if (row.sold_at || num(row.sale_amount) > 0) item.sales += 1; item.revenue += num(row.sale_amount);
+  }
+  for (const row of calls) {
+    const item = byId.get(text(row.branch_id)); if (!item) continue;
+    item.calls += 1; if (row.appointment_created === true) item.appointments += 1; item.callMinutes += num(row.duration_seconds) / 60;
+  }
+  for (const row of tasks) {
+    const item = byId.get(text(row.branch_id)); if (!item) continue;
+    if (text(row.status) === 'done') item.doneTasks += 1; else if (text(row.status) !== 'cancelled') item.openTasks += 1;
+  }
+  const items = [...byId.values()].map((item) => ({ ...item, revenue: Math.round(item.revenue * 100) / 100, callMinutes: Math.round(item.callMinutes) }));
+  return json({ items, totals: items.reduce((acc, item) => ({
+    leads: acc.leads + item.leads, targetLeads: acc.targetLeads + item.targetLeads, arrivals: acc.arrivals + item.arrivals,
+    sales: acc.sales + item.sales, revenue: acc.revenue + item.revenue, calls: acc.calls + item.calls, appointments: acc.appointments + item.appointments,
+    callMinutes: acc.callMinutes + item.callMinutes, openTasks: acc.openTasks + item.openTasks, doneTasks: acc.doneTasks + item.doneTasks,
+  }), { leads: 0, targetLeads: 0, arrivals: 0, sales: 0, revenue: 0, calls: 0, appointments: 0, callMinutes: 0, openTasks: 0, doneTasks: 0 }) });
 }
 
 export async function handleBranchManagementRequest(request: Request, env: BranchManagementEnv, url: URL, userId: string, platformRole?: PlatformRole): Promise<Response | null> {
@@ -66,7 +119,12 @@ export async function handleBranchManagementRequest(request: Request, env: Branc
     const memberships = platformRole === 'super_admin' || manage ? [] : await localDataJson<Row[]>(scopedEnv, `crm_branch_members?company_id=eq.${encodeURIComponent(companyId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=branch_id`, {}, 'Branch memberships').catch(() => []);
     const allowed = new Set(memberships.map((row) => text(row.branch_id)).filter(Boolean));
     const restricted = allowed.size > 0;
-    return json({ items: restricted ? branches.filter((branch) => allowed.has(branch.id)) : branches, restricted, canManage: manage });
+    return json({ items: restricted ? branches.filter((branch) => allowed.has(branch.id)) : branches, restricted, canManage: manage, allAvailable: manage && !restricted });
+  }
+
+  if (url.pathname === '/api/branches/analytics' && request.method === 'GET') {
+    if (!manage) return json({ error: 'Сравнение филиалов доступно владельцу или администратору клиники' }, 403);
+    return analytics(scopedEnv, companyId);
   }
 
   if (!manage) return json({ error: 'Управлять филиалами может владелец или администратор клиники' }, 403);
