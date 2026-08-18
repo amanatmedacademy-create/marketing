@@ -33,7 +33,7 @@ test('checkout is a server-to-server Control Center operation', () => {
   assert.match(gateway, /\/v1\/billing\/invoices/);
   assert.match(gateway, /billingPeriodMonths/);
   assert.match(runtime, /handleBillingGatewayRequest/);
-  assert.match(runtime, /handleBillingControlPlaneRequest/);
+  assert.doesNotMatch(runtime, /handleBillingControlPlaneRequest/);
   assert.match(service, /IMDS_BILLING_CONTROL_URL=http:\/\/127\.0\.0\.1:8788/);
 });
 
@@ -53,35 +53,22 @@ test('billing center supports plans invoices limits and lifecycle recovery', () 
   assert.match(platform, /location\.pathname !== '\/billing'/);
 });
 
-test('billing control plane persists catalog orders subscriptions and grants', () => {
+test('legacy billing storage remains migration-only while Control Center is authoritative', () => {
   assert.match(migration, /create table if not exists public\.imds_billing_plans/);
   assert.match(migration, /create table if not exists public\.imds_billing_orders/);
   assert.match(migration, /create table if not exists public\.imds_billing_subscriptions/);
   assert.match(migration, /create table if not exists public\.imds_billing_addon_grants/);
-  assert.match(migration, /'start','marketing','BELES Start'.*49900/s);
-  assert.match(migration, /'pro','marketing','BELES Pro'.*99900/s);
-  assert.match(migration, /'business','marketing','BELES Business'.*249900/s);
+  assert.doesNotMatch(runtime, /handleBillingControlPlaneRequest/);
+  assert.doesNotMatch(scheduler, /runBillingLifecycleTick/);
 });
 
-test('CloudPayments checkout and webhooks validate provider state before granting entitlements', () => {
+test('legacy provider implementation remains isolated and cannot become runtime authority', () => {
   assert.match(control, /https:\/\/api\.cloudpayments\.ru\/orders\/create/);
   assert.match(control, /createHmac\('sha256'/);
   assert.match(control, /timingSafeEqual/);
-  assert.match(control, /params\.AccountId/);
-  assert.match(control, /params\.Amount/);
-  assert.match(control, /params\.Currency/);
-  assert.match(control, /\/api\\\/webhooks\\\/cloudpayments\\\/\(check\|pay\|fail\|refund\)/);
   assert.match(control, /syncEntitlements/);
-  assert.match(control, /billing-sync:/);
-});
-
-test('legacy payment lifecycle remains fail-safe and scheduled', () => {
-  assert.match(control, /status: 'past_due'/);
-  assert.match(control, /status: 'grace_period'/);
-  assert.match(control, /status: 'suspended'/);
-  assert.match(control, /status: 'expired'/);
-  assert.match(scheduler, /runBillingLifecycleTick/);
-  assert.match(scheduler, /cron === '15 \* \* \* \*'/);
+  assert.doesNotMatch(runtime, /from '\.\/billingControlPlane'/);
+  assert.doesNotMatch(scheduler, /from '\.\/billingControlPlane'/);
 });
 
 test('payment credentials remain outside the application repository', () => {
