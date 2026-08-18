@@ -96,3 +96,25 @@ test('cloud telephony recordings retain provider identity and block private reco
   assert.match(recording, /privateHostname/);
   assert.match(recording, /url\.protocol !== 'https:'/);
 });
+
+test('cloud telephony outbound uses the same calls endpoint as the CRM dialer', () => {
+  const cloud = read('worker/cloudTelephonyStatus.ts');
+  const client = read('src/services/telephony.ts');
+  assert.match(client, /request<TelephonyCallResponse>\('\/calls'/);
+  assert.match(cloud, /'\/api\/telephony\/calls'/);
+  assert.match(cloud, /startOutbound/);
+  assert.match(cloud, /outbound_callback/);
+  assert.match(cloud, /target\.protocol !== 'https:'/);
+  assert.match(cloud, /privateHostname\(target\.hostname\)/);
+});
+
+test('Binotel and Sipuni outbound callback URLs stay encrypted and configurable per branch', () => {
+  const credentials = read('worker/telephonyProviderCredentials.ts');
+  const panel = read('src/components/CloudTelephonyIntegrationPanel.tsx');
+  assert.match(credentials, /outboundUrlTemplate/);
+  assert.match(credentials, /secrets: \['apiKey', 'webhookSecret', 'outboundUrlTemplate'\]/);
+  assert.match(credentials, /branch_id=eq/);
+  assert.match(panel, /URL исходящего вызова/);
+  assert.match(panel, /\{phone\}/);
+  assert.match(panel, /outboundMethod/);
+});
