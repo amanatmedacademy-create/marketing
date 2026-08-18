@@ -31,7 +31,7 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
   const isSipuni = provider === 'sipuni';
   const title = isSipuni ? 'Sipuni' : 'Binotel';
   const [config, setConfig] = useState<ConfigResponse>({});
-  const [form, setForm] = useState<Record<string, string>>({});
+  const [form, setForm] = useState<Record<string, string>>({ outboundMethod: 'GET' });
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
@@ -40,7 +40,7 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
     try {
       const next = await request<ConfigResponse>(`/api/telephony/providers/${provider}`);
       setConfig(next);
-      setForm((previous) => ({ ...previous, ...(next.provider?.values || {}) }));
+      setForm((previous) => ({ outboundMethod: 'GET', ...previous, ...(next.provider?.values || {}) }));
       setMessage(null);
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
@@ -52,13 +52,18 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
   const save = async () => {
     setBusy('save'); setMessage(null);
     try {
+      const shared = {
+        outboundUrlTemplate: form.outboundUrlTemplate || '',
+        outboundMethod: form.outboundMethod || 'GET',
+        activate: true,
+      };
       const payload = isSipuni
-        ? { userId: form.userId || '', apiKey: form.apiKey || '', activate: true }
-        : { apiKey: form.apiKey || '', apiSecret: form.apiSecret || '', apiBaseUrl: form.apiBaseUrl || '', activate: true };
+        ? { ...shared, userId: form.userId || '', apiKey: form.apiKey || '' }
+        : { ...shared, apiKey: form.apiKey || '', apiSecret: form.apiSecret || '', apiBaseUrl: form.apiBaseUrl || '' };
       const next = await request<ConfigResponse>(`/api/telephony/providers/${provider}`, { method: 'PUT', body: JSON.stringify(payload) });
       setConfig(next);
-      setForm((previous) => ({ ...previous, apiKey: '', ...(isSipuni ? {} : { apiSecret: '' }) }));
-      setMessage({ type: 'ok', text: `${title}: настройки сохранены. Теперь укажите webhook URL в кабинете провайдера.` });
+      setForm((previous) => ({ ...previous, apiKey: '', apiSecret: '', outboundUrlTemplate: '' }));
+      setMessage({ type: 'ok', text: `${title}: настройки сохранены и провайдер выбран для текущего филиала.` });
       onChanged?.();
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) });
@@ -70,7 +75,7 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
     setBusy('delete');
     try {
       await request(`/api/telephony/providers/${provider}`, { method: 'DELETE' });
-      setConfig({}); setForm({}); setMessage({ type: 'ok', text: `${title} отключён.` }); onChanged?.();
+      setConfig({}); setForm({ outboundMethod: 'GET' }); setMessage({ type: 'ok', text: `${title} отключён.` }); onChanged?.();
     } catch (error) { setMessage({ type: 'error', text: error instanceof Error ? error.message : String(error) }); }
     finally { setBusy(''); }
   };
@@ -85,6 +90,7 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
   const connected = config.provider?.status === 'connected' && !config.provider?.lastError;
   const savedApiKey = Boolean(config.provider?.secretFields?.apiKey);
   const savedApiSecret = Boolean(config.provider?.secretFields?.apiSecret);
+  const savedOutbound = Boolean(config.provider?.secretFields?.outboundUrlTemplate);
 
   return <section className="zadarma-integration" aria-label={`Настройка ${title}`}>
     <header className="zadarma-integration__head">
@@ -101,18 +107,22 @@ export default function CloudTelephonyIntegrationPanel({ provider, onChanged }: 
     <div className="zadarma-integration__grid">
       <div className="zadarma-integration__form">
         {isSipuni && <label><span>User ID *</span><input value={form.userId || ''} onChange={(event) => setForm((value) => ({ ...value, userId: event.target.value }))} placeholder="ID пользователя Sipuni"/></label>}
-        <label><span>{isSipuni ? 'API key *' : 'API key *'}</span><input type="password" value={form.apiKey || ''} onChange={(event) => setForm((value) => ({ ...value, apiKey: event.target.value }))} placeholder={savedApiKey ? 'Ключ уже сохранён. Оставьте пустым, чтобы не менять.' : 'API key'}/></label>
+        <label><span>API key *</span><input type="password" value={form.apiKey || ''} onChange={(event) => setForm((value) => ({ ...value, apiKey: event.target.value }))} placeholder={savedApiKey ? 'Ключ уже сохранён. Оставьте пустым, чтобы не менять.' : 'API key'}/></label>
         {!isSipuni && <>
           <label><span>API secret *</span><input type="password" value={form.apiSecret || ''} onChange={(event) => setForm((value) => ({ ...value, apiSecret: event.target.value }))} placeholder={savedApiSecret ? 'Secret уже сохранён. Оставьте пустым, чтобы не менять.' : 'API secret'}/></label>
-          <label><span>API base URL</span><input value={form.apiBaseUrl || ''} onChange={(event) => setForm((value) => ({ ...value, apiBaseUrl: event.target.value }))} placeholder="Необязательно; укажите только если Binotel выдал отдельный endpoint"/></label>
+          <label><span>API base URL</span><input value={form.apiBaseUrl || ''} onChange={(event) => setForm((value) => ({ ...value, apiBaseUrl: event.target.value }))} placeholder="Необязательно; если Binotel выдал отдельный API host"/></label>
         </>}
+
+        <label><span>URL исходящего вызова</span><input type="password" value={form.outboundUrlTemplate || ''} onChange={(event) => setForm((value) => ({ ...value, outboundUrlTemplate: event.target.value }))} placeholder={savedOutbound ? 'Callback URL уже сохранён. Оставьте пустым, чтобы не менять.' : 'https://provider.example/call?phone={phone}&user={userId}&key={apiKey}'}/></label>
+        <label><span>Метод исходящего вызова</span><select value={form.outboundMethod || 'GET'} onChange={(event) => setForm((value) => ({ ...value, outboundMethod: event.target.value }))}><option value="GET">GET</option><option value="POST">POST</option></select></label>
+        <div className="zadarma-integration__automation"><div><span>Плейсхолдеры callback URL</span><p><code>{'{phone}'}</code> · <code>{'{userId}'}</code> · <code>{'{apiKey}'}</code> · <code>{'{apiSecret}'}</code>. URL хранится зашифрованно и не возвращается в браузер после сохранения.</p></div></div>
 
         <div className="zadarma-integration__automation"><div><span>Статус</span><p>{connected ? 'Webhook получает реальные события' : configured ? 'Credentials сохранены · ожидаем первое событие webhook' : 'Не подключено'}</p></div></div>
 
         {config.webhookUrl && <div className="zadarma-integration__automation"><div><span>Webhook URL</span><p style={{ wordBreak: 'break-all' }}>{config.webhookUrl}</p></div><button type="button" onClick={() => void copyWebhook()}><Copy size={15}/> Копировать</button></div>}
 
-        <div className="zadarma-integration__automation"><div><span>Что включается</span><p>Входящие/исходящие события · история звонков · пропущенные · записи · транскрипция · AI Call Intelligence · CRM-связка.</p></div></div>
-        <div className="zadarma-integration__automation"><div><span>Настройка у провайдера</span><p>{isSipuni ? 'В Sipuni откройте настройки API → события на АТС и вставьте Webhook URL.' : 'В Binotel добавьте Webhook URL в API/WebHook настройках вашего кабинета. REST click-to-call подключим после получения точного endpoint вашего аккаунта.'}</p></div></div>
+        <div className="zadarma-integration__automation"><div><span>Что включается</span><p>Входящие/исходящие события · история звонков · пропущенные · записи · транскрипция · AI Call Intelligence · CRM-связка. Исходящий click-to-call включается после сохранения callback URL.</p></div></div>
+        <div className="zadarma-integration__automation"><div><span>Настройка у провайдера</span><p>{isSipuni ? 'В Sipuni включите «События на АТС» и вставьте Webhook URL. Для звонков из CRM включите услугу «Звонок на номер» и сохраните предоставленный кабинетом callback URL выше.' : 'В Binotel добавьте Webhook URL в API/WebHook настройках. Для звонков из CRM сохраните точный click-to-call URL, выданный вашим Binotel API, в поле выше.'}</p></div></div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button type="button" onClick={() => void save()} disabled={Boolean(busy)}>{busy === 'save' ? <LoaderCircle className="spin" size={16}/> : <Save size={16}/>} Сохранить и активировать</button>
