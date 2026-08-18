@@ -1,5 +1,6 @@
 import worker from '../worker/securedMain';
 import type { AssetFetcher, WorkerExecutionContext, WorkerScheduledController } from '../worker/integrations';
+import { runBillingLifecycleTick } from './billingControlPlane';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -32,6 +33,7 @@ async function runCron(cron: string, date: Date): Promise<void> {
   const controller: WorkerScheduledController = { cron, scheduledTime: date.getTime() };
   console.log(JSON.stringify({ area: 'scheduler', event: 'start', cron, at: date.toISOString() }));
   await worker.scheduled(controller, env as never, ctx);
+  if (cron === '15 * * * *') await runBillingLifecycleTick(env);
   const results = await Promise.allSettled(pending);
   const rejected = results.filter((item) => item.status === 'rejected');
   if (rejected.length) console.error(JSON.stringify({ area: 'scheduler', event: 'background-failures', cron, count: rejected.length }));

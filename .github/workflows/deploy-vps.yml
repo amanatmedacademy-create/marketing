@@ -21,6 +21,8 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      CLOUDPAYMENTS_PUBLIC_ID: ${{ secrets.CLOUDPAYMENTS_PUBLIC_ID }}
+      CLOUDPAYMENTS_API_SECRET: ${{ secrets.CLOUDPAYMENTS_API_SECRET }}
       DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Validate deployment access
@@ -114,6 +116,24 @@ jobs:
             fi
             chmod 600 /etc/imds-marketing.env
           '
+
+      - name: Configure CloudPayments secrets
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDPAYMENTS_PUBLIC_ID" ] || [ -z "$CLOUDPAYMENTS_API_SECRET" ]; then
+            echo 'CloudPayments GitHub secrets are not configured; checkout remains disabled.'
+            exit 0
+          fi
+          umask 077
+          printf 'CLOUDPAYMENTS_PUBLIC_ID=%s\nCLOUDPAYMENTS_API_SECRET=%s\n' "$CLOUDPAYMENTS_PUBLIC_ID" "$CLOUDPAYMENTS_API_SECRET" > /tmp/imds-cloudpayments.env
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          export SSHPASS
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-cloudpayments.env "$VPS_USER@$VPS_HOST:/tmp/imds-cloudpayments.env"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-cloudpayments.env /etc/imds-cloudpayments.env && rm -f /tmp/imds-cloudpayments.env'
+          rm -f /tmp/imds-cloudpayments.env
 
       - name: Install release
         shell: bash

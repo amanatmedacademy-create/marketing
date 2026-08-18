@@ -11,6 +11,7 @@ on:
       - 'supabase/migrations/20260818045000_team_admin_rpcs.sql'
       - 'supabase/migrations/20260818050000_notification_center.sql'
       - 'supabase/migrations/20260818061000_clinic_timezone.sql'
+      - 'supabase/migrations/20260818063500_billing_control_plane.sql'
       - '.github/workflows/apply-account-clinic-foundation-vps.yml'
       - '.github/workflows/publish-runtime-status.yml'
 
@@ -56,7 +57,8 @@ jobs:
             20260818044500_team_invitations_roles.sql \
             20260818045000_team_admin_rpcs.sql \
             20260818050000_notification_center.sql \
-            20260818061000_clinic_timezone.sql
+            20260818061000_clinic_timezone.sql \
+            20260818063500_billing_control_plane.sql
           do
             sshpass -e scp "${SSH_ARGS[@]}" "supabase/migrations/$migration" "$VPS_USER@$VPS_HOST:/tmp/$migration"
           done
@@ -78,7 +80,8 @@ jobs:
             /tmp/20260818044500_team_invitations_roles.sql \
             /tmp/20260818045000_team_admin_rpcs.sql \
             /tmp/20260818050000_notification_center.sql \
-            /tmp/20260818061000_clinic_timezone.sql
+            /tmp/20260818061000_clinic_timezone.sql \
+            /tmp/20260818063500_billing_control_plane.sql
           do
             test -s "$migration"
             docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
@@ -93,6 +96,11 @@ jobs:
           ownership_rpc=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regprocedure('public.imds_transfer_company_ownership(uuid,uuid,uuid,boolean)') is not null)::int")
           invitations_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_company_invitations') is not null)::int")
           notifications_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_notifications') is not null)::int")
+          billing_plans_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_billing_plans') is not null)::int")
+          billing_orders_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_billing_orders') is not null)::int")
+          billing_subscriptions_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_billing_subscriptions') is not null)::int")
+          billing_addons_table=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.imds_billing_addon_grants') is not null)::int")
+          billing_plan_count=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.imds_billing_plans where product='marketing' and active")
           operator_role=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from pg_constraint where conrelid='public.crm_company_members'::regclass and contype='c' and pg_get_constraintdef(oid) like '%operator%'))::int")
           orphan_count=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.crm_companies where organization_id is null")
 
@@ -105,10 +113,15 @@ jobs:
           test "$ownership_rpc" = "1" || { echo 'ownership transfer RPC missing'; exit 1; }
           test "$invitations_table" = "1" || { echo 'crm_company_invitations missing'; exit 1; }
           test "$notifications_table" = "1" || { echo 'crm_notifications missing'; exit 1; }
+          test "$billing_plans_table" = "1" || { echo 'imds_billing_plans missing'; exit 1; }
+          test "$billing_orders_table" = "1" || { echo 'imds_billing_orders missing'; exit 1; }
+          test "$billing_subscriptions_table" = "1" || { echo 'imds_billing_subscriptions missing'; exit 1; }
+          test "$billing_addons_table" = "1" || { echo 'imds_billing_addon_grants missing'; exit 1; }
+          test "$billing_plan_count" -ge "3" || { echo 'BELES billing catalog missing'; exit 1; }
           test "$operator_role" = "1" || { echo 'expanded membership role constraint missing'; exit 1; }
           test "$orphan_count" = "0" || { echo "clinics without organization: $orphan_count"; exit 1; }
-          echo 'ACCOUNT_CLINIC_TEAM_NOTIFICATION_TIMEZONE_SCHEMA=ok'
-          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql
+          echo 'ACCOUNT_CLINIC_TEAM_NOTIFICATION_TIMEZONE_BILLING_SCHEMA=ok'
+          rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql /tmp/20260818063500_billing_control_plane.sql
           REMOTE
 
       - name: Cleanup
@@ -119,4 +132,4 @@ jobs:
         run: |
           set +e
           export SSHPASS
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql' || true
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'rm -f /tmp/20260818033500_account_organization_clinic_foundation.sql /tmp/20260818035000_account_clinic_runtime_flows.sql /tmp/20260818044500_team_invitations_roles.sql /tmp/20260818045000_team_admin_rpcs.sql /tmp/20260818050000_notification_center.sql /tmp/20260818061000_clinic_timezone.sql /tmp/20260818063500_billing_control_plane.sql' || true

@@ -10,10 +10,12 @@ Group=imds
 WorkingDirectory=/opt/imds-marketing/current
 EnvironmentFile=/etc/imds-marketing.env
 EnvironmentFile=-/etc/imds-platform-control.env
+EnvironmentFile=-/etc/imds-cloudpayments.env
 Environment=NODE_ENV=production
 Environment=PORT=8787
 Environment=IMDS_HOST=127.0.0.1
 Environment=IMDS_PLATFORM_STATE_DIR=/opt/imds-marketing/control
+Environment=IMDS_BILLING_CONTROL_URL=http://127.0.0.1:8787
 ExecStart=/usr/bin/npx --yes tsx server/vpsRuntime.ts
 Restart=always
 RestartSec=5

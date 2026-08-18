@@ -7,6 +7,7 @@ import { resolveCompanyId } from '../worker/companyContext';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
 import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
 import { handleBillingGatewayRequest } from './billingGateway';
+import { handleBillingControlPlaneRequest } from './billingControlPlane';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -131,6 +132,8 @@ const server = createServer(async (req, res) => {
   const startedAt = Date.now();
   try {
     const request = await toRequest(req);
+    const billingControlResponse = await handleBillingControlPlaneRequest(request, env);
+    if (billingControlResponse) { await sendResponse(res, billingControlResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: billingControlResponse.status, durationMs: Date.now() - startedAt, billingControl: true })); return; }
     const platformResponse = await handlePlatformInternalRequest(request, env);
     if (platformResponse) { await sendResponse(res, platformResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true })); return; }
     const billingResponse = await handleBillingGatewayRequest(request, env);
