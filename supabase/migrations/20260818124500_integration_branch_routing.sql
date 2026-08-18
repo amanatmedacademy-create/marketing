@@ -38,6 +38,9 @@ begin
   from public.imds_integration_route_claims c
   join public.crm_branches b on b.id = c.branch_id and b.company_id = c.company_id and b.status <> 'archived'
   where c.company_id = p_company_id and c.expires_at > now();
+  if route_count > 1 then
+    raise exception 'Ambiguous active integration branch route claims for company %', p_company_id;
+  end if;
   if route_count = 1 then return resolved; end if;
   return null;
 end;
@@ -85,8 +88,7 @@ begin
   end if;
 end $$;
 
--- Helpful branch-local uniqueness. Legacy indexes remain for compatibility with existing PostgREST on_conflict calls;
--- routed inserts still receive branch_id before conflict evaluation and keep branch provenance.
+-- Helpful branch-local indexes. Legacy conflict targets remain for compatibility with existing PostgREST upserts.
 create index if not exists marketing_leads_branch_external_idx on public.marketing_leads(company_id, branch_id, external_id) where external_id is not null;
 create index if not exists marketing_ads_branch_external_date_idx on public.marketing_ads(company_id, branch_id, external_id, report_date) where external_id is not null and report_date is not null;
 create index if not exists marketing_daily_metrics_branch_date_idx on public.marketing_daily_metrics(company_id, branch_id, date, source, platform);
