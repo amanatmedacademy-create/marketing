@@ -51,6 +51,9 @@ jobs:
       - name: Billing Center regression tests
         run: npm run test:billing
 
+      - name: Fail-closed entitlement regression tests
+        run: npm run test:fail-closed
+
       - name: Typecheck
         run: npm run typecheck
 
