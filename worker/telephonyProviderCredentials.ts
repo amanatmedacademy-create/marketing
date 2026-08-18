@@ -10,8 +10,29 @@ const definitions: Record<ConfigurableTelephonyProvider, Definition> = {
   freepbx: { required: ['ariBaseUrl', 'ariUsername', 'ariPassword', 'stasisApp', 'endpointTemplate'], secrets: ['ariPassword'], mapping: { ariBaseUrl: 'FREEPBX_ARI_BASE_URL', ariUsername: 'FREEPBX_ARI_USERNAME', ariPassword: 'FREEPBX_ARI_PASSWORD', stasisApp: 'FREEPBX_STASIS_APP', endpointTemplate: 'FREEPBX_ENDPOINT_TEMPLATE', callerId: 'FREEPBX_CALLER_ID' } },
   twilio: { required: ['accountSid', 'authToken', 'fromNumber', 'agentEndpoint'], secrets: ['authToken'], mapping: { accountSid: 'TWILIO_ACCOUNT_SID', authToken: 'TWILIO_AUTH_TOKEN', fromNumber: 'TWILIO_FROM_NUMBER', agentEndpoint: 'TWILIO_AGENT_ENDPOINT' } },
   voximplant: { required: ['accountId', 'keyId', 'privateKey', 'ruleId'], secrets: ['privateKey'], mapping: { accountId: 'VOXIMPLANT_ACCOUNT_ID', keyId: 'VOXIMPLANT_KEY_ID', privateKey: 'VOXIMPLANT_PRIVATE_KEY', ruleId: 'VOXIMPLANT_RULE_ID', controlProtocol: 'VOXIMPLANT_CONTROL_PROTOCOL' } },
-  binotel: { required: ['apiKey', 'apiSecret'], secrets: ['apiKey', 'apiSecret', 'webhookSecret'], mapping: { apiKey: 'BINOTEL_API_KEY', apiSecret: 'BINOTEL_API_SECRET', apiBaseUrl: 'BINOTEL_API_BASE_URL', webhookSecret: 'BINOTEL_WEBHOOK_SECRET' } },
-  sipuni: { required: ['userId', 'apiKey'], secrets: ['apiKey', 'webhookSecret'], mapping: { userId: 'SIPUNI_USER_ID', apiKey: 'SIPUNI_API_KEY', webhookSecret: 'SIPUNI_WEBHOOK_SECRET' } },
+  binotel: {
+    required: ['apiKey', 'apiSecret'],
+    secrets: ['apiKey', 'apiSecret', 'webhookSecret', 'outboundUrlTemplate'],
+    mapping: {
+      apiKey: 'BINOTEL_API_KEY',
+      apiSecret: 'BINOTEL_API_SECRET',
+      apiBaseUrl: 'BINOTEL_API_BASE_URL',
+      webhookSecret: 'BINOTEL_WEBHOOK_SECRET',
+      outboundUrlTemplate: 'BINOTEL_OUTBOUND_URL_TEMPLATE',
+      outboundMethod: 'BINOTEL_OUTBOUND_METHOD',
+    },
+  },
+  sipuni: {
+    required: ['userId', 'apiKey'],
+    secrets: ['apiKey', 'webhookSecret', 'outboundUrlTemplate'],
+    mapping: {
+      userId: 'SIPUNI_USER_ID',
+      apiKey: 'SIPUNI_API_KEY',
+      webhookSecret: 'SIPUNI_WEBHOOK_SECRET',
+      outboundUrlTemplate: 'SIPUNI_OUTBOUND_URL_TEMPLATE',
+      outboundMethod: 'SIPUNI_OUTBOUND_METHOD',
+    },
+  },
 };
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -57,6 +78,9 @@ export async function handleTelephonyProviderConfig(request: Request, env: Unive
   for (const field of Object.keys(definition.mapping)) { const value = text(incoming[field]); if (value) payload[field] = value; else if (!definition.secrets.includes(field) && field in incoming) payload[field] = incoming[field]; }
   if ((selectedProvider === 'binotel' || selectedProvider === 'sipuni') && (!text(payload.webhookSecret) || incoming.rotateWebhookSecret === true)) payload.webhookSecret = randomSecret();
   const missing = definition.required.filter((field) => !text(payload[field])); if (missing.length) return json({ error: `Заполните обязательные поля: ${missing.join(', ')}` }, 400);
+  const method = text(payload.outboundMethod).toUpperCase();
+  if (method && !['GET', 'POST'].includes(method)) return json({ error: 'outboundMethod должен быть GET или POST' }, 400);
+  if (text(payload.outboundUrlTemplate) && !text(payload.outboundUrlTemplate).includes('{phone}')) return json({ error: 'URL исходящего звонка должен содержать плейсхолдер {phone}' }, 400);
   const sealed = await encrypt(payload, encryptionSecret(env)); const values: Record<string, string> = {}; const secretFields: Record<string, boolean> = {};
   for (const field of Object.keys(definition.mapping)) { if (definition.secrets.includes(field)) secretFields[field] = Boolean(text(payload[field])); else values[field] = text(payload[field]); }
   const stored = { provider: selectedProvider, company_id: companyId, branch_id: branchId, user_id: null, ...sealed, config_summary: { values, secretFields }, status: existing?.status === 'connected' ? 'connected' : 'configured', last_error: null, updated_at: new Date().toISOString() };
