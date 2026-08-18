@@ -5,7 +5,7 @@ import { runTenantSyncs, type TenantSyncEnv, type TenantSyncResult } from './ten
 import type { WorkerScheduledController } from './integrations';
 
 type Row = Record<string, unknown>;
-type RouterEnv = LocalDataEnv & TenantScopedEnv & Record<string, unknown>;
+type RouterEnv = LocalDataEnv & TenantScopedEnv;
 type CredentialRow = { company_id?: string; branch_id?: string | null; provider?: string; config_summary?: Row; status?: string };
 export type RouteLease = { ids: string[]; companyId?: string; branchId?: string };
 export type PreparedRoute = { env: RouterEnv; lease: RouteLease; response?: Response };
@@ -82,20 +82,31 @@ async function routeWaba(request: Request, env: RouterEnv): Promise<PreparedRout
   if (request.method !== 'POST') return { env, lease: { ids: [] } };
   const payload = await requestPayload(request);
   const rows = await credentials(env, 'waba');
-  const leases: RouteLease[] = [];
+  let companyId = '';
+  let branchId = '';
+  const claims: Array<{ kind: string; value: string }> = [];
   for (const entry of Array.isArray(payload.entry) ? payload.entry.map(record) : []) {
     for (const change of Array.isArray(entry.changes) ? entry.changes.map(record) : []) {
       const value = record(change.value); const metadata = record(value.metadata); const phoneNumberId = text(metadata.phone_number_id);
       if (!phoneNumberId) continue;
       const route = uniqueRoute(rows, (row) => text(values(row).phoneNumberId) === phoneNumberId);
       if (!route) return { env, lease: { ids: [] }, response: json({ error: 'Не удалось однозначно определить филиал для WABA phone_number_id', code: 'BRANCH_ROUTE_UNRESOLVED', phoneNumberId }, 409) };
-      const companyId = text(route.company_id); const branchId = text(route.branch_id);
-      const claims = [{ kind: 'phone_number_id', value: phoneNumberId }];
+      const nextCompanyId = text(route.company_id); const nextBranchId = text(route.branch_id);
+      if (branchId && (nextBranchId !== branchId || nextCompanyId !== companyId)) {
+        return { env, lease: { ids: [] }, response: json({ error: 'Один WABA webhook содержит события разных филиалов', code: 'BRANCH_ROUTE_AMBIGUOUS' }, 409) };
+      }
+      companyId = nextCompanyId; branchId = nextBranchId;
+      claims.push({ kind: 'phone_number_id', value: phoneNumberId });
       for (const message of Array.isArray(value.messages) ? value.messages.map(record) : []) { const phone = digits(message.from); if (phone) claims.push({ kind: 'phone', value: phone }); }
-      leases.push(await createClaims(env, companyId, branchId, 'waba', claims));
     }
   }
-  return { env, lease: { ids: leases.flatMap((lease) => lease.ids) } };
+  if (!branchId) {
+    const branchIds = [...new Set(rows.map((row) => `${text(row.company_id)}:${text(row.branch_id)}`))];
+    if (branchIds.length !== 1 || !rows[0]) return { env, lease: { ids: [] }, response: json({ error: 'Не удалось определить филиал WABA webhook', code: 'BRANCH_ROUTE_UNRESOLVED' }, 409) };
+    companyId = text(rows[0].company_id); branchId = text(rows[0].branch_id);
+  }
+  const lease = await createClaims(env, companyId, branchId, 'waba', claims.length ? claims : [{ kind: 'webhook', value: '*' }]);
+  return { env: { ...env, CURRENT_COMPANY_ID: companyId, CURRENT_BRANCH_ID: branchId }, lease };
 }
 
 async function routeZadarma(request: Request, env: RouterEnv, url: URL): Promise<PreparedRoute> {
@@ -161,6 +172,12 @@ async function routeTikTok(request: Request, env: RouterEnv): Promise<PreparedRo
 }
 
 export async function prepareInboundIntegrationRoute(request: Request, env: RouterEnv, url: URL): Promise<PreparedRoute> {
+  const routed = url.pathname === '/api/webhooks/waba'
+    || url.pathname.startsWith('/api/telephony/zadarma/webhook/')
+    || url.pathname === '/api/webhooks/bitrix'
+    || url.pathname === '/api/webhooks/meta'
+    || url.pathname === '/api/webhooks/tiktok';
+  if (!routed) return { env, lease: { ids: [] } };
   await localDataRequest(env, 'imds_integration_route_claims?expires_at=lt.now()', { method: 'DELETE', headers: { Prefer: 'return=minimal' } }).catch(() => undefined);
   if (url.pathname === '/api/webhooks/waba') return routeWaba(request, env);
   if (url.pathname.startsWith('/api/telephony/zadarma/webhook/')) return routeZadarma(request, env, url);
