@@ -48,7 +48,8 @@ test('personal account is separated from organization administration', () => {
   assert.match(source, /type PersonalTab = 'profile' \| 'clinics' \| 'security' \| 'preferences' \| 'access'/);
   assert.match(source, /type OrgTab = 'clinic' \| 'users' \| 'matrix' \| 'subscription'/);
   assert.match(source, /Активные сессии/);
-  assert.match(source, /Подписка и оплата/);
+  assert.match(source, /BillingCenterPanel/);
+  assert.match(source, /label: 'Billing'/);
   assert.doesNotMatch(source, /Пароли в IMDS не хранятся/);
 });
 
