@@ -1,0 +1,24 @@
+name: Probe Fail Closed Apply
+
+on:
+  issues:
+    types: [edited]
+
+permissions:
+  actions: read
+  issues: write
+  contents: read
+
+jobs:
+  probe:
+    if: github.event.issue.number == 227
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report latest apply run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          row="$(gh run list --repo "$REPO" --workflow apply-fail-closed-main.yml --limit 1 --json databaseId,status,conclusion,headSha,event,createdAt --jq '.[0]')"
+          gh issue comment 227 --repo "$REPO" --body "apply_probe=$row"
