@@ -1,0 +1,68 @@
+name: Apply Branch Hierarchy VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20260818104500_branch_hierarchy.sql'
+      - '.github/workflows/apply-branch-hierarchy-vps.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-branch-hierarchy-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - name: Validate deployment access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
+          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          command -v sshpass >/dev/null
+      - uses: actions/checkout@v4
+      - name: Upload migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          sshpass -e scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 supabase/migrations/20260818104500_branch_hierarchy.sql "$VPS_USER@$VPS_HOST:/tmp/20260818104500_branch_hierarchy.sql"
+      - name: Apply and verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < /tmp/20260818104500_branch_hierarchy.sql
+          branches=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_branches') is not null)::int")
+          members=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (to_regclass('public.crm_branch_members') is not null)::int")
+          lead_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='marketing_leads' and column_name='branch_id'))::int")
+          task_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='crm_tasks' and column_name='branch_id'))::int")
+          integration_column=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select (exists(select 1 from information_schema.columns where table_schema='public' and table_name='integration_credentials' and column_name='branch_id'))::int")
+          missing_primary=$(docker exec imds-postgres psql -U imds_owner -d imds_marketing -At -c "select count(*) from public.crm_companies c where not exists (select 1 from public.crm_branches b where b.company_id=c.id and b.is_primary=true and b.status<>'archived')")
+          test "$branches" = 1
+          test "$members" = 1
+          test "$lead_column" = 1
+          test "$task_column" = 1
+          test "$integration_column" = 1
+          test "$missing_primary" = 0
+          echo 'BRANCH_HIERARCHY_SCHEMA=ok'
+          rm -f /tmp/20260818104500_branch_hierarchy.sql
+          REMOTE
