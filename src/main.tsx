@@ -50,6 +50,7 @@ import './topbar-runtime-status.css';
 import './schedule-imds-theme.css';
 import './schedule-search-icon-fix.css';
 import './beles-brand.css';
+import './ui-readability-final.css';
 
 type ThemeMode = 'light' | 'dark';
 

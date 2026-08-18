@@ -1,0 +1,230 @@
+:root,
+:root[data-theme='light']{
+  --imds-muted-readable:#5f7780;
+  --imds-soft-readable:#3f5963;
+}
+
+:root[data-theme='dark']{
+  --imds-muted-readable:#9eb2b7;
+  --imds-soft-readable:#c6d6d9;
+}
+
+/* Global navigation readability */
+.marketing-nav-label{
+  font-size:.68rem!important;
+  line-height:1.35!important;
+  color:var(--imds-muted-readable)!important;
+}
+
+.marketing-shell nav a{
+  min-height:44px!important;
+  font-size:.86rem!important;
+  line-height:1.35!important;
+  font-weight:650!important;
+  color:var(--imds-soft-readable)!important;
+}
+
+.marketing-shell nav a svg{
+  width:18px!important;
+  height:18px!important;
+  flex:0 0 auto!important;
+}
+
+/* Top bar */
+.marketing-search input{
+  font-size:.88rem!important;
+  color:var(--imds-text)!important;
+}
+.marketing-search input::placeholder{
+  color:var(--imds-muted-readable)!important;
+  opacity:1!important;
+}
+.topbar-profile-button strong{font-size:.78rem!important}
+.topbar-profile-button small{font-size:.66rem!important;color:var(--imds-muted-readable)!important}
+
+/* Marketing Center */
+.marketing-hub-hero p,
+.marketing-hub-section-head p,
+.marketing-hub-module-heading p{
+  color:var(--imds-muted-readable)!important;
+  line-height:1.5!important;
+}
+
+.marketing-hub-tabs button{
+  min-height:42px!important;
+  padding:10px 14px!important;
+  font-size:.86rem!important;
+  color:var(--imds-soft-readable)!important;
+}
+
+.marketing-hub-tabs button.active{
+  color:var(--imds-primary)!important;
+}
+
+.marketing-hub-section-head>div>span,
+.marketing-hub-module-heading span,
+.marketing-hub-eyebrow{
+  font-size:.7rem!important;
+  line-height:1.3!important;
+}
+
+.marketing-hub-kpis span,
+.marketing-hub-kpis small,
+.marketing-platform-card p,
+.marketing-platform-card footer,
+.marketing-module-card p,
+.marketing-boundary-links small,
+.marketing-initiative-list article>div:nth-child(2) span,
+.marketing-initiative-meta small,
+.marketing-content-summary span,
+.marketing-content-board span,
+.marketing-content-board small,
+.marketing-content-board time{
+  color:var(--imds-muted-readable)!important;
+}
+
+.marketing-hub-kpis span,
+.marketing-hub-kpis small{font-size:.78rem!important}
+.marketing-platform-card p{font-size:.78rem!important;line-height:1.45!important}
+.marketing-platform-card footer{font-size:.74rem!important}
+.marketing-platform-metrics span{font-size:.7rem!important;color:var(--imds-muted-readable)!important}
+.marketing-platform-metrics b{font-size:.88rem!important}
+.marketing-module-card strong{font-size:.9rem!important}
+.marketing-module-card p{font-size:.76rem!important}
+.marketing-boundary-links strong{font-size:.82rem!important}
+.marketing-boundary-links small{font-size:.72rem!important}
+
+/* Analytics overview controls and cards */
+.v36-dashboard{
+  color:var(--imds-text)!important;
+}
+
+.v36-toolbar button,
+.v36-search,
+.v36-popover label,
+.v36-popover>strong{
+  font-size:.82rem!important;
+}
+
+.v36-toolbar>span{
+  color:var(--imds-muted-readable)!important;
+  font-size:.78rem!important;
+}
+
+.v36-popover label,
+.v36-filter-summary span,
+.v36-filter-summary em{
+  color:var(--imds-soft-readable)!important;
+}
+
+.v36-filter-summary strong{font-size:.78rem!important}
+.v36-filter-summary span,.v36-filter-summary em{font-size:.74rem!important}
+
+.v36-kpi{
+  min-height:126px!important;
+  padding:16px!important;
+}
+.v36-kpi strong{
+  margin-top:10px!important;
+  font-size:1.42rem!important;
+  line-height:1.1!important;
+  color:var(--imds-text)!important;
+}
+.v36-kpi span{
+  font-size:.84rem!important;
+  line-height:1.3!important;
+  color:var(--imds-text)!important;
+}
+.v36-kpi small{
+  font-size:.74rem!important;
+  line-height:1.35!important;
+  color:var(--imds-muted-readable)!important;
+}
+
+.v36-card h2{
+  font-size:1.08rem!important;
+  line-height:1.3!important;
+}
+.v36-card p{
+  font-size:.78rem!important;
+  line-height:1.45!important;
+  color:var(--imds-muted-readable)!important;
+}
+.v36-source b{font-size:.82rem!important}
+.v36-source strong,.v36-source span{font-size:.78rem!important}
+.v36-bar>p{font-size:.8rem!important}
+
+/* Deep analytics table */
+.v36-table th,
+.v36-table td{
+  font-size:.76rem!important;
+  line-height:1.4!important;
+}
+.v36-table th{
+  font-size:.68rem!important;
+  color:var(--imds-muted-readable)!important;
+}
+.v36-table td{
+  color:var(--imds-soft-readable)!important;
+}
+.v36-table td small{
+  font-size:.68rem!important;
+  color:var(--imds-muted-readable)!important;
+}
+.v36-table-actions>button,
+.v36-mode button{
+  font-size:.76rem!important;
+}
+
+/* Heat maps */
+.v36-heat-grid strong{font-size:.76rem!important}
+.v36-heat-grid b{font-size:1.05rem!important}
+.v36-heat-grid span{font-size:.68rem!important;color:var(--imds-soft-readable)!important}
+
+/* Charts: improve axis readability in both themes */
+.recharts-text{
+  fill:var(--imds-muted-readable)!important;
+  font-size:12px!important;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip{
+  background:var(--imds-glass-strong)!important;
+  border:1px solid var(--imds-border-strong)!important;
+  color:var(--imds-text)!important;
+}
+.recharts-tooltip-item,
+.recharts-tooltip-label{
+  color:var(--imds-text)!important;
+}
+
+/* Error messages must remain visible */
+.marketing-hub-error,
+.v36-error,
+.alert--error,
+.lead-error,
+.iv2-message--error{
+  font-size:.82rem!important;
+  line-height:1.45!important;
+  font-weight:600!important;
+}
+
+/* Prevent clipped text in compact analytics areas */
+.marketing-overview-analytics,
+.marketing-overview-analytics .v36-dashboard,
+.marketing-overview-analytics .v36-card,
+.marketing-deep-analytics,
+.marketing-deep-analytics .v36-dashboard{
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+@media(max-width:900px){
+  .marketing-shell nav a{font-size:.9rem!important}
+  .marketing-hub-tabs button{font-size:.88rem!important}
+  .v36-toolbar button{font-size:.84rem!important}
+}
+
+@media(max-width:700px){
+  .v36-kpi strong{font-size:1.35rem!important}
+  .v36-kpi span{font-size:.82rem!important}
+  .v36-table th,.v36-table td{font-size:.74rem!important}
+}
