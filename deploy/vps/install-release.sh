@@ -65,6 +65,11 @@ if [ -f "$FAIL_CLOSED_MIGRATION" ]; then
   cat "$FAIL_CLOSED_MIGRATION" | docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing
 fi
 
+CLOUD_TELEPHONY_MIGRATION="$RELEASE_DIR/supabase/migrations/20260818123000_binotel_sipuni_telephony.sql"
+if [ -f "$CLOUD_TELEPHONY_MIGRATION" ]; then
+  cat "$CLOUD_TELEPHONY_MIGRATION" | docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing
+fi
+
 nginx -t
 systemctl daemon-reload
 systemctl enable nginx imds-marketing imds-marketing-scheduler
