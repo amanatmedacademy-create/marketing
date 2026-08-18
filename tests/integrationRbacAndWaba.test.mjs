@@ -62,3 +62,34 @@ test('tenant OAuth tokens remain outside the platform OAuth secret bundle', () =
   assert.match(docs, /Google refresh token/);
   assert.match(docs, /Tenant credentials сохраняются зашифрованно/);
 });
+
+test('Binotel and Sipuni are first-class tenant telephony providers', () => {
+  const credentials = read('worker/telephonyProviderCredentials.ts');
+  const migration = read('supabase/migrations/20260818123000_binotel_sipuni_telephony.sql');
+  const cards = read('src/components/OperationalIntegrationCards.tsx');
+  assert.match(credentials, /'binotel' \| 'sipuni'/);
+  assert.match(credentials, /webhookSecret/);
+  assert.match(migration, /'binotel'::text/);
+  assert.match(migration, /'sipuni'::text/);
+  assert.match(cards, /cloudCard\('binotel'/);
+  assert.match(cards, /cloudCard\('sipuni'/);
+  assert.match(cards, /CloudTelephonyIntegrationPanel/);
+});
+
+test('cloud telephony webhooks are tenant scoped and routed before user auth on VPS', () => {
+  const webhook = read('worker/cloudTelephonyWebhooks.ts');
+  const runtime = read('server/vpsRuntime.ts');
+  assert.match(webhook, /\/api\\\/telephony\\\/\(binotel\|sipuni\)\\\/webhook/);
+  assert.match(webhook, /loadTelephonyProviderCredential\(env, provider, companyId\)/);
+  assert.match(webhook, /secureEqual\(supplied, expected\)/);
+  assert.match(webhook, /markTelephonyProviderStatus\(env, companyId, provider, true\)/);
+  assert.match(runtime, /handleCloudTelephonyWebhook/);
+  assert.match(runtime, /before user\/session and/);
+});
+
+test('cloud telephony recordings retain provider identity and block private recording URLs', () => {
+  const recording = read('worker/telephonyRecording.ts');
+  assert.match(recording, /'binotel' \| 'sipuni'/);
+  assert.match(recording, /privateHostname/);
+  assert.match(recording, /url\.protocol !== 'https:'/);
+});
