@@ -9,6 +9,7 @@ import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialFo
 import { handleBillingGatewayRequest } from './billingGateway';
 import { handleBillingControlPlaneRequest } from './billingControlPlane';
 import { enforceGoogleMfaRedirect, handleAccountSecurityGatewayRequest } from './accountSecurityGateway';
+import { enforceBranchQuota } from './branchQuotaGateway';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -129,6 +130,8 @@ const server = createServer(async (req, res) => {
     if (billingResponse) { await sendResponse(res, billingResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: billingResponse.status, durationMs: Date.now() - startedAt, billing: true })); return; }
     const browserEntitlement = await browserEntitlementResponse(request);
     if (browserEntitlement) { await sendResponse(res, browserEntitlement); console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' })); return; }
+    const branchQuotaDenied = await enforceBranchQuota(request, env);
+    if (branchQuotaDenied) { await sendResponse(res, branchQuotaDenied); console.log(JSON.stringify({ method: req.method, path: req.url, status: branchQuotaDenied.status, durationMs: Date.now() - startedAt, branchQuota: 'denied' })); return; }
     const entitlementDenied = await enforcePlatformEntitlement(request, env);
     if (entitlementDenied) { await sendResponse(res, entitlementDenied); console.log(JSON.stringify({ method: req.method, path: req.url, status: entitlementDenied.status, durationMs: Date.now() - startedAt, entitlement: 'denied' })); return; }
     let response = await worker.fetch(request, env as never, executionContext());
