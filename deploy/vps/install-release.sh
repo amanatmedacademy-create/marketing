@@ -48,9 +48,8 @@ if [ ! -f /etc/imds-marketing.env ]; then
   cat >/etc/imds-marketing.env <<'ENVFILE'
 # Fill server-side secrets before starting production.
 APP_ORIGIN=http://89.207.250.55
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_ANON_KEY=
+IMDS_LOCAL_DB_URL=
+IMDS_LOCAL_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 CURRENT_COMPANY_ID=
 ENVFILE
@@ -60,15 +59,58 @@ fi
 cd "$RELEASE_DIR"
 npm install --omit=dev --no-audit --no-fund || npm install --no-audit --no-fund
 
-FAIL_CLOSED_MIGRATION="$RELEASE_DIR/supabase/migrations/20260818093000_fail_closed_control_plane.sql"
-if [ -f "$FAIL_CLOSED_MIGRATION" ]; then
-  cat "$FAIL_CLOSED_MIGRATION" | docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing
-fi
+apply_local_migration() {
+  local relative_path="$1"
+  local migration_path="$RELEASE_DIR/$relative_path"
+  if [ ! -f "$migration_path" ]; then
+    echo "Required local PostgreSQL migration is missing: $relative_path" >&2
+    exit 1
+  fi
+  echo "Applying local PostgreSQL migration: $relative_path"
+  docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing < "$migration_path"
+}
 
-CLOUD_TELEPHONY_MIGRATION="$RELEASE_DIR/supabase/migrations/20260818123000_binotel_sipuni_telephony.sql"
-if [ -f "$CLOUD_TELEPHONY_MIGRATION" ]; then
-  cat "$CLOUD_TELEPHONY_MIGRATION" | docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing
-fi
+# Keep the self-hosted PostgreSQL schema aligned with the CRM runtime. These
+# historical files live under supabase/migrations only as migration history;
+# production data is applied to the local VPS PostgreSQL container.
+apply_local_migration "supabase/migrations/20260806163000_rebuild_sales_funnel_on_crm_core.sql"
+apply_local_migration "supabase/migrations/20260806172000_add_crm_deal_activities.sql"
+apply_local_migration "supabase/migrations/20260813051500_crm_custom_deal_fields.sql"
+apply_local_migration "supabase/migrations/20260813150000_crm_field_builder_pro.sql"
+apply_local_migration "supabase/migrations/20260818093000_fail_closed_control_plane.sql"
+apply_local_migration "supabase/migrations/20260818123000_binotel_sipuni_telephony.sql"
+
+# PostgREST caches schema metadata. Reload it after DDL and fail the release if
+# the CRM objects required by /api/funnel are incomplete.
+docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing <<'SQL'
+notify pgrst, 'reload schema';
+
+do $$
+declare
+  missing text[] := array[]::text[];
+begin
+  if to_regclass('public.crm_pipelines') is null then missing := array_append(missing, 'crm_pipelines'); end if;
+  if to_regclass('public.crm_pipeline_stages') is null then missing := array_append(missing, 'crm_pipeline_stages'); end if;
+  if to_regclass('public.crm_deals') is null then missing := array_append(missing, 'crm_deals'); end if;
+  if to_regclass('public.crm_deal_stage_events') is null then missing := array_append(missing, 'crm_deal_stage_events'); end if;
+  if to_regclass('public.crm_deal_activities') is null then missing := array_append(missing, 'crm_deal_activities'); end if;
+  if to_regclass('public.crm_custom_field_definitions') is null then missing := array_append(missing, 'crm_custom_field_definitions'); end if;
+  if to_regclass('public.crm_custom_field_values') is null then missing := array_append(missing, 'crm_custom_field_values'); end if;
+  if to_regclass('public.crm_custom_field_sections') is null then missing := array_append(missing, 'crm_custom_field_sections'); end if;
+
+  if to_regclass('public.crm_deals') is not null then
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'crm_deals' and column_name = 'marketing_lead_id') then missing := array_append(missing, 'crm_deals.marketing_lead_id'); end if;
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'crm_deals' and column_name = 'diagnost_user_id') then missing := array_append(missing, 'crm_deals.diagnost_user_id'); end if;
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'crm_deals' and column_name = 'priority') then missing := array_append(missing, 'crm_deals.priority'); end if;
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'crm_deals' and column_name = 'stage_entered_at') then missing := array_append(missing, 'crm_deals.stage_entered_at'); end if;
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'crm_deals' and column_name = 'paid') then missing := array_append(missing, 'crm_deals.paid'); end if;
+  end if;
+
+  if cardinality(missing) > 0 then
+    raise exception 'IMDS Marketing CRM schema is incomplete: %', array_to_string(missing, ', ');
+  end if;
+end $$;
+SQL
 
 nginx -t
 systemctl daemon-reload
