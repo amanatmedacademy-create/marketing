@@ -55,7 +55,7 @@ async function resolveBillingContext(request: Request, env: BillingEnv): Promise
   const contextEnv = requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env;
   const tenantId = await resolveCompanyId(contextEnv as never, user.id, user.platformRole === 'super_admin' ? 'super_admin' : undefined);
   if (!tenantId) return json({ error: 'TENANT_REQUIRED' }, 400);
-  const entitlement = await platformEntitlementForTenant(tenantId);
+  const entitlement = await platformEntitlementForTenant(tenantId, env);
   const organizationId = entitlement?.organizationId || null;
   const role = user.platformRole === 'super_admin'
     ? 'super_admin'
