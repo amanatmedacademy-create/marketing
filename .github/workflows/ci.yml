@@ -42,6 +42,8 @@ jobs:
         run: npm run test:billing
       - name: Account security regression tests
         run: npm run test:account-security
+      - name: Branch hierarchy regression tests
+        run: npm run test:branches
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
       - name: Typecheck
