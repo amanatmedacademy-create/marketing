@@ -39,7 +39,7 @@ test('billing center supports plans invoices add-ons and lifecycle refresh', () 
   assert.match(client, /startCheckout/);
   assert.match(client, /openBillingPortal/);
   assert.match(client, /refreshBilling/);
-  assert.match(panel, /Add-ons и дополнительные квоты/);
+  assert.match(panel, /<h4>Add-ons<\/h4>/);
   assert.match(panel, /Счета/);
   assert.match(panel, /past_due/);
   assert.match(panel, /grace_period/);
