@@ -23,6 +23,7 @@ jobs:
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       CLOUDPAYMENTS_PUBLIC_ID: ${{ secrets.CLOUDPAYMENTS_PUBLIC_ID }}
       CLOUDPAYMENTS_API_SECRET: ${{ secrets.CLOUDPAYMENTS_API_SECRET }}
+      IMDS_OAUTH_ENV: ${{ secrets.IMDS_OAUTH_ENV }}
       DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Validate deployment access
@@ -116,6 +117,30 @@ jobs:
             fi
             chmod 600 /etc/imds-marketing.env
           '
+
+      - name: Configure unified OAuth secrets
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$IMDS_OAUTH_ENV" ]; then
+            echo 'IMDS_OAUTH_ENV is not configured; keeping existing VPS OAuth configuration.'
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "$IMDS_OAUTH_ENV" > /tmp/imds-oauth.env
+          if grep -nEv '^[[:space:]]*$|^[[:space:]]*#|^(APP_ORIGIN|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_ADS_DEVELOPER_TOKEN|META_APP_ID|META_APP_SECRET|META_WABA_CONFIG_ID|META_GRAPH_VERSION|META_OAUTH_REDIRECT_URI)=[^[:cntrl:]]*$' /tmp/imds-oauth.env; then
+            echo 'IMDS_OAUTH_ENV contains unsupported keys or invalid lines.'
+            rm -f /tmp/imds-oauth.env
+            exit 1
+          fi
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          export SSHPASS
+          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-oauth.env "$VPS_USER@$VPS_HOST:/tmp/imds-oauth.env"
+          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-oauth.env /etc/imds-oauth.env && rm -f /tmp/imds-oauth.env'
+          rm -f /tmp/imds-oauth.env
+          echo 'Unified OAuth environment installed on VPS.'
 
       - name: Configure CloudPayments secrets
         shell: bash
