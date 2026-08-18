@@ -9,6 +9,7 @@ User=imds
 Group=imds
 WorkingDirectory=/opt/imds-marketing/current
 EnvironmentFile=/etc/imds-marketing.env
+EnvironmentFile=-/etc/imds-oauth.env
 EnvironmentFile=-/etc/imds-platform-control.env
 EnvironmentFile=-/etc/imds-cloudpayments.env
 Environment=NODE_ENV=production
