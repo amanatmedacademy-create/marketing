@@ -28,7 +28,7 @@ test('TOTP challenge is enforced before issuing password and Google sessions', (
 test('MFA uses anti-replay and bounded challenge attempts', () => {
   assert.match(security, /last_used_step/);
   assert.match(security, /step <= lastUsedStep/);
-  assert.match(security, /attempts\) >= 6/);
+  assert.match(security, /Number\(challenge\.attempts \|\| 0\) >= 6/);
   assert.match(migration, /attempts integer not null default 0/);
 });
 
