@@ -11,9 +11,9 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 
-function isAdmin(request: Request): boolean {
+function canManageClinic(request: Request): boolean {
   const role = text(request.headers.get('x-amanat-auth-role'));
-  return role === 'administrator' || role === 'super_admin';
+  return role === 'owner' || role === 'administrator' || role === 'super_admin';
 }
 
 function validTimezone(value: string): boolean {
@@ -38,7 +38,7 @@ async function readCompany(env: CompanySettingsEnv, companyId: string): Promise<
 
 export async function handleCompanySettings(request: Request, env: CompanySettingsEnv, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/company/settings') return null;
-  if (!isAdmin(request)) return json({ error: 'Настройки клиники доступны только администратору' }, 403);
+  if (!canManageClinic(request)) return json({ error: 'Настройки клиники доступны владельцу или администратору' }, 403);
 
   const companyId = requireCompanyId(env);
 
