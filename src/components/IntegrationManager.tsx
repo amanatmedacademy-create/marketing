@@ -107,10 +107,6 @@ const googleSupported: GoogleProviderDefinition[] = [
   },
 ];
 
-const planned: Array<{ id: CardIntegrationProvider; title: string; description: string }> = [
-  { id: 'wazzup', title: 'Wazzup', description: 'WhatsApp и Instagram с историей сообщений.' },
-];
-
 const historyPeriods = [7, 30, 90, 180, 365] as const;
 const googlePeriods = [7, 30, 90, 365] as const;
 const emptyForms = (): FormState => ({ bitrix: {}, meta: {}, tiktok: {}, n8n: {} });
@@ -560,20 +556,6 @@ export default function IntegrationManager({ children }: IntegrationManagerProps
           }}
         />)}
         {children}
-      </div>
-    </section>
-
-    <section className="iv2-section">
-      <div className="iv2-section-head"><div><h2>Следующий этап</h2><p>Остальные коммуникационные сервисы подключим после проверки основных источников.</p></div></div>
-      <div className="iv2-grid">
-        {planned.map((item) => <IntegrationCard
-          key={item.id}
-          integration={{ id: item.id, name: item.title, description: item.description, status: 'not_connected', lastSyncedAt: null, stats: [], fields: [] }}
-          active={activeCard === item.id}
-          disabled
-          onSelect={() => setActiveCard(item.id)}
-          onConfigure={() => undefined}
-        />)}
       </div>
     </section>
 
