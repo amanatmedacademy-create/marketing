@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, Bot, Cable, CalendarDays, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
+import { Activity, Bot, Cable, CalendarDays, CreditCard, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import CompanySwitcher from './components/CompanySwitcher';
 import CrmWorkspace from './components/CrmWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
@@ -11,6 +11,7 @@ import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
 import OperatingOverviewPanel from './components/OperatingOverviewPanel';
 import ThemeToggle from './components/ThemeToggle';
+import BillingCenterPanel from './components/BillingCenterPanel';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
 import MarketingDashboardSummary from './components/MarketingDashboardSummary';
@@ -32,7 +33,7 @@ import { loadPlatformEntitlements, type PlatformEntitlements } from './services/
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; platformModule?: string | readonly string[]; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; moduleId: string | readonly string[]; platformModule?: string | readonly string[]; end?: boolean; ownerOnly?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navigation: NavGroup[] = [
@@ -60,6 +61,7 @@ const navigation: NavGroup[] = [
     { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports', platformModule: 'marketing.ai' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
+    { to: '/billing', label: 'Тариф и оплата', icon: CreditCard, moduleId: 'dashboard', ownerOnly: true },
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
     { to: '/data-quality', label: 'Качество данных', icon: Database, moduleId: 'audit' },
     { to: '/audit', label: 'Аудит и ошибки', icon: TriangleAlert, moduleId: 'audit' },
@@ -82,6 +84,8 @@ function Shell() {
   const [platform, setPlatform] = useState<PlatformEntitlements | null>(null);
   const [platformError, setPlatformError] = useState<string | null>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  const currentCompany = user.companies?.find((company) => company.id === user.companyId) || user.companies?.[0];
+  const canManageBilling = user.platformRole === 'super_admin' || ['owner', 'administrator'].includes(currentCompany?.role || user.role || '');
 
   useEffect(() => {
     let active = true;
@@ -108,6 +112,7 @@ function Shell() {
     return Array.isArray(moduleId) ? moduleId.some((id) => platform.modules[id] === true) : platform.modules[moduleId as string] === true;
   };
   const canViewItem = (item: NavItem) => {
+    if (item.ownerOnly) return canManageBilling;
     const local = Array.isArray(item.moduleId) ? item.moduleId.some((id) => localCanView(id)) : localCanView(item.moduleId as string);
     return local && platformAllows(item.platformModule);
   };
@@ -120,8 +125,8 @@ function Shell() {
   const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
   const isMarketingRoute = location.pathname === '/marketing' || location.pathname === '/analytics' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
 
-  if (platform?.managed && !platform.productEnabled) {
-    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing отключён</h2><p>Доступ к продукту приостановлен в IMDS Control Center для этой организации.</p></div>;
+  if (platform?.managed && !platform.productEnabled && location.pathname !== '/billing') {
+    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing приостановлен</h2><p>Рабочие модули временно недоступны. Данные сохранены.</p>{canManageBilling && <NavLink to="/billing">Открыть «Тариф и оплата»</NavLink>}</div>;
   }
 
   return <div className="marketing-shell">
@@ -173,6 +178,7 @@ function Shell() {
         <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>, 'marketing.analytics')} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.ai')} />
+        <Route path="/billing" element={canManageBilling ? <BillingCenterPanel/> : <AccessDenied/>} />
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
@@ -183,7 +189,7 @@ function Shell() {
       </Routes>{user.role === 'administrator' && <DataInspectorAutoLayer/>}</div>
     </main>
     <DealWorkspaceHost/>
-    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)}/>} 
+    {workspace && <UserWorkspaceModal mode={workspace} onClose={() => setWorkspace(null)/>} 
   </div>;
 }
 
