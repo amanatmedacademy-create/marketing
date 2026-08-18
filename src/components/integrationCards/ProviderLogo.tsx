@@ -1,6 +1,5 @@
 import type { CardIntegrationProvider } from './types';
 import styles from './integrationCards.module.css';
-import '../../integration-provider-catalog-fix.css';
 
 function MetaLogo() { return <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8.5 29.7c2.8-9.7 6.3-15.4 10.3-15.4 5.7 0 9.8 15.4 14.3 15.4 2.7 0 4.4-2.2 4.4-5.7 0-5.1-2.5-9.7-6.4-9.7-5 0-8.9 8.8-12.5 15.4-2.2 4-4 6-6.2 6-2.8 0-4.7-2.4-3.9-6Z" fill="none" stroke="#0866FF" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function TikTokLogo() { return <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M27.8 9.5v18.3a8.4 8.4 0 1 1-6.7-8.2" fill="none" stroke="#25F4EE" strokeWidth="5.2" strokeLinecap="round"/><path d="M30.3 8.5c.7 5 3.5 7.7 8.2 8.5" fill="none" stroke="#FE2C55" strokeWidth="5.2" strokeLinecap="round"/><path d="M29 9v18.1a7.8 7.8 0 1 1-6.2-7.6" fill="none" stroke="#111" strokeWidth="4.2" strokeLinecap="round"/><path d="M29 9c.7 4.7 3.2 7.2 7.8 8" fill="none" stroke="#111" strokeWidth="4.2" strokeLinecap="round"/></svg>; }
