@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-labelledby="title desc">
+  <title id="title">BELES by IMDS TECH</title>
+  <desc id="desc">Dark theme BELES logo</desc>
+  <defs>
+    <linearGradient id="teal" x1="35" y1="30" x2="225" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#24e0d0"/>
+      <stop offset="0.52" stop-color="#18c2b2"/>
+      <stop offset="1" stop-color="#087f8d"/>
+    </linearGradient>
+    <linearGradient id="navy" x1="92" y1="46" x2="218" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123f5a"/>
+      <stop offset="1" stop-color="#061a29"/>
+    </linearGradient>
+    <linearGradient id="play" x1="130" y1="94" x2="188" y2="182" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dfeff5"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(12 14)">
+    <path d="M128 10 236 72v124l-108 62L20 196V72L128 10Z" fill="url(#teal)"/>
+    <path d="M128 52 207 98v82l-79 46-79-46V98l79-46Z" fill="url(#navy)"/>
+    <path d="m174 38 24 14-30 18-24-14 30-18Z" fill="#f8fbfd"/>
+    <path d="M20 164 56 143v53l-36-21v-11Z" fill="#12bbaa" opacity=".95"/>
+    <path d="M40 165h20v49l-20-12v-37Z" fill="url(#teal)"/>
+    <path d="M72 143h20v88l-20-11v-77Z" fill="url(#teal)"/>
+    <path d="M104 117h20v110l-20 11V117Z" fill="url(#teal)"/>
+    <path d="M137 91 201 129l-64 38V91Z" fill="url(#play)" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+
+  <text x="300" y="139" fill="#f7fbfc" font-family="Inter,Arial,sans-serif" font-size="104" font-weight="800" letter-spacing="3">BELES</text>
+  <text x="304" y="203" fill="#8fa6ad" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="500">by</text>
+  <text x="360" y="203" fill="#f4fafb" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="2">IMDS</text>
+  <text x="476" y="203" fill="#20d0bd" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="2">TECH</text>
+</svg>
