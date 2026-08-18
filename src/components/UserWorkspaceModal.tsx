@@ -5,6 +5,7 @@ import AccessMatrixPanel from './AccessMatrixPanel';
 import TeamAdministrationPanel from './TeamAdministrationPanel';
 import BillingCenterPanel from './BillingCenterPanel';
 import AccountSecurityPanel from './AccountSecurityPanel';
+import ClinicSettingsPanel from './ClinicSettingsPanel';
 import { DISPLAY_CURRENCIES, readDisplayCurrency, saveDisplayCurrency, type DisplayCurrency } from '../currency';
 import { changeAccountPassword, loadAccountProfile, loadAccountSessions, revokeAccountSession, revokeOtherAccountSessions, saveAccountProfile, type AccountProfile, type AccountSession } from '../services/account';
 import { fetchManagedUsers, type ManagedUser } from '../services/userAdmin';
@@ -117,7 +118,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
 
           {tab === 'access' && <section><h3>Мой доступ</h3><p>Эффективные права в текущей клинике.</p>{fullAccess ? <div className="full-access-card"><ShieldCheck size={22}/><div><strong>Полный доступ</strong><span>{user.platformRole === 'super_admin' ? 'Доступ предоставлен ролью Super Admin платформы.' : `Доступ предоставлен ролью ${roleLabels[currentCompany?.role || user.role] || user.role}.`}</span></div></div> : <div className="access-list">{accessRows.length ? accessRows.map(([moduleId, grant]) => <div key={moduleId}><span>{moduleLabels[moduleId] || moduleId}</span><em>{grant.manage ? 'Полное управление' : Object.entries(grant).filter(([, value]) => value).map(([key]) => key).join(', ')}</em></div>) : <div><span>Нет назначенных модулей</span><em>Ограниченный доступ</em></div>}</div>}</section>}
 
-          {tab === 'clinic' && <section><h3>Текущая клиника</h3><p>Tenant-контекст организации. Роли сотрудников и доступы изолированы между клиниками.</p><div className="organization-summary"><span><Building2 size={21}/></span><div><strong>{currentCompany?.name || 'Клиника не выбрана'}</strong><small>{roleLabels[currentCompany?.role || ''] || currentCompany?.role}</small></div></div>{currentCompany && <div className="access-list"><div><span>Tenant ID</span><em>{currentCompany.id}</em></div><div><span>Адрес</span><em>{currentCompany.slug || '—'}</em></div><div><span>Статус</span><em>{currentCompany.status}</em></div></div>}</section>}
+          {tab === 'clinic' && <ClinicSettingsPanel/>}
           {tab === 'users' && <TeamAdministrationPanel/>}
           {tab === 'matrix' && <AccessMatrixPanel users={users}/>} 
           {tab === 'subscription' && <BillingCenterPanel/>}
