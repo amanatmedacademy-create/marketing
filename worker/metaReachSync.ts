@@ -1,7 +1,9 @@
 import type { Env } from './integrations';
+import { requireCompanyId, type TenantScopedEnv } from './tenantScope';
 
 type JsonRecord = Record<string, unknown>;
 type DateRange = { since: string; until: string };
+type ScopedEnv = Env & TenantScopedEnv;
 
 const record = (value: unknown): JsonRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -58,7 +60,7 @@ function dateChunks(days: number, size = 7): DateRange[] {
 async function upsert(env: Env, rows: JsonRecord[]): Promise<void> {
   for (let start = 0; start < rows.length; start += 300) {
     const chunk = rows.slice(start, start + 300);
-    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/marketing_ads?on_conflict=external_id,report_date`, {
+    const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/marketing_ads?on_conflict=company_id,external_id,report_date`, {
       method: 'POST',
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -74,6 +76,7 @@ async function upsert(env: Env, rows: JsonRecord[]): Promise<void> {
 
 export async function syncMetaReach(env: Env, days = 30, force = false): Promise<{ accounts: number; rows: number; cached?: boolean }> {
   if (!force && Date.now() - lastSuccessfulSync < 5 * 60 * 1000) return { accounts: 0, rows: 0, cached: true };
+  const companyId = requireCompanyId(env as ScopedEnv);
   const accountIds = list(env.META_AD_ACCOUNT_IDS);
   if (!env.META_ACCESS_TOKEN || !env.META_GRAPH_VERSION || !accountIds.length) throw new Error('Meta credentials are missing');
 
@@ -115,6 +118,7 @@ export async function syncMetaReach(env: Env, days = 30, force = false): Promise
         const campaign = record(adset.campaign);
         const effectiveStatus = text(ad.effective_status || ad.status) || 'UNKNOWN';
         output.push({
+          company_id: companyId,
           external_id: `meta:${accountId}:${adId}`,
           report_date: text(item.date_start) || range.until,
           source: 'Meta', platform: 'Meta', account_id: accountId,
