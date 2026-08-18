@@ -7,7 +7,7 @@ const runtime = await readFile(new URL('../server/vpsRuntime.ts', import.meta.ur
 const ui = await readFile(new URL('../src/components/OperatingOverviewPanel.tsx', import.meta.url), 'utf8');
 const statusLayer = await readFile(new URL('../src/components/SubscriptionStatusLayer.tsx', import.meta.url), 'utf8');
 
- test('control plane accepts numerical quota keys without plan-name coupling', () => {
+test('control plane accepts numerical quota keys without plan-name coupling', () => {
   for (const key of ['limits.clinics','limits.users','limits.leads','limits.open_tasks','limits.integrations']) assert.match(platform, new RegExp(key.replace('.', '\\.')));
   assert.doesNotMatch(platform, /plan\s*===|planName|\bSTART\b|\bPRO\b|\bBUSINESS\b/);
 });
@@ -17,7 +17,8 @@ test('hard quota enforcement protects growth operations while leads remain soft'
   assert.match(platform, /pathname === '\/api\/clinics'/);
   assert.match(platform, /pathname === '\/api\/tasks'/);
   assert.match(platform, /\/api\/admin\/users\/invitations/);
-  assert.match(platform, /integrations\/config/);
+  assert.match(platform, /quotaKeyForRequest/);
+  assert.match(platform, /return 'integrations'/);
   assert.match(platform, /key === 'leads' \? 'soft' : 'hard'/);
   assert.match(platform, /if \(!key \|\| key === 'leads'\) return null/);
 });
