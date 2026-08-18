@@ -10,6 +10,7 @@ export type AccountSecurityState = {
   email: string; emailVerified: boolean; mfaEnabled: boolean; recoveryCodesRemaining: number; emailDeliveryConfigured: boolean; events: AccountSecurityEvent[];
 };
 export type MfaSetup = { secret: string; otpauthUri: string };
+export type ClinicSettings = { id: string; name: string; slug?: string | null; timezone: string };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers || {}); headers.set('accept', 'application/json');
@@ -27,6 +28,9 @@ export async function loadAccountSessions(): Promise<AccountSession[]> { const r
 export async function revokeAccountSession(id: string): Promise<void> { await request(`/api/account/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
 export async function revokeOtherAccountSessions(): Promise<number> { const result = await request<{ revoked?: number }>('/api/account/sessions/revoke-others', { method: 'POST' }); return Number(result.revoked || 0); }
 export async function changeAccountPassword(currentPassword: string, newPassword: string): Promise<void> { await request('/api/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword, revokeOtherSessions: true }) }); }
+
+export async function loadClinicSettings(): Promise<ClinicSettings> { const result = await request<{ company: ClinicSettings }>('/api/company/settings'); return result.company; }
+export async function saveClinicSettings(timezone: string): Promise<ClinicSettings> { const result = await request<{ company: ClinicSettings }>('/api/company/settings', { method: 'PATCH', body: JSON.stringify({ timezone }) }); return result.company; }
 
 export async function loadAccountSecurity(): Promise<AccountSecurityState> { return request<AccountSecurityState>('/api/account/security'); }
 export async function sendAccountEmailVerification(): Promise<void> { await request('/api/account/security/email/send', { method: 'POST', body: '{}' }); }
