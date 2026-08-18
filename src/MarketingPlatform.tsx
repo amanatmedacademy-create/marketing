@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BarChart3, Bot, Cable, CalendarDays, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
-import AnalyticsWorkspace from './components/AnalyticsWorkspace';
+import { Activity, Bot, Cable, CalendarDays, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import CompanySwitcher from './components/CompanySwitcher';
 import CrmWorkspace from './components/CrmWorkspace';
 import DashboardCsvExport from './components/DashboardCsvExport';
@@ -54,10 +53,9 @@ const navigation: NavGroup[] = [
     { to: '/whatsapp/templates', label: 'WhatsApp-шаблоны', icon: FileText, moduleId: 'communications.chat', platformModule: 'marketing.whatsapp-business' },
   ]},
   { label: 'МАРКЕТИНГ', items: [
-    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'crm.leads'], platformModule: ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'] },
+    { to: '/marketing', label: 'Центр маркетинга', icon: Workflow, moduleId: ['dashboard', 'advertising', 'analytics.attribution', 'analytics.reports', 'crm.leads'], platformModule: ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'] },
   ]},
   { label: 'АНАЛИТИКА', items: [
-    { to: '/analytics', label: 'Аналитика', icon: BarChart3, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
     { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
     { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
   ]},
@@ -120,7 +118,7 @@ function Shell() {
   const crmHome = localCanView('crm.leads') && platformAllows('marketing.crm') ? '/leads' : localCanView('crm.pipeline') && platformAllows('marketing.crm') ? '/pipeline' : firstRoute;
   const crm = (element: ReactNode) => <CrmWorkspace canView={localCanView}>{element}</CrmWorkspace>;
   const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
-  const isMarketingRoute = location.pathname === '/marketing' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
+  const isMarketingRoute = location.pathname === '/marketing' || location.pathname === '/analytics' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
 
   if (platform?.managed && !platform.productEnabled) {
     return <div className="module-access-denied"><LockKeyhole size={36}/><h2>BELES отключён</h2><p>Доступ к продукту приостановлен в IMDS Super Admin для этой организации.</p></div>;
@@ -163,7 +161,7 @@ function Shell() {
         <Route path="/pipeline/*" element={guard('crm.pipeline', crm(<SalesFunnelPage/>), 'marketing.crm')} />
         <Route path="/whatsapp/campaigns" element={guard('communications.chat', <WhatsAppCampaignsPage/>, 'marketing.whatsapp-business')} />
         <Route path="/whatsapp/templates" element={guard('communications.chat', <SafeWhatsAppTemplatesPage/>, 'marketing.whatsapp-business')} />
-        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','crm.leads'], <MarketingOS platform={platform}/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
+        <Route path="/marketing" element={guardAny(['dashboard','advertising','analytics.attribution','analytics.reports','crm.leads'], <MarketingOS platform={platform}/>, ['marketing.meta-ads','marketing.automation','marketing.analytics','marketing.crm'])} />
         <Route path="/advertising" element={platformAllows('marketing.meta-ads') ? <Navigate to="/marketing?view=ads" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/automation" element={platformAllows('marketing.automation') ? <Navigate to="/marketing?view=automation" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/lead-forms" element={platformAllows('marketing.crm') ? <Navigate to="/marketing?view=leads" replace/> : <AccessDenied platformControlled/>} />
@@ -171,7 +169,7 @@ function Shell() {
         <Route path="/utm-builder" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/attribution" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/segments" element={<Navigate to="/leads" replace/>} />
-        <Route path="/analytics" element={guard('analytics.reports', <AnalyticsWorkspace/>, 'marketing.analytics')} />
+        <Route path="/analytics" element={localCanView('analytics.reports') && platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=analytics" replace/> : <AccessDenied platformControlled={Boolean(platform?.managed && !platformAllows('marketing.analytics'))}/>} />
         <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>, 'marketing.analytics')} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.analytics')} />
