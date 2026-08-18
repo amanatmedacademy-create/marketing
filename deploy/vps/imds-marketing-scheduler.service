@@ -9,6 +9,7 @@ User=imds
 Group=imds
 WorkingDirectory=/opt/imds-marketing/current
 EnvironmentFile=/etc/imds-marketing.env
+EnvironmentFile=-/etc/imds-oauth.env
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/npx --yes tsx server/vpsScheduler.ts
 Restart=always
