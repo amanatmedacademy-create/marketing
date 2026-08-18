@@ -42,6 +42,9 @@ jobs:
       - name: Team administration regression tests
         run: npm run test:team-admin
 
+      - name: Operating overview regression tests
+        run: npm run test:operating-overview
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -6,6 +6,7 @@ import { handleContactAvatars } from './contactAvatars';
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from './integrations';
 import { runMessagingSlaScan } from './messagingSla';
 import { handleNotificationCenterRequest } from './notificationCenter';
+import { handleOperatingOverviewRequest } from './operatingOverview';
 import type { RecoveryEnv } from './recoveryEngine';
 import { runScheduledRecovery } from './recoveryScheduler';
 import { runScheduledTelephonyProcessing, type TelephonyProcessingSchedulerEnv } from './telephonyProcessingScheduler';
@@ -88,6 +89,13 @@ export default {
         if (denied) return denied;
 
         forwardedRequest = trustedRequest(cleanRequest, role, user.id);
+
+        if (url.pathname === '/api/operating-overview') {
+          const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();
+          const companyId = await resolveCompanyId(requestedCompany ? { ...env, CURRENT_COMPANY_ID: requestedCompany } : env, user.id, user.platformRole);
+          const response = await handleOperatingOverviewRequest(cleanRequest, { ...env, CURRENT_COMPANY_ID: companyId }, url, user.id, user.platformRole);
+          if (response) return response;
+        }
 
         if (url.pathname.startsWith('/api/notifications') || url.pathname === '/api/system-health') {
           const requestedCompany = (cleanRequest.headers.get('x-imds-company-id') || '').trim();

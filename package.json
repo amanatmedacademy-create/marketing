@@ -13,6 +13,7 @@
     "test:integrations": "node --test tests/integrationRbacAndWaba.test.mjs",
     "test:account-platform": "node --test tests/accountClinicSubscription.test.mjs",
     "test:team-admin": "node --test tests/teamAdministration.test.mjs",
+    "test:operating-overview": "node --test tests/operatingOverview.test.mjs",
     "deploy": "bun run build && wrangler deploy",
     "cf:secret:supabase": "wrangler secret put SUPABASE_SERVICE_ROLE_KEY"
   },

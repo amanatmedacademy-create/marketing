@@ -10,7 +10,7 @@ import DealWorkspaceHost from './components/DealWorkspace';
 import { DealWorkspaceProvider } from './components/DealWorkspaceController';
 import GlobalSearch from './components/GlobalSearch';
 import ImdsBrand from './components/ImdsBrand';
-import NotificationCenter from './components/NotificationCenter';
+import OperatingOverviewPanel from './components/OperatingOverviewPanel';
 import ThemeToggle from './components/ThemeToggle';
 import { CallCenterChatPage } from './pages/CallCenterChatPage';
 import { LeadsPage } from './pages/LeadsPage';
@@ -70,6 +70,7 @@ const navigation: NavGroup[] = [
 
 function DashboardRoute() {
   return <>
+    <OperatingOverviewPanel />
     <DashboardCsvExport />
     <MarketingDashboardSummary />
   </>;
@@ -142,7 +143,6 @@ function Shell() {
           {platform?.managed && <span className="platform-sync-indicator" title={`Control Plane revision ${platform.revision ?? '—'}`}>SYNC {platform.revision ?? '—'}</span>}
           {platformError && <span className="platform-sync-indicator platform-sync-indicator--error" title={platformError}>SYNC ERROR</span>}
           <CompanySwitcher />
-          <NotificationCenter />
           <ThemeToggle />
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
           <button className="topbar-profile-button" type="button" onClick={() => setWorkspace('profile')}><span>{initials}</span><div><strong>{user.name || 'Пользователь'}</strong><small>{user.jobTitle || (user.role === 'administrator' ? 'Полный доступ' : user.role)}</small></div></button>
@@ -178,7 +178,7 @@ function Shell() {
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
-        <Route path="/notifications" element={<Navigate to="/" replace/>} />
+        <Route path="/notifications" element={<Navigate to="/integrations" replace/>} />
         <Route path="/audit" element={guard('audit', <AuditPage/>)} />
         <Route path="/architecture" element={<Navigate to="/integrations" replace/>} />
         <Route path="*" element={<Navigate to={firstRoute} replace/>} />
