@@ -37,4 +37,33 @@ alter table public.marketing_calls
 -- Idempotency is already enforced globally by marketing_calls_company_pbx_call_uidx
 -- on (company_id, pbx_call_id). Reuse it instead of introducing a second overlapping index.
 
+-- Backfill telephony settings for clinics created after the original telephony migration.
+insert into public.telephony_settings (company_id)
+select id from public.crm_companies
+on conflict (company_id) do nothing;
+
+-- Future clinics receive a telephony_settings row automatically, so provider
+-- activation never depends on a separate provisioning step.
+create or replace function public.imds_init_clinic_telephony_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.telephony_settings (company_id)
+  values (new.id)
+  on conflict (company_id) do nothing;
+  return new;
+end;
+$$;
+
+revoke all on function public.imds_init_clinic_telephony_settings() from public, anon, authenticated;
+grant execute on function public.imds_init_clinic_telephony_settings() to service_role;
+
+drop trigger if exists imds_crm_companies_init_telephony on public.crm_companies;
+create trigger imds_crm_companies_init_telephony
+after insert on public.crm_companies
+for each row execute function public.imds_init_clinic_telephony_settings();
+
 notify pgrst, 'reload schema';
