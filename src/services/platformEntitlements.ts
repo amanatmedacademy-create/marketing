@@ -17,7 +17,13 @@ export type PlatformBillingState = {
   defaultPaymentMethod: string | null;
 };
 
-export type PlatformLimitKey = 'clinics' | 'users' | 'leads' | 'openTasks' | 'integrations';
+export const PLATFORM_LIMIT_KEYS = [
+  'clinics','users','leads','openTasks','integrations',
+  'branches','whatsapp_channels','waba_accounts','whatsapp_numbers',
+  'telephony_channels','call_minutes','transcription_minutes','call_recording_days',
+  'ai_requests','automation_runs','storage_gb','meta_ad_accounts','meta_pages','meta_datasets',
+] as const;
+export type PlatformLimitKey = typeof PLATFORM_LIMIT_KEYS[number];
 export type PlatformLimits = Partial<Record<PlatformLimitKey, number>>;
 export type PlatformQuotaMetric = {
   key: PlatformLimitKey;
@@ -54,24 +60,11 @@ function billingState(value: unknown): PlatformBillingState | null {
     const method = item as Record<string, unknown>;
     const code = typeof method.method === 'string' ? method.method : '';
     if (!code) return [];
-    return [{
-      method: code,
-      displayName: typeof method.displayName === 'string' && method.displayName ? method.displayName : code,
-      instructions: typeof method.instructions === 'string' && method.instructions ? method.instructions : null,
-      isDefault: method.isDefault === true,
-    }];
+    return [{ method: code, displayName: typeof method.displayName === 'string' && method.displayName ? method.displayName : code, instructions: typeof method.instructions === 'string' && method.instructions ? method.instructions : null, isDefault: method.isDefault === true }];
   }) : [];
   const stringOrNull = (key: string) => typeof raw[key] === 'string' && raw[key] ? String(raw[key]) : null;
   return {
-    subscriptionStatus: stringOrNull('subscriptionStatus'),
-    trialEndsAt: stringOrNull('trialEndsAt'),
-    periodEndsAt: stringOrNull('periodEndsAt'),
-    graceEndsAt: stringOrNull('graceEndsAt'),
-    accessEndsAt: stringOrNull('accessEndsAt'),
-    renewalMode: stringOrNull('renewalMode'),
-    currency: stringOrNull('currency') || 'KZT',
-    paymentMethods: methods,
-    defaultPaymentMethod: stringOrNull('defaultPaymentMethod'),
+    subscriptionStatus: stringOrNull('subscriptionStatus'), trialEndsAt: stringOrNull('trialEndsAt'), periodEndsAt: stringOrNull('periodEndsAt'), graceEndsAt: stringOrNull('graceEndsAt'), accessEndsAt: stringOrNull('accessEndsAt'), renewalMode: stringOrNull('renewalMode'), currency: stringOrNull('currency') || 'KZT', paymentMethods: methods, defaultPaymentMethod: stringOrNull('defaultPaymentMethod'),
   };
 }
 
@@ -79,29 +72,28 @@ function limitsState(value: unknown): PlatformLimits {
   if (!value || Array.isArray(value) || typeof value !== 'object') return {};
   const raw = value as Record<string, unknown>;
   const result: PlatformLimits = {};
-  (['clinics','users','leads','openTasks','integrations'] as PlatformLimitKey[]).forEach((key) => {
+  PLATFORM_LIMIT_KEYS.forEach((key) => {
     const parsed = Number(raw[key]);
     if (Number.isFinite(parsed) && parsed >= 0) result[key] = Math.floor(parsed);
   });
   return result;
 }
 
+function emptyUsage(): Record<PlatformLimitKey, number> {
+  return Object.fromEntries(PLATFORM_LIMIT_KEYS.map((key) => [key, 0])) as Record<PlatformLimitKey, number>;
+}
+
 function quotaState(value: unknown): PlatformQuotaSnapshot | null {
   if (!value || Array.isArray(value) || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   const usageRaw = raw.usage && typeof raw.usage === 'object' && !Array.isArray(raw.usage) ? raw.usage as Record<string, unknown> : {};
-  const usage = {
-    clinics: Number(usageRaw.clinics) || 0,
-    users: Number(usageRaw.users) || 0,
-    leads: Number(usageRaw.leads) || 0,
-    openTasks: Number(usageRaw.openTasks) || 0,
-    integrations: Number(usageRaw.integrations) || 0,
-  };
+  const usage = emptyUsage();
+  PLATFORM_LIMIT_KEYS.forEach((key) => { usage[key] = Number(usageRaw[key]) || 0; });
   const quotas = Array.isArray(raw.quotas) ? raw.quotas.flatMap((item) => {
     if (!item || Array.isArray(item) || typeof item !== 'object') return [];
     const row = item as Record<string, unknown>;
     const key = String(row.key || '') as PlatformLimitKey;
-    if (!['clinics','users','leads','openTasks','integrations'].includes(key)) return [];
+    if (!PLATFORM_LIMIT_KEYS.includes(key)) return [];
     return [{
       key,
       used: Number(row.used) || 0,
