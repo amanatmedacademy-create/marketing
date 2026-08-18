@@ -1,0 +1,39 @@
+.marketing-hub-analytics-overview{
+  display:grid;
+  gap:14px;
+}
+
+.marketing-overview-analytics .v36-dashboard{
+  padding:0!important;
+  background:transparent!important;
+}
+
+.marketing-overview-analytics .v36-dashboard>.v36-table-card,
+.marketing-overview-analytics .v36-dashboard>.v36-heat-sections{
+  display:none!important;
+}
+
+.marketing-overview-analytics .v36-toolbar{
+  margin-top:0!important;
+}
+
+.marketing-overview-analytics .v36-summary{
+  margin-bottom:0!important;
+}
+
+.marketing-deep-analytics .v36-dashboard>.v36-kpis,
+.marketing-deep-analytics .v36-dashboard>.v36-summary,
+.marketing-deep-analytics .v36-dashboard>.v36-card:not(.v36-table-card){
+  display:none!important;
+}
+
+.marketing-deep-analytics .v36-dashboard{
+  padding-top:0!important;
+}
+
+@media(max-width:900px){
+  .marketing-overview-analytics .v36-toolbar{
+    position:relative!important;
+    top:auto!important;
+  }
+}
