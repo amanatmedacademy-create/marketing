@@ -30,8 +30,9 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      VPS_PORT: '24'
       VITE_SUPABASE_URL: https://kysdtmgijkffwtzugonv.supabase.co
-      VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5c2R0bWdpamtmZnd0enVnb252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjkwNDcsImV4cCI6MjEwMDc0NTA0N30.TWhLZ79Hu8QUb4OjZxkRH5DqPlSpBDWBpGf6LZRm8DY
+      VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJreXNkdG1naWprZmZ3dHp1Z29udiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzg1MTY5MDQ3LCJleHAiOjIxMDA3NDUwNDd9.TWhLZ79Hu8QUb4OjZxkRH5DqPlSpBDWBpGf6LZRm8DY
     steps:
       - name: Publish deploy pending status
         env:
@@ -57,6 +58,7 @@ jobs:
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
           test -n "$VPS_PASSWORD"
+          test -n "$VPS_PORT"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=30)
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=30 -o "Port=$VPS_PORT")
           tar -czf /tmp/imds-frontend.tgz -C dist .
           sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-frontend.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-frontend.tgz"
           sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/nginx-imds-marketing.conf "$VPS_USER@$VPS_HOST:/tmp/nginx-imds-marketing.conf"
