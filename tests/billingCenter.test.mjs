@@ -11,6 +11,7 @@ const migration = await readFile(new URL('../supabase/migrations/20260818063500_
 const client = await readFile(new URL('../src/services/billing.ts', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/BillingCenterPanel.tsx', import.meta.url), 'utf8');
 const workspace = await readFile(new URL('../src/components/UserWorkspaceModal.tsx', import.meta.url), 'utf8');
+const platform = await readFile(new URL('../src/MarketingPlatform.tsx', import.meta.url), 'utf8');
 
 test('billing gateway never accepts raw card credentials', () => {
   assert.match(gateway, /BILLING_CARD_DATA_NOT_ACCEPTED/);
@@ -25,25 +26,31 @@ test('billing mutations are owner or platform super admin only', () => {
   assert.match(gateway, /BILLING_ADMIN_REQUIRED/);
 });
 
-test('checkout is a server-to-server Control Plane operation', () => {
+test('checkout is a server-to-server Control Center operation', () => {
   assert.match(gateway, /IMDS_BILLING_CONTROL_URL/);
   assert.match(gateway, /IMDS_BILLING_CONTROL_TOKEN/);
   assert.match(gateway, /\/v1\/billing\/checkout/);
   assert.match(gateway, /\/v1\/billing\/invoices/);
+  assert.match(gateway, /billingPeriodMonths/);
   assert.match(runtime, /handleBillingGatewayRequest/);
   assert.match(runtime, /handleBillingControlPlaneRequest/);
-  assert.match(service, /IMDS_BILLING_CONTROL_URL=http:\/\/127\.0\.0\.1:8787/);
+  assert.match(service, /IMDS_BILLING_CONTROL_URL=http:\/\/127\.0\.0\.1:8788/);
 });
 
-test('billing center supports plans invoices add-ons and lifecycle refresh', () => {
+test('billing center supports plans invoices limits and lifecycle recovery', () => {
   assert.match(client, /startCheckout/);
-  assert.match(client, /openBillingPortal/);
+  assert.match(client, /billingPeriodMonths/);
   assert.match(client, /refreshBilling/);
+  assert.match(panel, /Тариф и оплата/);
+  assert.match(panel, /Лимиты текущего тарифа/);
   assert.match(panel, /<h4>Add-ons<\/h4>/);
   assert.match(panel, /Счета/);
   assert.match(panel, /past_due/);
-  assert.match(panel, /grace_period/);
+  assert.match(panel, /read_only/);
+  assert.match(panel, /grace/);
   assert.match(workspace, /BillingCenterPanel/);
+  assert.match(platform, /to: '\/billing'/);
+  assert.match(platform, /location\.pathname !== '\/billing'/);
 });
 
 test('billing control plane persists catalog orders subscriptions and grants', () => {
@@ -68,7 +75,7 @@ test('CloudPayments checkout and webhooks validate provider state before grantin
   assert.match(control, /billing-sync:/);
 });
 
-test('payment lifecycle is fail-safe and scheduled', () => {
+test('legacy payment lifecycle remains fail-safe and scheduled', () => {
   assert.match(control, /status: 'past_due'/);
   assert.match(control, /status: 'grace_period'/);
   assert.match(control, /status: 'suspended'/);
