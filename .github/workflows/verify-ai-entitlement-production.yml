@@ -1,0 +1,68 @@
+name: Verify AI Entitlement Production
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-ai-entitlement-production.yml'
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+          grep -q "platformModule: 'marketing.ai'" src/MarketingPlatform.tsx
+          grep -q "<MarketingAiPage/>, 'marketing.ai'" src/MarketingPlatform.tsx
+          ! grep -q 'IMDS Super Admin' src/MarketingPlatform.tsx
+      - run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Verify live Marketing
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SSHPASS
+          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
+          success=''
+          for _ in $(seq 1 90); do
+            if sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          systemctl is-active --quiet imds-marketing.service
+          curl -fsS --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
+          CURRENT="$(readlink -f /opt/imds-marketing/current)"
+          test -n "$CURRENT"
+          grep -q "platformModule: 'marketing.ai'" "$CURRENT/src/MarketingPlatform.tsx"
+          grep -q "<MarketingAiPage/>, 'marketing.ai'" "$CURRENT/src/MarketingPlatform.tsx"
+          ! grep -q 'IMDS Super Admin' "$CURRENT/src/MarketingPlatform.tsx"
+          REMOTE
+            then success=1; break; fi
+            sleep 5
+          done
+          test "$success" = 1
+      - name: Record success
+        run: |
+          set -euo pipefail
+          mkdir -p docs/internal
+          printf 'marketing_ai_entitlement_production=passed\nverified_at=%s\n' "$(date -u +%FT%TZ)" > docs/internal/marketing-ai-entitlement-production.ok
+          git config user.name 'IMDS Automation'
+          git config user.email 'automation@imds.local'
+          git add docs/internal/marketing-ai-entitlement-production.ok
+          git commit -m 'record Marketing AI entitlement production verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
