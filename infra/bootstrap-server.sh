@@ -135,8 +135,12 @@ path.write_text('\n'.join(out).rstrip() + '\n')
 PY
 chmod 0600 "$APP_ENV"
 
-# Make PostgREST reload after future DDL changes.
-docker exec -i imds-postgres psql -v ON_ERROR_STOP=1 -U imds_owner -d imds_marketing -c "alter role authenticator nologin" >/dev/null 2>&1 || true
+if [ -f "$REPO_DIR/infra/systemd/imds-marketing-backup.service" ] && [ -f "$REPO_DIR/infra/systemd/imds-marketing-backup.timer" ]; then
+  install -m 0644 "$REPO_DIR/infra/systemd/imds-marketing-backup.service" /etc/systemd/system/imds-marketing-backup.service
+  install -m 0644 "$REPO_DIR/infra/systemd/imds-marketing-backup.timer" /etc/systemd/system/imds-marketing-backup.timer
+  systemctl daemon-reload
+  systemctl enable --now imds-marketing-backup.timer
+fi
 
 curl -fsS http://127.0.0.1:3000/ >/dev/null || true
 
@@ -144,3 +148,4 @@ echo "IMDS VPS base infrastructure is ready."
 echo "PostgreSQL: imds-postgres"
 echo "PostgREST: 127.0.0.1:3000"
 echo "Application env: $APP_ENV"
+echo "Backups: /var/backups/imds-marketing"
