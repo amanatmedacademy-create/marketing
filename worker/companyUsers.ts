@@ -1,17 +1,9 @@
 import type { Env } from './integrations';
+import { crmDataJson } from './crmData';
 
 type Row = Record<string, unknown>;
 
-function headers(env: Env): HeadersInit {
-  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, accept: 'application/json' };
-}
-
-async function query<T>(env: Env, path: string): Promise<T> {
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, { headers: headers(env), cache: 'no-store' });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Company users query failed (${response.status}): ${body.slice(0, 600)}`);
-  return (body ? JSON.parse(body) : []) as T;
-}
+const query = <T>(env: Env, path: string) => crmDataJson<T>(env, path, {}, 'Company users query');
 
 export async function listActiveCompanyUserIds(env: Env, companyId: string): Promise<string[]> {
   const rows = await query<Row[]>(env, `crm_company_members?select=user_id&company_id=eq.${encodeURIComponent(companyId)}&status=eq.active&limit=5000`);
