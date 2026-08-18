@@ -10,6 +10,8 @@ const num = (value: unknown) => Number(value || 0);
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 const PAGE_SIZE = 1000;
 const MAX_ROWS = 200000;
+const DEFAULT_TIMEZONE = 'Asia/Almaty';
+const WEEKDAY_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
 class AnalyticsQueryError extends Error {
   constructor(readonly resource: string, readonly status: number, readonly detail: string) {
@@ -47,12 +49,56 @@ async function queryOne<T>(env: Env, resource: string, path: string): Promise<T[
   return queryPage<T>(env, resource, path, 0, 100);
 }
 
-function dateRange(days: number, url: URL) {
-  const to = url.searchParams.get('to') || new Date().toISOString().slice(0, 10);
-  const end = new Date(`${to}T23:59:59.999Z`);
-  const from = url.searchParams.get('from') || new Date(end.getTime() - (days - 1) * 86400000).toISOString().slice(0, 10);
+function dateOrNull(value: unknown): Date | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function safeTimezone(value: unknown): string {
+  const candidate = text(value, DEFAULT_TIMEZONE);
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function localParts(date: Date, timezone: string): { date: string; hour: number; weekday: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    weekday: 'short',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour || 0),
+    weekday: WEEKDAY_INDEX[values.weekday] ?? 0,
+  };
+}
+
+function addIsoDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function dateRange(days: number, url: URL, timezone: string) {
+  const today = localParts(new Date(), timezone).date;
+  const to = url.searchParams.get('to') || today;
+  const from = url.searchParams.get('from') || addIsoDays(to, -(days - 1));
   const start = new Date(`${from}T00:00:00.000Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new Error('Некорректный период аналитики');
+  const end = new Date(`${to}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    throw new Error('Некорректный период аналитики');
+  }
   return { from, to };
 }
 
@@ -158,15 +204,29 @@ function aggregateDaily(rows: RecordValue[]): RecordValue[] {
 export async function handleAnalytics(_request: Request, env: Env, url: URL): Promise<Response | null> {
   if (url.pathname !== '/api/analytics/overview') return null;
   const companyId = requireCompanyId(env as ScopedEnv);
+  const unavailable: string[] = [];
+
+  let timezone = DEFAULT_TIMEZONE;
+  try {
+    const companyRows = await queryOne<RecordValue>(env, 'crm_companies', `crm_companies?select=timezone&id=eq.${encodeURIComponent(companyId)}&limit=1`);
+    if (companyRows.length) timezone = safeTimezone(companyRows[0].timezone);
+    else unavailable.push('crm_companies_timezone');
+  } catch (error) {
+    unavailable.push('crm_companies_timezone');
+    console.error('[analytics] timezone клиники недоступен:', error);
+  }
+
   const days = Math.min(Math.max(Number(url.searchParams.get('days') || 7), 1), 365);
   let range: { from: string; to: string };
-  try { range = dateRange(days, url); }
+  try { range = dateRange(days, url, timezone); }
   catch (error) {
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 400, headers: { 'content-type':'application/json; charset=utf-8' } });
   }
   const { from, to } = range;
   const companyFilter = `company_id=eq.${encodeURIComponent(companyId)}`;
-  const leadFilter = `and=(lead_created_at.gte.${from}T00:00:00Z,lead_created_at.lte.${to}T23:59:59Z)`;
+  const leadQueryFrom = addIsoDays(from, -1);
+  const leadQueryTo = addIsoDays(to, 1);
+  const leadFilter = `and=(lead_created_at.gte.${leadQueryFrom}T00:00:00Z,lead_created_at.lte.${leadQueryTo}T23:59:59Z)`;
   const adFilter = `and=(report_date.gte.${from},report_date.lte.${to})`;
 
   const settled = await Promise.allSettled([
@@ -176,14 +236,19 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
     queryOne<RecordValue>(env, 'marketing_scoring_settings', `marketing_scoring_settings?select=*&id=eq.default&${companyFilter}`),
   ]);
 
-  const unavailable: string[] = [];
   const unwrap = (result: PromiseSettledResult<RecordValue[]>, resource: string): RecordValue[] => {
     if (result.status === 'fulfilled') return result.value;
     unavailable.push(resource);
     console.error(`[analytics] источник ${resource} недоступен:`, result.reason);
     return [];
   };
-  const leads = unwrap(settled[0], 'marketing_leads');
+  const rawLeads = unwrap(settled[0], 'marketing_leads');
+  const leads = rawLeads.filter((lead) => {
+    const created = dateOrNull(lead.lead_created_at);
+    if (!created) return false;
+    const localDate = localParts(created, timezone).date;
+    return localDate >= from && localDate <= to;
+  });
   const ads = unwrap(settled[1], 'marketing_ads');
   const daily = aggregateDaily(unwrap(settled[2], 'marketing_daily_metrics'));
   const settingsRows = unwrap(settled[3], 'marketing_scoring_settings');
@@ -227,17 +292,23 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
     } else if (campaignMatch) {
       merged={...campaignMatch,...lead,account_id:campaignMatch.account_id,account_name:campaignMatch.account_name,campaign_name:campaignMatch.campaign_name,adset_id:'',adset_name:'Без группы · атрибуция по кампании',ad_id:'',ad_name:'Без объявления · атрибуция по кампании'}; attributionLevel='campaign';
     } else unattributedLeads += 1;
+    const appointment = dateOrNull(lead.appointment_at);
+    const arrived = dateOrNull(lead.arrived_at);
+    const sold = dateOrNull(lead.sold_at);
+    const rejected = dateOrNull(lead.rejected_at);
+    const dealCreated = dateOrNull(lead.deal_created_at);
+    const dealRejected = dateOrNull(lead.deal_rejected_at);
     const row=ensureLeaf(merged,attributionLevel);
     row.crm_leads=num(row.crm_leads)+1;
     row.target_leads=num(row.target_leads)+(lead.is_target?1:0);
-    row.appointments=num(row.appointments)+(lead.appointment_at?1:0);
-    row.arrived=num(row.arrived)+(lead.arrived_at?1:0);
-    row.sales=num(row.sales)+(lead.sold_at?1:0);
+    row.appointments=num(row.appointments)+(appointment?1:0);
+    row.arrived=num(row.arrived)+(arrived?1:0);
+    row.sales=num(row.sales)+(sold?1:0);
     row.crm_revenue=num(row.crm_revenue)+num(lead.sale_amount);
-    row.rejected=num(row.rejected)+(lead.rejected_at?1:0);
-    row.deals_in_work=num(row.deals_in_work)+(lead.deal_created_at&&!lead.sold_at&&!lead.deal_rejected_at?1:0);
-    row.deals_rejected=num(row.deals_rejected)+(lead.deal_rejected_at?1:0);
-    row.in_work=num(row.in_work)+(!lead.rejected_at&&!lead.appointment_at&&!lead.sold_at?1:0);
+    row.rejected=num(row.rejected)+(rejected?1:0);
+    row.deals_in_work=num(row.deals_in_work)+(dealCreated&&!sold&&!dealRejected?1:0);
+    row.deals_rejected=num(row.deals_rejected)+(dealRejected?1:0);
+    row.in_work=num(row.in_work)+(!rejected&&!appointment&&!sold?1:0);
   }
 
   const crmAvailable = !unavailable.includes('marketing_leads');
@@ -261,22 +332,26 @@ export async function handleAnalytics(_request: Request, env: Env, url: URL): Pr
   const weekdays=Array.from({length:7},(_,day)=>({day,leads:0,appointments:0,rate:0}));
   const delays=Array.from({length:7},(_,index)=>({day:index+1,appointments:0,rate:0}));
   for(const lead of leads){
-    const created=new Date(text(lead.lead_created_at));
-    if(Number.isNaN(created.getTime()))continue;
-    const h=created.getUTCHours(),d=(created.getUTCDay()+6)%7;
-    hourly[h].leads+=1;
-    weekdays[d].leads+=1;
-    if(lead.appointment_at){
-      const appointment=new Date(text(lead.appointment_at));
-      if(Number.isNaN(appointment.getTime()))continue;
-      hourly[h].appointments+=1;
-      weekdays[d].appointments+=1;
-      const delay=Math.max(1,Math.min(7,Math.floor((appointment.getTime()-created.getTime())/86400000)+1));
+    const created=dateOrNull(lead.lead_created_at);
+    if(!created)continue;
+    const createdLocal=localParts(created,timezone);
+    hourly[createdLocal.hour].leads+=1;
+    weekdays[createdLocal.weekday].leads+=1;
+    const appointment=dateOrNull(lead.appointment_at);
+    if(appointment){
+      hourly[createdLocal.hour].appointments+=1;
+      weekdays[createdLocal.weekday].appointments+=1;
+      const appointmentLocal=localParts(appointment,timezone);
+      const createdDay=Date.parse(`${createdLocal.date}T00:00:00.000Z`);
+      const appointmentDay=Date.parse(`${appointmentLocal.date}T00:00:00.000Z`);
+      const delay=Math.max(1,Math.min(7,Math.floor((appointmentDay-createdDay)/86400000)+1));
       delays[delay-1].appointments+=1;
     }
   }
-  hourly.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});weekdays.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});delays.forEach((row)=>{row.rate=leads.length?row.appointments*100/leads.length:0;});
+  hourly.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});
+  weekdays.forEach((row)=>{row.rate=row.leads?row.appointments*100/row.leads:0;});
+  delays.forEach((row)=>{row.rate=leads.length?row.appointments*100/leads.length:0;});
   const totals=platforms.reduce<{leads:number;target_leads:number;arrived:number;sales:number;spend:number;revenue:number}>((acc,row)=>({leads:acc.leads+num(row.crm_leads),target_leads:acc.target_leads+num(row.target_leads),arrived:acc.arrived+num(row.arrived),sales:acc.sales+num(row.sales),spend:acc.spend+num(row.spend),revenue:acc.revenue+num(row.revenue)}),{leads:0,target_leads:0,arrived:0,sales:0,spend:0,revenue:0});
   const attribution={total_leads:leads.length,unattributed_leads:unattributedLeads,unattributed_rate:leads.length?unattributedLeads*100/leads.length:0};
-  return new Response(JSON.stringify({period:{from,to,days},totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,data_complete:unavailable.length===0}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+  return new Response(JSON.stringify({period:{from,to,days,timezone},timezone,totals,daily,platforms,campaigns,hierarchy,hourly,weekdays,delays,attribution,settings:settingsRows[0]||{},unavailable,data_complete:unavailable.length===0}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 }
