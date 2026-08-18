@@ -151,6 +151,8 @@ async function checkout(request: Request, env: BillingEnv, context: BillingConte
   const planCode = text(body.planCode);
   const addonCode = text(body.addonCode);
   const quantity = Math.max(1, Math.min(100, Math.floor(Number(body.quantity) || 1)));
+  const billingPeriodMonths = Math.floor(Number(body.billingPeriodMonths) || 1);
+  if (![1,3,6,12].includes(billingPeriodMonths)) return json({ error: 'INVALID_BILLING_PERIOD' }, 400);
   if (kind === 'subscription' && !planCode) return json({ error: 'PLAN_CODE_REQUIRED' }, 400);
   if (kind === 'addon' && !addonCode) return json({ error: 'ADDON_CODE_REQUIRED' }, 400);
   const origin = appOrigin(request, env);
@@ -164,8 +166,9 @@ async function checkout(request: Request, env: BillingEnv, context: BillingConte
       planCode: planCode || null,
       addonCode: addonCode || null,
       quantity,
-      successUrl: `${origin}/?billing=success`,
-      cancelUrl: `${origin}/?billing=cancel`,
+      billingPeriodMonths,
+      successUrl: `${origin}/billing?billing=success`,
+      cancelUrl: `${origin}/billing?billing=cancel`,
     }),
   });
 }
@@ -176,7 +179,7 @@ async function portal(request: Request, env: BillingEnv, context: BillingContext
   const origin = appOrigin(request, env);
   return controlRequest(request, env, context, '/v1/billing/portal', {
     method: 'POST',
-    body: JSON.stringify({ externalTenantId: context.tenantId, organizationId: context.organizationId, product: 'marketing', returnUrl: `${origin}/?billing=return` }),
+    body: JSON.stringify({ externalTenantId: context.tenantId, organizationId: context.organizationId, product: 'marketing', returnUrl: `${origin}/billing?billing=return` }),
   });
 }
 
