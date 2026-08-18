@@ -226,7 +226,7 @@ function billingDenied(billing: PlatformBillingState | undefined, method: string
   const expiredByDate = Number.isFinite(accessEnd) && accessEnd <= Date.now();
   const readOnlyRequest = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   if (status === 'past_due') return null;
-  const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || expiredByDate;
+  const locked = status === 'suspended' || status === 'cancelled' || status === 'expired' || status === 'read_only' || expiredByDate;
   if (!locked || readOnlyRequest) return null;
   if (status === 'suspended') return json({ error: 'SUBSCRIPTION_SUSPENDED', readOnly: true, billing }, 403);
   return json({ error: 'SUBSCRIPTION_READ_ONLY', readOnly: true, billing }, 402);
