@@ -28,18 +28,39 @@ jobs:
       - name: Apply fail-closed production patch
         run: python3 scripts/apply-fail-closed-control-plane.py
       - name: Validate production code
+        id: validate
+        shell: bash
         run: |
-          set -euo pipefail
-          npm install --no-audit --no-fund
-          npm run test:fail-closed
-          npm run typecheck
-          npm run build
-          git diff --check
-      - name: Commit validated fail-closed enforcement
+          set +e
+          mkdir -p docs/internal
+          {
+            npm install --no-audit --no-fund
+            npm run test:fail-closed
+            npm run typecheck
+            npm run build
+            git diff --check
+          } > docs/internal/fail-closed-apply-failure.log 2>&1
+          rc=$?
+          cat docs/internal/fail-closed-apply-failure.log
+          exit "$rc"
+      - name: Commit failure diagnostics
+        if: failure()
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'IMDS Automation'
           git config user.email 'automation@imds.local'
+          test -f docs/internal/fail-closed-apply-failure.log
+          git add docs/internal/fail-closed-apply-failure.log
+          git commit -m 'capture fail-closed apply validation failure' || true
+          git push origin HEAD:main || true
+      - name: Commit validated fail-closed enforcement
+        if: success()
+        run: |
+          set -euo pipefail
+          git config user.name 'IMDS Automation'
+          git config user.email 'automation@imds.local'
+          rm -f docs/internal/fail-closed-apply-failure.log
           git rm .github/workflows/apply-fail-closed-main.yml scripts/apply-fail-closed-control-plane.py
           git add server/platformControl.ts package.json tests/failClosedEntitlements.test.mjs supabase/migrations/20260818093000_fail_closed_control_plane.sql .github/workflows/ci.yml deploy/vps/install-release.sh
           git diff --cached --check
