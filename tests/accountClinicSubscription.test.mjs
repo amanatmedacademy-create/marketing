@@ -53,6 +53,31 @@ test('personal account is separated from organization administration', () => {
   assert.doesNotMatch(source, /Пароли в IMDS не хранятся/);
 });
 
+test('clinic timezone is organization scoped and owner manageable', () => {
+  const api = read('worker/companySettings.ts');
+  const panel = read('src/components/ClinicSettingsPanel.tsx');
+  assert.match(api, /\/api\/company\/settings/);
+  assert.match(api, /requireCompanyId/);
+  assert.match(api, /role === 'owner'/);
+  assert.match(api, /Intl\.DateTimeFormat/);
+  assert.match(panel, /saveClinicSettings/);
+  assert.match(panel, /Часовой пояс/);
+  assert.match(panel, /Это настройка клиники, а не личный часовой пояс пользователя/);
+});
+
+test('analytics data quality diagnostics remain tenant scoped', () => {
+  const api = read('worker/analyticsQuality.ts');
+  const panel = read('src/components/AnalyticsDataQualityPanel.tsx');
+  assert.match(api, /\/api\/analytics\/quality/);
+  assert.match(api, /requireCompanyId/);
+  assert.match(api, /company_id=eq\./);
+  assert.match(api, /integration_runs/);
+  assert.match(api, /integration_credentials/);
+  assert.match(panel, /Качество данных/);
+  assert.match(panel, /Неатрибутировано/);
+  assert.match(panel, /Покрытие валют/);
+});
+
 test('expired subscription allows reads but blocks mutations', () => {
   const source = read('server/platformControl.ts');
   assert.match(source, /readOnlyRequest = method === 'GET' \|\| method === 'HEAD' \|\| method === 'OPTIONS'/);
