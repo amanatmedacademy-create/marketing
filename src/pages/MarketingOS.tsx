@@ -4,12 +4,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import AdCreativeGallery from '../components/AdCreativeGallery';
 import AdsManagerPage from '../components/AdsManagerPage';
 import AnalyticsWorkspace from '../components/AnalyticsWorkspace';
+import V36Dashboard from '../components/V36Dashboard';
 import { useAuth } from '../components/AuthGate';
 import { operationsApi, type Campaign, type ContentItem, type MarketingTask } from '../services/operations';
 import type { PlatformEntitlements } from '../services/platformEntitlements';
 import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './GrowthToolsSafePages';
 import JourneyAutomationPage from './JourneyAutomationPage';
 import '../marketing-hub.css';
+import '../marketing-overview-analytics.css';
 
 type MarketingView = 'overview' | 'ads' | 'analytics' | 'creatives' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
 type AdsRow = { platform?: string; source?: string; account_id?: string; leads?: number; sales?: number; revenue?: number };
@@ -152,7 +154,7 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
 
     {view === 'overview' && <Overview loading={loading} campaigns={campaigns} content={content} activeCampaigns={activeCampaigns} openTasks={openTasks} readyContent={readyContent} totalAdLeads={totalAdLeads} totalAdSales={totalAdSales} platformStats={platformStats} canView={canView} platformAllows={platformAllows} changeView={changeView}/>} 
     {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Операционная работа с кабинетами, кампаниями, группами и объявлениями. Креативы вынесены в отдельную верхнюю вкладку."/><MarketingBoundaryLinks canView={canView} platformAllows={platformAllows}/><AdsManagerPage/></section>}
-    {view === 'analytics' && <section className="marketing-hub-module marketing-hub-module--analytics"><ModuleHeading title="Аналитика" text="Сквозная маркетинговая аналитика: расходы, лиды, записи, продажи, ROAS, ROMI, CPL, CAC, атрибуция и матрицы конверсии."/><AnalyticsWorkspace/></section>}
+    {view === 'analytics' && <section className="marketing-hub-module marketing-hub-module--analytics"><ModuleHeading title="Аналитика" text="Глубокий разбор: дерево рекламных объектов, ROAS, ROMI, CPL, CAC, атрибуция и матрицы конверсии. Сводные KPI и графики перенесены в «Обзор»."/><div className="marketing-deep-analytics"><AnalyticsWorkspace/></div></section>}
     {view === 'creatives' && <section className="marketing-hub-module"><ModuleHeading title="Креативы" text="Визуальная библиотека реальных рекламных объявлений с нативной валютой кабинета и быстрым preview."/><AdCreativeGallery/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
@@ -164,6 +166,11 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
 
 function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyContent,totalAdLeads,totalAdSales,platformStats,canView,platformAllows,changeView}:{loading:boolean;campaigns:Campaign[];content:ContentItem[];activeCampaigns:number;openTasks:number;readyContent:number;totalAdLeads:number;totalAdSales:number;platformStats:Map<PlatformKey,{accounts:Set<string>;leads:number;sales:number;revenue:number}>;canView:(id:string)=>boolean;platformAllows:(id?:PlatformModule)=>boolean;changeView:(view:MarketingView)=>void}) {
   return <div className="marketing-hub-overview">
+    {canView('analytics.reports') && platformAllows('marketing.analytics') && <section className="marketing-hub-section marketing-hub-analytics-overview">
+      <div className="marketing-hub-section-head"><div><span>МАРКЕТИНГОВАЯ АНАЛИТИКА</span><h2>Сводка маркетинга</h2><p>KPI, динамика лидов, распределение, расходы и воронка по платформам — прямо в «Обзоре».</p></div><button className="marketing-hub-text-button" type="button" onClick={() => changeView('analytics')}>Глубокая аналитика <ArrowUpRight size={15}/></button></div>
+      <div className="marketing-overview-analytics"><V36Dashboard/></div>
+    </section>}
+
     <section className="marketing-hub-kpis">
       <article><span>Активные инициативы</span><strong>{activeCampaigns}</strong><small>{campaigns.length} всего в реестре</small></article>
       <article><span>Лиды из рекламы</span><strong>{number(totalAdLeads)}</strong><small>за последние 30 дней</small></article>
