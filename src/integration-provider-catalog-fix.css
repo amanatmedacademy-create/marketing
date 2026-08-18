@@ -1,0 +1,7 @@
+/* Binotel and Sipuni are now real operational integrations. Keep the legacy
+   planned catalog entries out of the "Следующий этап" section until that
+   static list is removed during the next catalog refactor. */
+.iv2-page > .iv2-section + .iv2-section article:has([data-provider="binotel"]),
+.iv2-page > .iv2-section + .iv2-section article:has([data-provider="sipuni"]){
+  display:none!important;
+}
