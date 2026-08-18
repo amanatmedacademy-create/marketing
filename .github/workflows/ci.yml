@@ -48,6 +48,9 @@ jobs:
       - name: Quota enforcement regression tests
         run: npm run test:quotas
 
+      - name: Billing Center regression tests
+        run: npm run test:billing
+
       - name: Typecheck
         run: npm run typecheck
 

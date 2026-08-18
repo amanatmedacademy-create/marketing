@@ -3,9 +3,9 @@ import { Building2, CheckCircle2, CreditCard, KeyRound, Laptop, LoaderCircle, Lo
 import { useAuth } from './AuthGate';
 import AccessMatrixPanel from './AccessMatrixPanel';
 import TeamAdministrationPanel from './TeamAdministrationPanel';
+import BillingCenterPanel from './BillingCenterPanel';
 import { DISPLAY_CURRENCIES, readDisplayCurrency, saveDisplayCurrency, type DisplayCurrency } from '../currency';
 import { changeAccountPassword, loadAccountProfile, loadAccountSessions, revokeAccountSession, revokeOtherAccountSessions, saveAccountProfile, type AccountProfile, type AccountSession } from '../services/account';
-import { loadPlatformEntitlements, type PlatformEntitlements } from '../services/platformEntitlements';
 import { fetchManagedUsers, type ManagedUser } from '../services/userAdmin';
 import '../user-workspace.css';
 
@@ -30,7 +30,6 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [profileDraft, setProfileDraft] = useState({ name: user.name || '', phone: '', locale: 'ru', timezone: 'Asia/Almaty' });
   const [sessions, setSessions] = useState<AccountSession[]>([]);
-  const [platform, setPlatform] = useState<PlatformEntitlements | null>(null);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -51,7 +50,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
     { id: 'clinic', label: 'Клиника', icon: Building2 },
     { id: 'users', label: 'Команда', icon: UsersRound },
     { id: 'matrix', label: 'Матрица прав', icon: ShieldCheck },
-    { id: 'subscription', label: 'Подписка', icon: CreditCard },
+    { id: 'subscription', label: 'Billing', icon: CreditCard },
   ];
   const tabs = mode === 'settings' ? orgTabs : personalTabs;
 
@@ -75,7 +74,6 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
   useEffect(() => {
     if (tab === 'security') void loadSecurity();
     if (tab === 'matrix') void fetchManagedUsers().then(setUsers).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
-    if (tab === 'subscription') void loadPlatformEntitlements().then(setPlatform).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [tab, user.companyId]);
 
   const saveProfile = async () => {
@@ -99,7 +97,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
 
   return <div className="user-workspace-layer" role="dialog" aria-modal="true" aria-label={mode === 'settings' ? 'Настройки организации' : 'Личный кабинет'}>
     <button className="user-workspace-overlay" type="button" aria-label="Закрыть" onClick={onClose}/>
-    <section className={`user-workspace user-workspace--${mode} ${tab === 'matrix' ? 'user-workspace--matrix' : ''}`}>
+    <section className={`user-workspace user-workspace--${mode} ${tab === 'matrix' || tab === 'subscription' ? 'user-workspace--matrix' : ''}`}>
       <header><div className="user-workspace-avatar">{profile?.avatarUrl || user.avatarUrl ? <img src={profile?.avatarUrl || user.avatarUrl || ''} alt=""/> : initials}</div><div><h2>{mode === 'settings' ? 'Настройки организации' : profile?.name || user.name}</h2><span>{mode === 'settings' ? currentCompany?.name || 'Текущая клиника' : user.platformRole === 'super_admin' ? 'Super Admin' : user.jobTitle || roleLabels[currentCompany?.role || user.role] || user.role}</span></div><button type="button" aria-label="Закрыть" onClick={onClose}><X size={20}/></button></header>
       <div className="user-workspace-body">
         <aside><nav>{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => { setTab(id); setError(''); setNotice(''); }}><Icon size={16}/><span>{label}</span></button>)}</nav><button className="user-workspace-signout" type="button" onClick={() => void signOut()}><LogOut size={16}/>Выйти</button></aside>
@@ -121,7 +119,7 @@ export default function UserWorkspaceModal({ mode, onClose }: Props) {
           {tab === 'clinic' && <section><h3>Текущая клиника</h3><p>Tenant-контекст организации. Роли сотрудников и доступы изолированы между клиниками.</p><div className="organization-summary"><span><Building2 size={21}/></span><div><strong>{currentCompany?.name || 'Клиника не выбрана'}</strong><small>{roleLabels[currentCompany?.role || ''] || currentCompany?.role}</small></div></div>{currentCompany && <div className="access-list"><div><span>Tenant ID</span><em>{currentCompany.id}</em></div><div><span>Адрес</span><em>{currentCompany.slug || '—'}</em></div><div><span>Статус</span><em>{currentCompany.status}</em></div></div>}</section>}
           {tab === 'users' && <TeamAdministrationPanel/>}
           {tab === 'matrix' && <AccessMatrixPanel users={users}/>} 
-          {tab === 'subscription' && <section><h3>Подписка и оплата</h3><p>BELES получает доступы от IMDS Platform через entitlements; тарифные проверки не зашиты в модули.</p><div className="subscription-card"><div><CreditCard size={22}/><span><strong>BELES</strong><small>{platform?.managed ? 'Управляется IMDS Platform' : 'Локальный trial / fallback'}</small></span></div><b>{platform?.billing?.subscriptionStatus || '—'}</b></div><div className="access-list"><div><span>Период до</span><em>{formatDate(platform?.billing?.periodEndsAt || platform?.billing?.accessEndsAt)}</em></div><div><span>Trial до</span><em>{formatDate(platform?.billing?.trialEndsAt)}</em></div><div><span>Валюта</span><em>{platform?.billing?.currency || 'KZT'}</em></div><div><span>Продление</span><em>{platform?.billing?.renewalMode || 'manual'}</em></div></div>{platform?.billing?.paymentMethods?.length ? <div className="payment-method-list">{platform.billing.paymentMethods.map((method) => <div key={method.method}><CreditCard size={16}/><span><strong>{method.displayName}</strong><small>{method.instructions || (method.isDefault ? 'Основной способ оплаты' : '')}</small></span></div>)}</div> : <div className="workspace-note">Платёжный провайдер не привязан к BELES. Способы оплаты поступают из IMDS Platform/Control Plane.</div>}</section>}
+          {tab === 'subscription' && <BillingCenterPanel/>}
         </main>
       </div>
     </section>

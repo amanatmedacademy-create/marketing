@@ -6,6 +6,7 @@ import { authenticateRequest } from '../worker/auth';
 import { resolveCompanyId } from '../worker/companyContext';
 import type { AssetFetcher, WorkerExecutionContext } from '../worker/integrations';
 import { enforcePlatformEntitlement, handlePlatformInternalRequest, localTrialForTenant, platformEntitlementForTenant, platformQuotaSnapshotForTenant } from './platformControl';
+import { handleBillingGatewayRequest } from './billingGateway';
 
 type RuntimeEnv = Record<string, string | undefined> & { ASSETS: AssetFetcher };
 
@@ -132,6 +133,8 @@ const server = createServer(async (req, res) => {
     const request = await toRequest(req);
     const platformResponse = await handlePlatformInternalRequest(request, env);
     if (platformResponse) { await sendResponse(res, platformResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: platformResponse.status, durationMs: Date.now() - startedAt, platform: true })); return; }
+    const billingResponse = await handleBillingGatewayRequest(request, env);
+    if (billingResponse) { await sendResponse(res, billingResponse); console.log(JSON.stringify({ method: req.method, path: req.url, status: billingResponse.status, durationMs: Date.now() - startedAt, billing: true })); return; }
     const browserEntitlement = await browserEntitlementResponse(request);
     if (browserEntitlement) { await sendResponse(res, browserEntitlement); console.log(JSON.stringify({ method: req.method, path: req.url, status: browserEntitlement.status, durationMs: Date.now() - startedAt, entitlement: 'browser-state' })); return; }
     const entitlementDenied = await enforcePlatformEntitlement(request, env);
