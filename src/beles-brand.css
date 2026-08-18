@@ -1,0 +1,16 @@
+:root,
+:root[data-theme='light']{--beles-logo-max-width:220px}
+:root[data-theme='dark']{--beles-logo-max-width:220px}
+.beles-brand{display:flex;align-items:center;min-width:0;line-height:0}
+.beles-brand__picture{position:relative;display:block;width:100%;max-width:246px}
+.beles-brand__image{display:block;width:100%;height:auto;object-fit:contain;transition:opacity .2s ease}
+.beles-brand__image--dark{position:absolute;inset:0;opacity:0;pointer-events:none}
+:root[data-theme='dark'] .beles-brand__image--light{opacity:0}
+:root[data-theme='dark'] .beles-brand__image--dark{opacity:1}
+:root[data-theme='light'] .beles-brand__image--light{opacity:1}
+:root[data-theme='light'] .beles-brand__image--dark{opacity:0}
+.marketing-brand{padding:10px 6px 20px!important}
+.marketing-brand>.beles-brand{width:100%;justify-content:flex-start}
+.marketing-brand .beles-brand--compact .beles-brand__picture{width:min(var(--beles-logo-max-width),100%);max-width:none}
+.auth-brand .beles-brand__picture,.auth-loading-card .beles-brand__picture{max-width:246px}
+@media(max-width:900px){.marketing-brand{padding:10px 6px 18px!important}}
