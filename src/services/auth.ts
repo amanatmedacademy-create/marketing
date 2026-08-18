@@ -15,6 +15,7 @@ export type AuthLoginResult = { mfaRequired: boolean; mfaToken?: string };
 
 const STORAGE_KEY = 'amanat_marketing_auth_session';
 const COMPANY_KEY = 'imds_active_company_id';
+const BRANCH_KEY = 'imds_active_branch_id';
 function readStoredSession(): StoredSession | null { try { const value = localStorage.getItem(STORAGE_KEY); return value ? JSON.parse(value) as StoredSession : null; } catch { return null; } }
 function writeStoredSession(session: StoredSession | null) { if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); else localStorage.removeItem(STORAGE_KEY); }
 function storeAuthSession(payload: AuthSessionResponse): StoredSession {
@@ -29,7 +30,7 @@ async function authJson<T>(path: string, init: RequestInit): Promise<T> {
   return payload as T;
 }
 export function activeCompanyId(): string { return localStorage.getItem(COMPANY_KEY)?.trim() || ''; }
-export function setActiveCompanyId(companyId: string | null) { if (companyId) localStorage.setItem(COMPANY_KEY, companyId); else localStorage.removeItem(COMPANY_KEY); }
+export function setActiveCompanyId(companyId: string | null) { if (companyId) localStorage.setItem(COMPANY_KEY, companyId); else localStorage.removeItem(COMPANY_KEY); localStorage.removeItem(BRANCH_KEY); }
 function parseCallbackSession(): StoredSession | null {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, '')); const accessToken = hash.get('access_token'); if (!accessToken) return null;
   const session: StoredSession = { access_token: accessToken, refresh_token: hash.get('refresh_token') || undefined, token_type: hash.get('token_type') || 'bearer', expires_at: Math.floor(Date.now() / 1000) + Number(hash.get('expires_in') || 3600) };
@@ -45,12 +46,10 @@ export async function currentSession(): Promise<StoredSession | null> {
   const expiresAt = Number(session.expires_at || 0); if (!expiresAt || expiresAt > Math.floor(Date.now() / 1000) + 60) return session;
   const refreshed = await refreshSession(session); if (!refreshed) writeStoredSession(null); return refreshed;
 }
-
 export async function signInWithPassword(email: string, password: string, remember = true): Promise<AuthLoginResult> {
   const payload = await authJson<AuthSessionResponse | MfaChallengeResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: email.trim().toLowerCase(), password, remember }) });
   if ('mfa_required' in payload) return { mfaRequired: true, mfaToken: payload.mfa_token };
-  if (!payload.access_token) throw new Error('Сервер не вернул сессию');
-  storeAuthSession(payload); return { mfaRequired: false };
+  if (!payload.access_token) throw new Error('Сервер не вернул сессию'); storeAuthSession(payload); return { mfaRequired: false };
 }
 export async function verifyMfaChallenge(mfaToken: string, code: string): Promise<void> {
   const payload = await authJson<AuthSessionResponse>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfa_token: mfaToken, code: code.trim().toUpperCase() }) });
@@ -67,7 +66,9 @@ export async function signOutSession(): Promise<void> {
 }
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const session = await currentSession(); const headers = new Headers(init.headers || {}); if (session?.access_token) headers.set('authorization', `Bearer ${session.access_token}`);
-  const companyId = activeCompanyId(); if (companyId) headers.set('x-imds-company-id', companyId); return fetch(input, { ...init, headers });
+  const companyId = activeCompanyId(); if (companyId) headers.set('x-imds-company-id', companyId);
+  const branchId = localStorage.getItem(BRANCH_KEY)?.trim(); if (branchId) headers.set('x-imds-branch-id', branchId);
+  return fetch(input, { ...init, headers });
 }
 async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers || {}); headers.set('accept', 'application/json'); if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
