@@ -7,7 +7,7 @@ import './operating-overview.css';
 
 const number = (value: number) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'KZT', maximumFractionDigits: 0 }).format(Number(value || 0));
-const quotaLabels: Record<PlatformLimitKey, string> = { clinics: 'Клиники', users: 'Пользователи', leads: 'Лиды', openTasks: 'Открытые задачи', integrations: 'Интеграции' };
+const quotaLabels: Partial<Record<PlatformLimitKey, string>> = { clinics: 'Клиники', users: 'Пользователи', leads: 'Лиды', openTasks: 'Открытые задачи', integrations: 'Интеграции' };
 
 export default function OperatingOverviewPanel() {
   const { user, switchCompany } = useAuth();
@@ -79,7 +79,7 @@ export default function OperatingOverviewPanel() {
         {usageItems.map(({ key, value }) => {
           const quota = quotaMap.get(key);
           const statusClass = quota && quota.level !== 'ok' ? ` quota-${quota.level}` : '';
-          return <div className={statusClass.trim()} key={key}><UsersRound size={18}/><span>{quotaLabels[key]}</span><strong>{quota ? `${number(quota.used)} / ${number(quota.limit)}` : number(value)}</strong>{quota ? <><div className="usage-meter"><i style={{ width: `${Math.min(100, quota.percent)}%` }}/></div><small>{quota.percent.toFixed(1)}% · {quota.enforcement === 'soft' ? 'soft limit' : quota.level === 'exceeded' ? 'лимит достигнут' : `${number(quota.remaining)} доступно`}</small></> : <small>без заданного лимита</small>}</div>;
+          return <div className={statusClass.trim()} key={key}><UsersRound size={18}/><span>{quotaLabels[key] || key}</span><strong>{quota ? `${number(quota.used)} / ${number(quota.limit)}` : number(value)}</strong>{quota ? <><div className="usage-meter"><i style={{ width: `${Math.min(100, quota.percent)}%` }}/></div><small>{quota.percent.toFixed(1)}% · {quota.enforcement === 'soft' ? 'soft limit' : quota.level === 'exceeded' ? 'лимит достигнут' : `${number(quota.remaining)} доступно`}</small></> : <small>без заданного лимита</small>}</div>;
         })}
         {quotaMap.has('clinics') && <div className={`quota-${quotaMap.get('clinics')!.level}`}><Building2 size={18}/><span>Клиники</span><strong>{number(quotaMap.get('clinics')!.used)} / {number(quotaMap.get('clinics')!.limit)}</strong><div className="usage-meter"><i style={{ width: `${Math.min(100, quotaMap.get('clinics')!.percent)}%` }}/></div><small>{quotaMap.get('clinics')!.percent.toFixed(1)}% · {number(quotaMap.get('clinics')!.remaining)} доступно</small></div>}
       </div>
