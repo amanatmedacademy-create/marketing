@@ -1,6 +1,6 @@
 import type { UniversalTelephonyEnv } from './telephonyGateway';
-import { loadTelephonyProviderCredential, markTelephonyProviderStatus } from './telephonyProviderCredentials';
-import { requireCompanyId } from './tenantScope';
+import { loadTelephonyProviderCredential } from './telephonyProviderCredentials';
+import { requireBranchId, requireCompanyId } from './tenantScope';
 
 type Row = Record<string, unknown>;
 type CloudProvider = 'binotel' | 'sipuni';
@@ -16,54 +16,17 @@ async function activeProvider(env: UniversalTelephonyEnv): Promise<CloudProvider
   const provider = text(rows[0]?.provider).toLowerCase();
   return provider === 'binotel' || provider === 'sipuni' ? provider : null;
 }
-
-function capabilities(provider: CloudProvider): string[] {
-  const common = ['inbound', 'outbound_events', 'call_history', 'missed_calls', 'recording_archive', 'transcription', 'call_analytics'];
-  return provider === 'sipuni' ? [...common, 'realtime_http_events'] : [...common, 'webhook_events'];
-}
+function capabilities(provider: CloudProvider): string[] { const common = ['inbound', 'outbound_events', 'call_history', 'missed_calls', 'recording_archive', 'transcription', 'call_analytics']; return provider === 'sipuni' ? [...common, 'realtime_http_events'] : [...common, 'webhook_events']; }
 
 export async function handleCloudTelephonyStatus(request: Request, env: UniversalTelephonyEnv, url: URL): Promise<Response | null> {
   if (!['/api/telephony/status', '/api/telephony/test', '/api/telephony/start'].includes(url.pathname)) return null;
-  const provider = await activeProvider(env);
-  if (!provider) return null;
-  const companyId = requireCompanyId(env);
-  const credential = await loadTelephonyProviderCredential(env, provider);
-  const configured = Boolean(credential);
-  const connected = credential?.row?.status === 'connected' && !credential?.row?.last_error;
-
-  if (url.pathname === '/api/telephony/status' && request.method === 'GET') {
-    return json({
-      provider,
-      providerLabel: provider === 'sipuni' ? 'Sipuni' : 'Binotel',
-      configured,
-      connected,
-      credentialScope: 'organization',
-      capabilities: capabilities(provider),
-      lastVerifiedAt: credential?.row?.last_verified_at || null,
-      lastError: credential?.row?.last_error || null,
-    });
-  }
-
-  if (url.pathname === '/api/telephony/test' && request.method === 'POST') {
-    if (!credential) return json({ error: `${provider === 'sipuni' ? 'Sipuni' : 'Binotel'} не настроен` }, 400);
-    // Webhook-based cloud telephony is considered connected after the provider
-    // delivers a signed tenant-scoped event. Until then credentials are configured.
-    return json({ ok: true, provider, configured: true, connected, mode: 'webhook', lastVerifiedAt: credential.row.last_verified_at || null });
-  }
-
-  if (url.pathname === '/api/telephony/start' && request.method === 'POST') {
-    return json({
-      error: provider === 'binotel'
-        ? 'Исходящий Binotel click-to-call будет включён после подтверждения REST endpoint вашего Binotel API.'
-        : 'Исходящий Sipuni callback будет включён отдельным API-адаптером; события и история уже принимаются через webhook.',
-      provider,
-      code: 'PROVIDER_OUTBOUND_NOT_CONFIGURED',
-    }, 409);
-  }
-
+  const provider = await activeProvider(env); if (!provider) return null;
+  const companyId = requireCompanyId(env); let branchId = '';
+  try { branchId = requireBranchId(env); } catch { return json({ error: 'Для телефонии выберите конкретный филиал', code: 'BRANCH_REQUIRED' }, 409); }
+  const credential = await loadTelephonyProviderCredential(env, provider, companyId, branchId);
+  const configured = Boolean(credential), connected = credential?.row?.status === 'connected' && !credential?.row?.last_error;
+  if (url.pathname === '/api/telephony/status' && request.method === 'GET') return json({ provider, providerLabel: provider === 'sipuni' ? 'Sipuni' : 'Binotel', configured, connected, credentialScope: 'branch', branchId, capabilities: capabilities(provider), lastVerifiedAt: credential?.row?.last_verified_at || null, lastError: credential?.row?.last_error || null });
+  if (url.pathname === '/api/telephony/test' && request.method === 'POST') { if (!credential) return json({ error: `${provider === 'sipuni' ? 'Sipuni' : 'Binotel'} не настроен для филиала` }, 400); return json({ ok: true, provider, branchId, configured: true, connected, mode: 'webhook', lastVerifiedAt: credential.row.last_verified_at || null }); }
+  if (url.pathname === '/api/telephony/start' && request.method === 'POST') return json({ error: provider === 'binotel' ? 'Исходящий Binotel click-to-call будет включён после подтверждения REST endpoint вашего Binotel API.' : 'Исходящий Sipuni callback будет включён отдельным API-адаптером; события и история уже принимаются через webhook.', provider, code: 'PROVIDER_OUTBOUND_NOT_CONFIGURED' }, 409);
   return null;
-}
-
-export async function markCloudTelephonyWebhookHealthy(env: UniversalTelephonyEnv, companyId: string, provider: CloudProvider): Promise<void> {
-  await markTelephonyProviderStatus(env, companyId, provider, true).catch((error) => console.error(`${provider} status update failed`, error));
 }
