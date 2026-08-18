@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Check, ChevronDown, LoaderCircle, LogIn, Plus, Search, ShieldCheck, X } from 'lucide-react';
 import { createClinic, joinClinic } from '../services/auth';
 import { useAuth } from './AuthGate';
+import BranchSwitcher from './BranchSwitcher';
 import './company-switcher.css';
 
 type ActionMode = 'create' | 'join' | null;
@@ -85,37 +86,40 @@ export default function CompanySwitcher() {
     }
   };
 
-  return <div className="company-switcher" ref={rootRef}>
-    <button className="company-switcher__trigger" type="button" title="Текущая клиника" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen((state) => !state); setError(''); }}>
-      <span className="company-switcher__icon">{busy ? <LoaderCircle size={16} className="spin"/> : <Building2 size={16}/>}</span>
-      <span className="company-switcher__copy"><small>Клиника</small><strong>{current.name}</strong></span>
-      {user.platformRole === 'super_admin' && <span className="company-switcher__platform" title="Platform access"><ShieldCheck size={13}/></span>}
-      <ChevronDown size={15} className={open ? 'company-switcher__chevron open' : 'company-switcher__chevron'}/>
-    </button>
+  return <>
+    <div className="company-switcher" ref={rootRef}>
+      <button className="company-switcher__trigger" type="button" title="Текущая клиника" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen((state) => !state); setError(''); }}>
+        <span className="company-switcher__icon">{busy ? <LoaderCircle size={16} className="spin"/> : <Building2 size={16}/>}</span>
+        <span className="company-switcher__copy"><small>Клиника</small><strong>{current.name}</strong></span>
+        {user.platformRole === 'super_admin' && <span className="company-switcher__platform" title="Platform access"><ShieldCheck size={13}/></span>}
+        <ChevronDown size={15} className={open ? 'company-switcher__chevron open' : 'company-switcher__chevron'}/>
+      </button>
 
-    {open && <div className="company-switcher__popover" role="dialog" aria-label="Выбор клиники">
-      <div className="company-switcher__head"><div><strong>Клиники</strong><span>{user.platformRole === 'super_admin' ? 'Platform access' : `${companies.length} доступно`}</span></div><button type="button" aria-label="Закрыть" onClick={() => setOpen(false)}><X size={16}/></button></div>
-      {companies.length > 5 && <label className="company-switcher__search"><Search size={15}/><input autoFocus placeholder="Найти клинику" value={query} onChange={(event) => setQuery(event.target.value)}/></label>}
-      <div className="company-switcher__list">
-        {filtered.map((company) => <button key={company.id} type="button" className={company.id === currentId ? 'active' : ''} disabled={busy} onClick={() => void changeCompany(company.id)}>
-          <span className="company-switcher__clinic-icon"><Building2 size={15}/></span>
-          <span><strong>{company.name}</strong><small>{roleLabel(company.role)}{company.accessSource === 'platform' ? ' · platform' : ''}</small></span>
-          {company.id === currentId && <Check size={16}/>} 
-        </button>)}
-        {!filtered.length && <div className="company-switcher__empty">Клиники не найдены</div>}
-      </div>
-      {companies.length === 1 && !query && <div className="company-switcher__hint">Других доступных клиник пока нет. {canCreateClinic ? 'Можно добавить новую или присоединиться по коду.' : 'Можно присоединиться к другой клинике по коду.'}</div>}
+      {open && <div className="company-switcher__popover" role="dialog" aria-label="Выбор клиники">
+        <div className="company-switcher__head"><div><strong>Клиники</strong><span>{user.platformRole === 'super_admin' ? 'Platform access' : `${companies.length} доступно`}</span></div><button type="button" aria-label="Закрыть" onClick={() => setOpen(false)}><X size={16}/></button></div>
+        {companies.length > 5 && <label className="company-switcher__search"><Search size={15}/><input autoFocus placeholder="Найти клинику" value={query} onChange={(event) => setQuery(event.target.value)}/></label>}
+        <div className="company-switcher__list">
+          {filtered.map((company) => <button key={company.id} type="button" className={company.id === currentId ? 'active' : ''} disabled={busy} onClick={() => void changeCompany(company.id)}>
+            <span className="company-switcher__clinic-icon"><Building2 size={15}/></span>
+            <span><strong>{company.name}</strong><small>{roleLabel(company.role)}{company.accessSource === 'platform' ? ' · platform' : ''}</small></span>
+            {company.id === currentId && <Check size={16}/>} 
+          </button>)}
+          {!filtered.length && <div className="company-switcher__empty">Клиники не найдены</div>}
+        </div>
+        {companies.length === 1 && !query && <div className="company-switcher__hint">Других доступных клиник пока нет. {canCreateClinic ? 'Можно добавить новую или присоединиться по коду.' : 'Можно присоединиться к другой клинике по коду.'}</div>}
 
-      {mode && <form className="company-switcher__form" onSubmit={(event) => { event.preventDefault(); void submitAction(); }}>
-        <label><span>{mode === 'create' ? 'Название новой клиники' : 'Код клиники'}</span><input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder={mode === 'create' ? 'Например, IMDS Dental' : 'Введите код'} minLength={mode === 'create' ? 2 : 6} required/></label>
-        <div><button type="button" onClick={() => { setMode(null); setValue(''); setError(''); }}>Отмена</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle size={14} className="spin"/> : mode === 'create' ? <Plus size={14}/> : <LogIn size={14}/>} {mode === 'create' ? 'Создать' : 'Присоединиться'}</button></div>
-      </form>}
-      {error && <div className="company-switcher__error">{error}</div>}
-      {notice && <div className="company-switcher__notice">{notice}</div>}
-      {!mode && <div className="company-switcher__actions">
-        {canCreateClinic && <button type="button" onClick={() => { setMode('create'); setValue(''); setError(''); setNotice(''); }}><Plus size={15}/>Добавить клинику</button>}
-        <button type="button" onClick={() => { setMode('join'); setValue(''); setError(''); setNotice(''); }}><LogIn size={15}/>Присоединиться по коду</button>
+        {mode && <form className="company-switcher__form" onSubmit={(event) => { event.preventDefault(); void submitAction(); }}>
+          <label><span>{mode === 'create' ? 'Название новой клиники' : 'Код клиники'}</span><input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder={mode === 'create' ? 'Например, IMDS Dental' : 'Введите код'} minLength={mode === 'create' ? 2 : 6} required/></label>
+          <div><button type="button" onClick={() => { setMode(null); setValue(''); setError(''); }}>Отмена</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle size={14} className="spin"/> : mode === 'create' ? <Plus size={14}/> : <LogIn size={14}/>} {mode === 'create' ? 'Создать' : 'Присоединиться'}</button></div>
+        </form>}
+        {error && <div className="company-switcher__error">{error}</div>}
+        {notice && <div className="company-switcher__notice">{notice}</div>}
+        {!mode && <div className="company-switcher__actions">
+          {canCreateClinic && <button type="button" onClick={() => { setMode('create'); setValue(''); setError(''); setNotice(''); }}><Plus size={15}/>Добавить клинику</button>}
+          <button type="button" onClick={() => { setMode('join'); setValue(''); setError(''); setNotice(''); }}><LogIn size={15}/>Присоединиться по коду</button>
+        </div>}
       </div>}
-    </div>}
-  </div>;
+    </div>
+    <BranchSwitcher />
+  </>;
 }
