@@ -57,7 +57,7 @@ const navigation: NavGroup[] = [
   ]},
   { label: 'АНАЛИТИКА', items: [
     { to: '/growth', label: 'Growth Engine', icon: Activity, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
-    { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports', platformModule: 'marketing.analytics' },
+    { to: '/assistant', label: 'IMDS Intelligence', icon: Bot, moduleId: 'analytics.reports', platformModule: 'marketing.ai' },
   ]},
   { label: 'ПЛАТФОРМА', items: [
     { to: '/integrations', label: 'Интеграции', icon: Cable, moduleId: 'integrations' },
@@ -121,7 +121,7 @@ function Shell() {
   const isMarketingRoute = location.pathname === '/marketing' || location.pathname === '/analytics' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
 
   if (platform?.managed && !platform.productEnabled) {
-    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>BELES отключён</h2><p>Доступ к продукту приостановлен в IMDS Super Admin для этой организации.</p></div>;
+    return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing отключён</h2><p>Доступ к продукту приостановлен в IMDS Control Center для этой организации.</p></div>;
   }
 
   return <div className="marketing-shell">
@@ -172,7 +172,7 @@ function Shell() {
         <Route path="/analytics" element={localCanView('analytics.reports') && platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=analytics" replace/> : <AccessDenied platformControlled={Boolean(platform?.managed && !platformAllows('marketing.analytics'))}/>} />
         <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>, 'marketing.analytics')} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
-        <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.analytics')} />
+        <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.ai')} />
         <Route path="/integrations" element={guard('integrations', <IntegrationsWorkspace/>)} />
         <Route path="/google" element={<Navigate to="/integrations" replace/>} />
         <Route path="/data-quality" element={guard('audit', <SafeDataQualityPage/>)} />
@@ -188,7 +188,7 @@ function Shell() {
 }
 
 function AccessDenied({ platformControlled = false }: { platformControlled?: boolean }) {
-  return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>{platformControlled ? 'Модуль отключён для этой организации в IMDS Super Admin.' : 'Обратитесь к администратору, чтобы изменить должность или персональные права.'}</p></div>;
+  return <div className="module-access-denied"><LockKeyhole size={32}/><h2>Нет доступа к модулю</h2><p>{platformControlled ? 'Модуль отключён для этой организации в IMDS Control Center.' : 'Обратитесь к администратору, чтобы изменить должность или персональные права.'}</p></div>;
 }
 
 export default function MarketingPlatform() {
