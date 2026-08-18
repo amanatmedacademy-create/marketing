@@ -3,6 +3,7 @@ import { Activity, ArrowUpRight, BarChart3, Cable, CalendarDays, CheckCircle2, F
 import { Link, useSearchParams } from 'react-router-dom';
 import AdCreativeGallery from '../components/AdCreativeGallery';
 import AdsManagerPage from '../components/AdsManagerPage';
+import AnalyticsWorkspace from '../components/AnalyticsWorkspace';
 import { useAuth } from '../components/AuthGate';
 import { operationsApi, type Campaign, type ContentItem, type MarketingTask } from '../services/operations';
 import type { PlatformEntitlements } from '../services/platformEntitlements';
@@ -10,7 +11,7 @@ import { SafeLeadFormsPage, SafeMediaPlanPage, SafeUtmBuilderPage } from './Grow
 import JourneyAutomationPage from './JourneyAutomationPage';
 import '../marketing-hub.css';
 
-type MarketingView = 'overview' | 'ads' | 'creatives' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
+type MarketingView = 'overview' | 'ads' | 'analytics' | 'creatives' | 'content' | 'media-plan' | 'leads' | 'attribution' | 'automation';
 type AdsRow = { platform?: string; source?: string; account_id?: string; leads?: number; sales?: number; revenue?: number };
 type AdsResponse = { accounts?: Array<{ id: string; name: string; platform?: string }>; rows?: AdsRow[] };
 type PlatformKey = 'Meta' | 'TikTok' | 'Google' | 'Yandex';
@@ -52,6 +53,7 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
   const tabs = useMemo(() => [
     { id: 'overview' as const, label: 'Обзор', icon: LayoutDashboard, modules: ['dashboard'], platformModule: undefined },
     { id: 'ads' as const, label: 'Реклама', icon: Megaphone, modules: ['advertising'], platformModule: 'marketing.meta-ads' as PlatformModule },
+    { id: 'analytics' as const, label: 'Аналитика', icon: BarChart3, modules: ['analytics.reports'], platformModule: 'marketing.analytics' as PlatformModule },
     { id: 'creatives' as const, label: 'Креативы', icon: Images, modules: ['advertising'], platformModule: 'marketing.meta-ads' as PlatformModule },
     { id: 'content' as const, label: 'Контент', icon: FileText, modules: ['dashboard'], platformModule: undefined },
     { id: 'media-plan' as const, label: 'Медиаплан', icon: Goal, modules: ['dashboard'], platformModule: undefined },
@@ -137,7 +139,7 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
       <div>
         <span className="marketing-hub-eyebrow"><Sparkles size={15}/> BELES HUB</span>
         <h1>Центр маркетинга</h1>
-        <p>Операционная работа с рекламой, креативами, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
+        <p>Операционная работа с рекламой, аналитикой, креативами, контентом, медиапланом, лидогенерацией, UTM и маркетинговыми автоматизациями.</p>
       </div>
       <button className="button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} size={16}/>{loading ? 'Обновляем…' : 'Обновить'}</button>
     </header>
@@ -150,11 +152,12 @@ export default function MarketingOS({ platform = null }: { platform?: PlatformEn
 
     {view === 'overview' && <Overview loading={loading} campaigns={campaigns} content={content} activeCampaigns={activeCampaigns} openTasks={openTasks} readyContent={readyContent} totalAdLeads={totalAdLeads} totalAdSales={totalAdSales} platformStats={platformStats} canView={canView} platformAllows={platformAllows} changeView={changeView}/>} 
     {view === 'ads' && <section className="marketing-hub-module marketing-hub-module--ads"><ModuleHeading title="Реклама" text="Операционная работа с кабинетами, кампаниями, группами и объявлениями. Креативы вынесены в отдельную верхнюю вкладку."/><MarketingBoundaryLinks canView={canView} platformAllows={platformAllows}/><AdsManagerPage/></section>}
+    {view === 'analytics' && <section className="marketing-hub-module marketing-hub-module--analytics"><ModuleHeading title="Аналитика" text="Сквозная маркетинговая аналитика: расходы, лиды, записи, продажи, ROAS, ROMI, CPL, CAC, атрибуция и матрицы конверсии."/><AnalyticsWorkspace/></section>}
     {view === 'creatives' && <section className="marketing-hub-module"><ModuleHeading title="Креативы" text="Визуальная библиотека реальных рекламных объявлений с нативной валютой кабинета и быстрым preview."/><AdCreativeGallery/></section>}
     {view === 'content' && <ContentWorkspace campaigns={campaigns} content={content} loading={loading} />}
     {view === 'media-plan' && <section className="marketing-hub-module"><ModuleHeading title="Медиаплан" text="Планирование бюджетов, каналов и периодов без выхода из Центра маркетинга."/><SafeMediaPlanPage/></section>}
     {view === 'leads' && <section className="marketing-hub-module"><ModuleHeading title="Лиды и формы" text="Формы захвата и точки входа лидов. Операционная CRM остаётся связанной с этим разделом."/><SafeLeadFormsPage/></section>}
-    {view === 'attribution' && <section className="marketing-hub-module"><ModuleHeading title="UTM и ссылки" text="Создание и хранение отслеживаемых рекламных ссылок. Анализ атрибуции находится в модуле Аналитика."/><SafeUtmBuilderPage/></section>}
+    {view === 'attribution' && <section className="marketing-hub-module"><ModuleHeading title="UTM и ссылки" text="Создание и хранение отслеживаемых рекламных ссылок. Расширенный анализ атрибуции и воронки доступен во вкладке «Аналитика»."/><SafeUtmBuilderPage/></section>}
     {view === 'automation' && <section className="marketing-hub-module"><ModuleHeading title="Автоматизация" text="Маркетинговые сценарии и Journey Automation в том же рабочем контуре."/><JourneyAutomationPage/></section>}
   </div>;
 }
@@ -186,6 +189,7 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
       <div className="marketing-hub-section-head"><div><span>РАБОЧИЕ МОДУЛИ</span><h2>Маркетинг без дублирования платформы</h2><p>В Центре маркетинга остаются только рабочие маркетинговые процессы.</p></div></div>
       <div className="marketing-module-grid">
         {canView('advertising') && platformAllows('marketing.meta-ads') && <PreviewCard icon={<Images size={20}/>} title="Креативы" text="Реальные изображения и видео рекламных объявлений" onClick={() => changeView('creatives')}/>} 
+        {canView('analytics.reports') && platformAllows('marketing.analytics') && <PreviewCard icon={<BarChart3 size={20}/>} title="Аналитика" text="ROAS, ROMI, CPL, CAC, воронка и матрицы конверсии" onClick={() => changeView('analytics')}/>} 
         {canView('dashboard') && <PreviewCard icon={<FileText size={20}/>} title="Контент" text={`${content.length} материалов · ${readyContent} готовы / сегодня`} onClick={() => changeView('content')}/>} 
         {canView('dashboard') && <PreviewCard icon={<Goal size={20}/>} title="Медиаплан" text="Бюджеты, каналы, периоды и план-факт" onClick={() => changeView('media-plan')}/>} 
         {canView('crm.leads') && platformAllows('marketing.crm') && <PreviewCard icon={<UsersRound size={20}/>} title="Лиды" text="Формы захвата и точки входа в CRM" onClick={() => changeView('leads')}/>} 
@@ -204,7 +208,7 @@ function Overview({loading,campaigns,content,activeCampaigns,openTasks,readyCont
 function MarketingBoundaryLinks({canView,platformAllows}:{canView:(id:string)=>boolean;platformAllows:(id?:PlatformModule)=>boolean}) {
   const links = [
     { to:'/integrations', title:'Подключения', text:'Meta, TikTok, Google, GA4 и синхронизация', icon:<Cable size={18}/>, show:canView('integrations') },
-    { to:'/analytics', title:'Анализ рекламы', text:'ROAS, ROMI, CPL, CAC и дерево рекламных объектов', icon:<BarChart3 size={18}/>, show:canView('analytics.reports') && platformAllows('marketing.analytics') },
+    { to:'/marketing?view=analytics', title:'Аналитика', text:'ROAS, ROMI, CPL, CAC и дерево рекламных объектов', icon:<BarChart3 size={18}/>, show:canView('analytics.reports') && platformAllows('marketing.analytics') },
     { to:'/growth', title:'Events / CAPI', text:'Conversion events, destinations и доставка событий', icon:<Activity size={18}/>, show:canView('analytics.reports') && platformAllows('marketing.analytics') },
   ].filter((item) => item.show);
   if (!links.length) return null;
