@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises';
 const migration = await readFile(new URL('../supabase/migrations/20260818104500_branch_hierarchy.sql', import.meta.url), 'utf8');
 const api = await readFile(new URL('../worker/branchManagement.ts', import.meta.url), 'utf8');
 const secured = await readFile(new URL('../worker/securedMain.ts', import.meta.url), 'utf8');
+const runtime = await readFile(new URL('../server/vpsRuntime.ts', import.meta.url), 'utf8');
+const quota = await readFile(new URL('../server/branchQuotaGateway.ts', import.meta.url), 'utf8');
 const auth = await readFile(new URL('../src/services/auth.ts', import.meta.url), 'utf8');
 const switcher = await readFile(new URL('../src/components/BranchSwitcher.tsx', import.meta.url), 'utf8');
 const companySwitcher = await readFile(new URL('../src/components/CompanySwitcher.tsx', import.meta.url), 'utf8');
@@ -44,4 +46,12 @@ test('branch management UI supports create primary status and archive actions', 
   assert.match(panel, /setPrimaryBranch/);
   assert.match(panel, /archiveBranch/);
   assert.match(switcher, /Управление филиалами/);
+});
+
+test('branch quota is enforced server-side from Control Plane limits', () => {
+  assert.match(quota, /entitlement\?\.limits\?\.branches/);
+  assert.match(quota, /key: 'branches'/);
+  assert.match(quota, /QUOTA_EXCEEDED/);
+  assert.match(runtime, /enforceBranchQuota/);
+  assert.ok(runtime.indexOf('enforceBranchQuota') < runtime.indexOf('enforcePlatformEntitlement\(request, env\)') || runtime.includes('branchQuotaDenied'));
 });
