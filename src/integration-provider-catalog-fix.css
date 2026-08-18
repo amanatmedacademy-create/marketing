@@ -1,5 +1,0 @@
-/* The legacy "Следующий этап" catalog is no longer part of the integrations UI.
-   Active providers such as Binotel and Sipuni live in the main operational grid. */
-.iv2-page > .iv2-section + .iv2-section{
-  display:none!important;
-}
