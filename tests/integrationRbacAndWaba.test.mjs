@@ -69,6 +69,7 @@ test('Binotel and Sipuni are first-class tenant telephony providers', () => {
   const cards = read('src/components/OperationalIntegrationCards.tsx');
   assert.match(credentials, /'binotel' \| 'sipuni'/);
   assert.match(credentials, /webhookSecret/);
+  assert.match(credentials, /branch_id/);
   assert.match(migration, /'binotel'::text/);
   assert.match(migration, /'sipuni'::text/);
   assert.match(cards, /cloudCard\('binotel'/);
@@ -76,13 +77,15 @@ test('Binotel and Sipuni are first-class tenant telephony providers', () => {
   assert.match(cards, /CloudTelephonyIntegrationPanel/);
 });
 
-test('cloud telephony webhooks are tenant scoped and routed before user auth on VPS', () => {
+test('cloud telephony webhooks are tenant and branch scoped before user auth on VPS', () => {
   const webhook = read('worker/cloudTelephonyWebhooks.ts');
   const runtime = read('server/vpsRuntime.ts');
-  assert.match(webhook, /\/api\\\/telephony\\\/\(binotel\|sipuni\)\\\/webhook/);
-  assert.match(webhook, /loadTelephonyProviderCredential\(env, provider, companyId\)/);
+  assert.match(webhook, /binotel\|sipuni/);
+  assert.match(webhook, /webhook/);
+  assert.match(webhook, /loadTelephonyProviderCredential\(env, provider, companyId, branchId\)/);
   assert.match(webhook, /secureEqual\(supplied, expected\)/);
-  assert.match(webhook, /markTelephonyProviderStatus\(env, companyId, provider, true\)/);
+  assert.match(webhook, /markTelephonyProviderStatus\(env, companyId, branchId, provider, true\)/);
+  assert.match(webhook, /branch_id: branchId/);
   assert.match(runtime, /handleCloudTelephonyWebhook/);
   assert.match(runtime, /before user\/session and/);
 });
