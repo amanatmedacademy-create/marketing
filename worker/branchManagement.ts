@@ -132,7 +132,8 @@ export async function handleBranchManagementRequest(request: Request, env: Branc
   if (url.pathname === '/api/branches' && request.method === 'POST') {
     const body = await request.json().catch(() => null) as { name?: string; code?: string; city?: string; address?: string; phone?: string; timezone?: string } | null;
     const name = text(body?.name); if (name.length < 2 || name.length > 180) return json({ error: 'Укажите название филиала' }, 400);
-    const rows = await localDataJson<Row[]>(scopedEnv, 'crm_branches?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ company_id: companyId, name, code: text(body?.code).toUpperCase() || null, city: text(body?.city) || null, address: text(body?.address) || null, phone: text(body?.phone) || null, timezone: text(body?.timezone) || 'Asia/Almaty', created_by: userId, updated_by: userId }) }, 'Create branch');
+    const existingBranches = await localDataJson<Row[]>(scopedEnv, `crm_branches?company_id=eq.${encodeURIComponent(companyId)}&status=neq.archived&select=id&limit=1`, {}, 'Existing branches');
+    const rows = await localDataJson<Row[]>(scopedEnv, 'crm_branches?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ company_id: companyId, name, code: text(body?.code).toUpperCase() || null, city: text(body?.city) || null, address: text(body?.address) || null, phone: text(body?.phone) || null, timezone: text(body?.timezone) || 'Asia/Almaty', is_primary: existingBranches.length === 0, created_by: userId, updated_by: userId }) }, 'Create branch');
     return json({ branch: rows[0] || null }, 201);
   }
 

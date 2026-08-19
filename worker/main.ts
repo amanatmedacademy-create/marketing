@@ -212,7 +212,8 @@ export default {
         if (manualRoute.lease.ids.length) routeLease = manualRoute.lease;
       }
 
-      const runtimeEnv = await hydrateIntegrationEnv(requestEnv);
+      const skipIntegrationHydration = url.pathname === '/api/callcenter/workspace' && request.method === 'GET';
+      const runtimeEnv = skipIntegrationHydration ? requestEnv : await hydrateIntegrationEnv(requestEnv);
       const webhookGuard = await guardMetaSignedWebhook(forwardedRequest, runtimeEnv, url.pathname);
       if (webhookGuard) return webhookGuard;
 

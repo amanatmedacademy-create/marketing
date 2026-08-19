@@ -134,7 +134,12 @@ async function encryptPayload(payload: Row, secret: string): Promise<{ encrypted
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await cryptoKey(secret), new TextEncoder().encode(JSON.stringify(payload)));
   return { encrypted_payload: bytesToBase64(new Uint8Array(encrypted)), iv: bytesToBase64(iv) };
 }
-function base64ToBytes(value: string): Uint8Array { const raw = atob(value); return Uint8Array.from(raw, (character) => character.charCodeAt(0)); }
+function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const raw = atob(value);
+  const bytes = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return bytes;
+}
 async function decryptPayload(row: Row, secret: string): Promise<Row> {
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(text(row.iv)) }, await cryptoKey(secret), base64ToBytes(text(row.encrypted_payload)));
   return rec(JSON.parse(new TextDecoder().decode(decrypted)));
@@ -148,7 +153,10 @@ async function parseTokenResponse(response: Response): Promise<TokenResponse> {
   const raw = await response.text();
   let payload: TokenResponse = {};
   try { payload = raw ? JSON.parse(raw) as TokenResponse : {}; }
-  catch { payload = Object.fromEntries(new URLSearchParams(raw).entries()) as TokenResponse; }
+  catch {
+    const params = new URLSearchParams(raw);
+    params.forEach((value, key) => { (payload as Record<string, string | number | undefined>)[key] = value; });
+  }
   if (!response.ok) throw new Error(payload.error_description || payload.error || raw || `Binotel OAuth token HTTP ${response.status}`);
   if (!text(payload.access_token)) throw new Error('Binotel OAuth token endpoint не вернул access_token');
   return payload;

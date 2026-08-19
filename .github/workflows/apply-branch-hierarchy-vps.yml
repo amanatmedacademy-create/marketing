@@ -9,6 +9,7 @@ on:
       - 'supabase/migrations/20260818115500_branch_operational_scope.sql'
       - 'supabase/migrations/20260818115600_branch_integration_keys.sql'
       - 'supabase/migrations/20260818124500_integration_branch_routing.sql'
+      - 'supabase/migrations/20260819234500_branch_bootstrap_hardening.sql'
       - '.github/workflows/apply-branch-hierarchy-vps.yml'
 
 permissions:
@@ -51,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS
-          for migration in 20260818104500_branch_hierarchy.sql 20260818115500_branch_operational_scope.sql 20260818115600_branch_integration_keys.sql 20260818124500_integration_branch_routing.sql; do
+          for migration in 20260818104500_branch_hierarchy.sql 20260818115500_branch_operational_scope.sql 20260818115600_branch_integration_keys.sql 20260818124500_integration_branch_routing.sql 20260819234500_branch_bootstrap_hardening.sql; do
             sshpass -e scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "supabase/migrations/$migration" "$VPS_USER@$VPS_HOST:/tmp/$migration"
           done
       - name: Apply and verify
@@ -62,7 +63,7 @@ jobs:
           export SSHPASS
           sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
           set -euo pipefail
-          for migration in /tmp/20260818104500_branch_hierarchy.sql /tmp/20260818115500_branch_operational_scope.sql /tmp/20260818115600_branch_integration_keys.sql /tmp/20260818124500_integration_branch_routing.sql; do
+          for migration in /tmp/20260818104500_branch_hierarchy.sql /tmp/20260818115500_branch_operational_scope.sql /tmp/20260818115600_branch_integration_keys.sql /tmp/20260818124500_integration_branch_routing.sql /tmp/20260819234500_branch_bootstrap_hardening.sql; do
             test -s "$migration"
             docker exec -i imds-postgres psql -U imds_owner -d imds_marketing -v ON_ERROR_STOP=1 < "$migration"
           done
@@ -92,7 +93,7 @@ jobs:
           test "$route_resolver" = 1
           test "$integration_events_branch" = 1
           echo 'BRANCH_ROUTING_SCHEMA=ok'
-          rm -f /tmp/20260818104500_branch_hierarchy.sql /tmp/20260818115500_branch_operational_scope.sql /tmp/20260818115600_branch_integration_keys.sql /tmp/20260818124500_integration_branch_routing.sql
+          rm -f /tmp/20260818104500_branch_hierarchy.sql /tmp/20260818115500_branch_operational_scope.sql /tmp/20260818115600_branch_integration_keys.sql /tmp/20260818124500_integration_branch_routing.sql /tmp/20260819234500_branch_bootstrap_hardening.sql
           REMOTE
       - name: Publish schema success status
         if: success()

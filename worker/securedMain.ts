@@ -35,7 +35,7 @@ function sanitizedRequest(request: Request): Request {
   return new Request(request, { headers });
 }
 function effectiveRole(user: { role: string; platformRole?: string }): string { return user.platformRole === 'super_admin' ? 'administrator' : user.role; }
-function trustedRequest(request: Request, role: string, userId: string, branchId?: string | null): Request {
+function trustedRequest(request: Request<any, any>, role: string, userId: string, branchId?: string | null): Request {
   const headers = new Headers(request.headers);
   headers.delete(INTERNAL_ROLE_HEADER); headers.delete(INTERNAL_USER_HEADER); headers.delete(INTERNAL_VERIFIED_HEADER); headers.delete('x-admin-key');
   headers.set(INTERNAL_ROLE_HEADER, role); headers.set(INTERNAL_USER_HEADER, userId); headers.set(INTERNAL_VERIFIED_HEADER, '1');
@@ -71,7 +71,7 @@ export default {
         try { branchId = await resolveRequestedBranchId(cleanRequest, companyEnv, user.id, user.platformRole); }
         catch (error) { return json({ error: error instanceof Error ? error.message : String(error), code: 'BRANCH_ACCESS_DENIED' }, 403); }
         requestEnv = { ...companyEnv, CURRENT_BRANCH_ID: branchId || undefined };
-        forwardedRequest = trustedRequest(cleanRequest, role, user.id, branchId);
+        forwardedRequest = trustedRequest(cleanRequest.clone(), role, user.id, branchId);
 
         if (url.pathname.startsWith('/api/branches')) {
           const response = await handleBranchManagementRequest(cleanRequest, requestEnv, url, user.id, user.platformRole); if (response) return response;
