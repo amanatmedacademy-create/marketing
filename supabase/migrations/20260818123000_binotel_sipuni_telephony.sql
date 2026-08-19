@@ -31,6 +31,13 @@ alter table public.telephony_settings
   add constraint telephony_settings_provider_check
   check (provider in ('zadarma', 'asterisk', 'freepbx', 'twilio', 'voximplant', 'sip', 'binotel', 'sipuni'));
 
+-- The VPS release installer applies a curated migration subset and can reach
+-- this migration without the universal recording migration that originally
+-- introduced telephony_provider. Keep this migration safe and idempotent on
+-- both full-history databases and the curated VPS path.
+alter table public.marketing_calls
+  add column if not exists telephony_provider text not null default 'zadarma';
+
 alter table public.marketing_calls
   drop constraint if exists marketing_calls_telephony_provider_check;
 

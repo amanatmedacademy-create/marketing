@@ -46,6 +46,8 @@ jobs:
         run: npm run test:branches
       - name: Integration branch routing regression tests
         run: npm run test:integration-routing
+      - name: VPS migration compatibility regression tests
+        run: npm run test:vps-migrations
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
       - name: Typecheck
