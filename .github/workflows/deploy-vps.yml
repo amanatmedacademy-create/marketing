@@ -32,8 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_HOST: ${{ secrets.VPS_HOST || '89.207.250.55' }}
+      VPS_USER: ${{ secrets.VPS_USER || 'imdsops' }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
       VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
       CLOUDPAYMENTS_PUBLIC_ID: ${{ secrets.CLOUDPAYMENTS_PUBLIC_ID }}
       CLOUDPAYMENTS_API_SECRET: ${{ secrets.CLOUDPAYMENTS_API_SECRET }}
@@ -43,15 +44,45 @@ jobs:
       - name: Install SSH client
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      - name: Validate deployment access
+      - name: Configure deployment access
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$VPS_HOST" || { echo 'VPS_HOST secret is missing'; exit 1; }
-          test -n "$VPS_USER" || { echo 'VPS_USER secret is missing'; exit 1; }
-          test -n "$VPS_PASSWORD" || { echo 'VPS_PASSWORD secret is missing'; exit 1; }
+          test -n "$VPS_HOST" || { echo 'VPS_HOST is missing'; exit 1; }
+          test -n "$VPS_USER" || { echo 'VPS_USER is missing'; exit 1; }
           test -n "$DEPLOY_SHA" || { echo 'DEPLOY_SHA is missing'; exit 1; }
-          command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
+          if [ -z "$VPS_SSH_KEY" ] && [ -z "$VPS_PASSWORD" ]; then
+            echo 'Configure VPS_SSH_KEY or VPS_PASSWORD in GitHub Actions secrets.'
+            exit 1
+          fi
+
+          if [ -n "$VPS_SSH_KEY" ]; then
+            KEY_FILE="$RUNNER_TEMP/imds-vps-key"
+            umask 077
+            printf '%s\n' "$VPS_SSH_KEY" > "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+            cat > "$RUNNER_TEMP/imds-ssh" <<EOF
+          #!/usr/bin/env bash
+          exec ssh -i "$KEY_FILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "\$@"
+          EOF
+            cat > "$RUNNER_TEMP/imds-scp" <<EOF
+          #!/usr/bin/env bash
+          exec scp -i "$KEY_FILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "\$@"
+          EOF
+          else
+            command -v sshpass >/dev/null || { echo 'sshpass is unavailable on the runner'; exit 1; }
+            cat > "$RUNNER_TEMP/imds-ssh" <<'EOF'
+          #!/usr/bin/env bash
+          export SSHPASS="${VPS_PASSWORD:-}"
+          exec sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$@"
+          EOF
+            cat > "$RUNNER_TEMP/imds-scp" <<'EOF'
+          #!/usr/bin/env bash
+          export SSHPASS="${VPS_PASSWORD:-}"
+          exec sshpass -e scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$@"
+          EOF
+          fi
+          chmod 700 "$RUNNER_TEMP/imds-ssh" "$RUNNER_TEMP/imds-scp"
 
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -85,16 +116,12 @@ jobs:
 
       - name: Bootstrap and upload release
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          export SSHPASS
-          sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/bootstrap-host.sh "$VPS_USER@$VPS_HOST:/tmp/imds-bootstrap.sh"
-          sshpass -e scp "${SSH_ARGS[@]}" deploy/vps/install-release.sh "$VPS_USER@$VPS_HOST:/tmp/imds-install-release.sh"
-          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-marketing-release.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-release.tgz"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" '
+          "$RUNNER_TEMP/imds-scp" deploy/vps/bootstrap-host.sh "$VPS_USER@$VPS_HOST:/tmp/imds-bootstrap.sh"
+          "$RUNNER_TEMP/imds-scp" deploy/vps/install-release.sh "$VPS_USER@$VPS_HOST:/tmp/imds-install-release.sh"
+          "$RUNNER_TEMP/imds-scp" /tmp/imds-marketing-release.tgz "$VPS_USER@$VPS_HOST:/tmp/imds-marketing-release.tgz"
+          "$RUNNER_TEMP/imds-ssh" "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
             chmod 700 /tmp/imds-bootstrap.sh /tmp/imds-install-release.sh
             /tmp/imds-bootstrap.sh
@@ -110,8 +137,6 @@ jobs:
 
       - name: Configure unified OAuth secrets
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "$IMDS_OAUTH_ENV" ]; then
@@ -125,17 +150,13 @@ jobs:
             rm -f /tmp/imds-oauth.env
             exit 1
           fi
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          export SSHPASS
-          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-oauth.env "$VPS_USER@$VPS_HOST:/tmp/imds-oauth.env"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-oauth.env /etc/imds-oauth.env && rm -f /tmp/imds-oauth.env'
+          "$RUNNER_TEMP/imds-scp" /tmp/imds-oauth.env "$VPS_USER@$VPS_HOST:/tmp/imds-oauth.env"
+          "$RUNNER_TEMP/imds-ssh" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-oauth.env /etc/imds-oauth.env && rm -f /tmp/imds-oauth.env'
           rm -f /tmp/imds-oauth.env
           echo 'Unified OAuth environment installed on VPS.'
 
       - name: Configure CloudPayments secrets
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "$CLOUDPAYMENTS_PUBLIC_ID" ] || [ -z "$CLOUDPAYMENTS_API_SECRET" ]; then
@@ -144,22 +165,16 @@ jobs:
           fi
           umask 077
           printf 'CLOUDPAYMENTS_PUBLIC_ID=%s\nCLOUDPAYMENTS_API_SECRET=%s\n' "$CLOUDPAYMENTS_PUBLIC_ID" "$CLOUDPAYMENTS_API_SECRET" > /tmp/imds-cloudpayments.env
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          export SSHPASS
-          sshpass -e scp "${SSH_ARGS[@]}" /tmp/imds-cloudpayments.env "$VPS_USER@$VPS_HOST:/tmp/imds-cloudpayments.env"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-cloudpayments.env /etc/imds-cloudpayments.env && rm -f /tmp/imds-cloudpayments.env'
+          "$RUNNER_TEMP/imds-scp" /tmp/imds-cloudpayments.env "$VPS_USER@$VPS_HOST:/tmp/imds-cloudpayments.env"
+          "$RUNNER_TEMP/imds-ssh" "$VPS_USER@$VPS_HOST" 'sudo install -o root -g imds-platform -m 0640 /tmp/imds-cloudpayments.env /etc/imds-cloudpayments.env && rm -f /tmp/imds-cloudpayments.env'
           rm -f /tmp/imds-cloudpayments.env
 
       - name: Install release
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          SSH_ARGS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          export SSHPASS
           RELEASE_ID="${DEPLOY_SHA:0:12}"
-          sshpass -e ssh "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "/tmp/imds-install-release.sh /tmp/imds-marketing-release.tgz '$RELEASE_ID'"
+          "$RUNNER_TEMP/imds-ssh" "$VPS_USER@$VPS_HOST" "/tmp/imds-install-release.sh /tmp/imds-marketing-release.tgz '$RELEASE_ID'"
 
       - name: Verify production health
         shell: bash
