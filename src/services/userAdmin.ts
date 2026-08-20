@@ -1,3 +1,5 @@
+import { authFetch } from './auth';
+
 export type ManagedUserRole = 'owner' | 'administrator' | 'manager' | 'marketer' | 'operator' | 'analyst' | 'viewer';
 export type AssignableUserRole = Exclude<ManagedUserRole, 'owner'>;
 export type ManagedUserStatus = 'active' | 'invited' | 'blocked';
@@ -43,7 +45,10 @@ export interface OnboardingRequest {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...init.headers } });
+  // Must use authFetch so the session Bearer token and x-imds-company-id header
+  // are attached; a raw fetch reaches the API unauthenticated and every team
+  // action (including invitations) is rejected with 401 AUTH_REQUIRED.
+  const response = await authFetch(path, { ...init, headers: { 'content-type': 'application/json', ...init.headers } });
   const payload = await response.json().catch(() => ({})) as { error?: string };
   if (!response.ok) throw new Error(payload.error || `Ошибка управления командой: ${response.status}`);
   return payload as T;
