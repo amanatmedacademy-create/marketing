@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   configure:
@@ -38,9 +39,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          resolved="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}')"
-          echo "DOMAIN=$DOMAIN RESOLVED=$resolved EXPECTED=$VPS_HOST"
-          test "$resolved" = "$VPS_HOST"
+          resolved=''
+          for attempt in {1..12}; do
+            resolved="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
+            echo "attempt=$attempt DOMAIN=$DOMAIN RESOLVED=${resolved:-none} EXPECTED=$VPS_HOST"
+            if [ "$resolved" = "$VPS_HOST" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "DNS_GATE=FAIL domain=$DOMAIN resolved=${resolved:-none} expected=$VPS_HOST"
+          exit 20
 
       - name: Configure Nginx and Let's Encrypt
         shell: bash
@@ -95,3 +104,22 @@ jobs:
           done
           echo "HTTPS_PUBLIC_GATE=FAIL domain=$DOMAIN"
           exit 1
+
+      - name: Publish verification result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="DuckDNS verification run $GITHUB_RUN_ID"
+          body=$(cat <<EOF
+          domain: $DOMAIN
+          vps: $VPS_HOST
+          status: $JOB_STATUS
+          run_id: $GITHUB_RUN_ID
+          commit: $GITHUB_SHA
+          EOF
+          )
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
