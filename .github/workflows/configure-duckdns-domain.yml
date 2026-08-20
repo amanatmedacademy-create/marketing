@@ -1,0 +1,97 @@
+name: Configure DuckDNS Domain
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/configure-duckdns-domain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST || '89.207.250.55' }}
+      VPS_USER: ${{ secrets.VPS_USER || 'imdsops' }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      DOMAIN: imds.duckdns.org
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_SSH_KEY" || { echo 'VPS_SSH_KEY is missing'; exit 1; }
+          umask 077
+          printf '%s\n' "$VPS_SSH_KEY" > "$RUNNER_TEMP/vps-key"
+          chmod 600 "$RUNNER_TEMP/vps-key"
+          cat > "$RUNNER_TEMP/vps-ssh" <<EOF
+          #!/usr/bin/env bash
+          exec ssh -i "$RUNNER_TEMP/vps-key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "\$@"
+          EOF
+          chmod 700 "$RUNNER_TEMP/vps-ssh"
+
+      - name: Verify DNS points to VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolved="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}')"
+          echo "DOMAIN=$DOMAIN RESOLVED=$resolved EXPECTED=$VPS_HOST"
+          test "$resolved" = "$VPS_HOST"
+
+      - name: Configure Nginx and Let's Encrypt
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/vps-ssh" "$VPS_USER@$VPS_HOST" "DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+
+          conf=/etc/nginx/sites-available/imds-marketing
+          sudo test -f "$conf"
+          sudo cp "$conf" "${conf}.pre-duckdns.$(date -u +%Y%m%d%H%M%S)"
+
+          if sudo grep -qE '^[[:space:]]*server_name[[:space:]]+_;' "$conf"; then
+            sudo sed -i "s/^[[:space:]]*server_name[[:space:]]\+_;[[:space:]]*$/    server_name $DOMAIN;/" "$conf"
+          elif ! sudo grep -q "server_name $DOMAIN;" "$conf"; then
+            echo "ERROR: expected public nginx server block not found" >&2
+            exit 31
+          fi
+
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          sudo certbot --nginx \
+            -d "$DOMAIN" \
+            --non-interactive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            --redirect
+
+          sudo nginx -t
+          sudo systemctl reload nginx
+          echo '===== CERTIFICATE ====='
+          sudo certbot certificates | sed -n "/Certificate Name: $DOMAIN/,+8p"
+          echo '===== LOCAL HOST-HEADER HEALTH ====='
+          curl -fsS -H "Host: $DOMAIN" http://127.0.0.1/api/health
+          REMOTE
+
+      - name: Verify public HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 10 "https://$DOMAIN/api/health"; then
+              echo
+              echo "HTTPS_PUBLIC_GATE=PASS domain=$DOMAIN"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "HTTPS_PUBLIC_GATE=FAIL domain=$DOMAIN"
+          exit 1
