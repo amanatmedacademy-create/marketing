@@ -1,0 +1,43 @@
+name: VPS Domain Persistence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/vps/**'
+      - 'tests/vpsDomainPersistence.test.mjs'
+      - 'package.json'
+      - '.github/workflows/vps-domain-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: VPS domain persistence regression
+        run: npm run test:vps-domain
+      - name: Shell syntax
+        run: |
+          bash -n deploy/vps/bootstrap-host.sh
+          bash -n deploy/vps/install-release.sh
+      - name: Verify canonical hostname in deploy source
+        run: |
+          grep -q 'server_name imds.duckdns.org;' deploy/vps/nginx-imds-marketing.conf
+          grep -q 'PUBLIC_DOMAIN=imds.duckdns.org' deploy/vps/install-release.sh
+          grep -q 'APP_ORIGIN=https://imds.duckdns.org' deploy/vps/install-release.sh
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build

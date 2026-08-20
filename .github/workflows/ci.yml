@@ -48,6 +48,8 @@ jobs:
         run: npm run test:integration-routing
       - name: VPS migration compatibility regression tests
         run: npm run test:vps-migrations
+      - name: VPS domain persistence regression tests
+        run: npm run test:vps-domain
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
       - name: Common frontend boundary regression tests

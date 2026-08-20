@@ -20,6 +20,7 @@
     "test:branches": "node --test tests/branchHierarchy.test.mjs tests/branchPrimaryRepair.test.mjs tests/branchValidationState.test.mjs",
     "test:integration-routing": "node --test tests/integrationBranchRouting.test.mjs",
     "test:vps-migrations": "node --test tests/vpsTelephonyMigrationCompatibility.test.mjs",
+    "test:vps-domain": "node --test tests/vpsDomainPersistence.test.mjs",
     "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
     "test:platform-frontend": "node --test tests/platformFrontendBoundary.test.mjs",
     "test:platform-context": "node --test tests/platformContextPhase2.test.mjs",

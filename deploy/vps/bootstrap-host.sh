@@ -3,7 +3,7 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl gnupg nginx tar gzip ufw
+apt-get install -y ca-certificates curl gnupg nginx certbot python3-certbot-nginx tar gzip ufw
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(`.`)[0])' 2>/dev/null || echo 0)" -lt 22 ]; then
   mkdir -p /etc/apt/keyrings
@@ -28,5 +28,6 @@ chown -R imds:imds /opt/imds-marketing
 printf 'Node: '; node --version
 printf 'npm: '; npm --version
 printf 'nginx: '; nginx -v 2>&1
+printf 'certbot: '; certbot --version
 
 echo 'VPS bootstrap completed.'

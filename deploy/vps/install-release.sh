@@ -7,6 +7,7 @@ RELEASE_ID="${2:-$(date -u +%Y%m%d%H%M%S)}"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
 CONTROL_ENV=/etc/imds-platform-control.env
 CONTROL_GROUP=imds-platform
+PUBLIC_DOMAIN=imds.duckdns.org
 
 if [ ! -f "$RELEASE_ARCHIVE" ]; then
   echo "Release archive not found: $RELEASE_ARCHIVE" >&2
@@ -47,7 +48,7 @@ if [ ! -f /etc/imds-marketing.env ]; then
   install -m 0600 /dev/null /etc/imds-marketing.env
   cat >/etc/imds-marketing.env <<'ENVFILE'
 # Fill server-side secrets before starting production.
-APP_ORIGIN=http://89.207.250.55
+APP_ORIGIN=https://imds.duckdns.org
 IMDS_LOCAL_DB_URL=
 IMDS_LOCAL_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
@@ -116,11 +117,36 @@ nginx -t
 systemctl daemon-reload
 systemctl enable nginx imds-marketing imds-marketing-scheduler
 systemctl restart nginx
+
+# Installing the repository Nginx file must not remove the verified HTTPS
+# endpoint. Re-apply the existing Let's Encrypt certificate after every release.
+if command -v certbot >/dev/null 2>&1; then
+  for attempt in $(seq 1 30); do
+    if ! pgrep -x certbot >/dev/null 2>&1; then
+      break
+    fi
+    if [ "$attempt" -eq 30 ]; then
+      echo "Certbot remained busy while restoring HTTPS" >&2
+      exit 1
+    fi
+    sleep 2
+  done
+  certbot --nginx \
+    -d "$PUBLIC_DOMAIN" \
+    --non-interactive \
+    --agree-tos \
+    --register-unsafely-without-email \
+    --redirect
+fi
+
+nginx -t
+systemctl reload nginx
 systemctl restart imds-marketing
 systemctl restart imds-marketing-scheduler
 
 sleep 2
 systemctl --no-pager --full status imds-marketing | sed -n '1,18p'
 curl -fsS http://127.0.0.1:8787/api/health || true
+curl -fsS "https://$PUBLIC_DOMAIN/api/health"
 
 echo "Installed IMDS Marketing release $RELEASE_ID"
