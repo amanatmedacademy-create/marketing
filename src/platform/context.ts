@@ -1,3 +1,4 @@
+import type { MeContext } from './sdkContract';
 import type {
   PlatformAccessScope,
   PlatformBranch,
@@ -68,5 +69,50 @@ export function buildPlatformFrontendContext(input: {
     entitlements,
     accessScopes: input.accessScopes ?? [],
     products: input.products ?? [],
+  };
+}
+
+export function buildPlatformFrontendContextFromMeContext(
+  meContext: MeContext,
+  activeOrganizationId: string,
+  activeBranchId: string,
+): PlatformFrontendContext {
+  if (!activeOrganizationId || meContext.tenant.id !== activeOrganizationId) {
+    throw new Error('Tenant context mismatch');
+  }
+
+  const branches = meContext.branches ?? [];
+  if (activeBranchId) {
+    const branch = branches.find((item) => item.id === activeBranchId);
+    if (!branch || branch.status !== 'active') throw new Error('Branch context mismatch');
+  }
+
+  const entitlements = meContext.products.flatMap((product) => {
+    if (!product.enabled) return [];
+    const productEntitlement = product.key === 'marketing' ? ['product.marketing'] : [`product.${product.key}`];
+    const modules = product.modules.filter((module) => module.enabled).map((module) => module.key);
+    return [...productEntitlement, ...modules];
+  });
+
+  return {
+    user: {
+      id: meContext.user.id,
+      email: meContext.user.email,
+      displayName: meContext.user.displayName || meContext.user.email,
+    },
+    organizationId: meContext.tenant.id,
+    organizations: [{
+      id: meContext.tenant.id,
+      name: meContext.tenant.name,
+      role: meContext.roles[0] || '',
+      status: 'active',
+    }],
+    branchId: activeBranchId || null,
+    branches: branches.map((branch) => ({ ...branch })),
+    roles: [...meContext.roles],
+    permissions: [...meContext.permissions],
+    entitlements,
+    accessScopes: (meContext.accessScopes ?? []).map((scope) => ({ ...scope })),
+    products: [],
   };
 }

@@ -22,6 +22,7 @@
     "test:vps-migrations": "node --test tests/vpsTelephonyMigrationCompatibility.test.mjs",
     "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
     "test:platform-frontend": "node --test tests/platformFrontendBoundary.test.mjs",
+    "test:platform-context": "node --test tests/platformContextPhase2.test.mjs",
     "deploy": "bun run build && wrangler deploy"
   },
   "dependencies": {

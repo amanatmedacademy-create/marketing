@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import SubscriptionStatusLayer from './components/SubscriptionStatusLayer';
 import MarketingPlatform from './MarketingPlatform';
+import { PlatformContextProvider } from './platform/PlatformContext';
 import './source-badge-auto-layer';
 import './crm-custom-fields-layer';
 import './messaging-live-context-layer';
@@ -73,5 +74,5 @@ function Root() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><AuthGate><Root /></AuthGate></React.StrictMode>,
+  <React.StrictMode><AuthGate><PlatformContextProvider><Root /></PlatformContextProvider></AuthGate></React.StrictMode>,
 );

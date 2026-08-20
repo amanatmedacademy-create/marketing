@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, Bot, Cable, CalendarDays, CreditCard, Database, FileText, LayoutDashboard, ListChecks, LockKeyhole, Menu, MessageCircle, PhoneCall, Send, Settings, TriangleAlert, UsersRound, Workflow } from 'lucide-react';
 import CompanySwitcher from './components/CompanySwitcher';
@@ -29,7 +29,7 @@ import MarketingAiPage from './pages/MarketingAiPage';
 import IntegrationsWorkspace from './pages/IntegrationsWorkspace';
 import ContextualTasksPage from './pages/ContextualTasksPage';
 import { useAuth } from './components/AuthGate';
-import { loadPlatformEntitlements, type PlatformEntitlements } from './services/platformEntitlements';
+import { usePlatformContext } from './platform/PlatformContext';
 import './marketing-platform.css';
 
 type WorkspaceMode = 'profile' | 'settings' | null;
@@ -78,38 +78,24 @@ function DashboardRoute() {
 
 function Shell() {
   const { user } = useAuth();
+  const { context, platform, source, canonicalError } = usePlatformContext();
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceMode>(null);
-  const [platform, setPlatform] = useState<PlatformEntitlements | null>(null);
-  const [platformError, setPlatformError] = useState<string | null>(null);
   const initials = (user.name || user.email || 'IM').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const currentCompany = user.companies?.find((company) => company.id === user.companyId) || user.companies?.[0];
   const canManageBilling = user.platformRole === 'super_admin' || ['owner', 'administrator'].includes(currentCompany?.role || user.role || '');
 
-  useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      try {
-        const next = await loadPlatformEntitlements();
-        if (active) { setPlatform(next); setPlatformError(null); }
-      } catch (reason) {
-        if (active) setPlatformError(reason instanceof Error ? reason.message : String(reason));
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
-    const onFocus = () => void refresh();
-    window.addEventListener('focus', onFocus);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
-  }, [user.companyId]);
-
-  const localCanView = (moduleId: string) => user.role === 'administrator' || Boolean(user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
+  const localCanView = (moduleId: string) => user.role === 'administrator' || Boolean(context?.permissions.includes(moduleId) || user.permissions?.[moduleId]?.view || user.permissions?.[moduleId]?.manage);
+  const marketingEnabled = context ? context.entitlements.includes('product.marketing') : true;
   const platformAllows = (moduleId?: string | readonly string[]) => {
-    if (!platform || !platform.managed) return true;
-    if (!platform.productEnabled) return false;
+    if (!context) return true;
+    if (source === 'legacy' && (!platform || !platform.managed)) return true;
+    if (!marketingEnabled) return false;
     if (!moduleId) return true;
-    return Array.isArray(moduleId) ? moduleId.some((id) => platform.modules[id] === true) : platform.modules[moduleId as string] === true;
+    return Array.isArray(moduleId)
+      ? moduleId.some((id) => context.entitlements.includes(id))
+      : context.entitlements.includes(moduleId as string);
   };
   const canViewItem = (item: NavItem) => {
     if (item.ownerOnly) return canManageBilling;
@@ -118,14 +104,16 @@ function Shell() {
   };
   const visibleGroups = navigation.map(group => ({ ...group, items: group.items.filter(canViewItem) })).filter(group => group.items.length > 0);
   const firstRoute = visibleGroups[0]?.items[0]?.to || '/';
-  const guard = (moduleId: string, element: ReactNode, platformModule?: string | readonly string[]) => localCanView(moduleId) && platformAllows(platformModule) ? element : <AccessDenied platformControlled={Boolean(platform?.managed && platformModule && !platformAllows(platformModule))}/>;
-  const guardAny = (moduleIds: string[], element: ReactNode, platformModules?: string | readonly string[]) => moduleIds.some(localCanView) && platformAllows(platformModules) ? element : <AccessDenied platformControlled={Boolean(platform?.managed && platformModules && !platformAllows(platformModules))}/>;
+  const platformManaged = source === 'canonical' || Boolean(platform?.managed);
+  const guard = (moduleId: string, element: ReactNode, platformModule?: string | readonly string[]) => localCanView(moduleId) && platformAllows(platformModule) ? element : <AccessDenied platformControlled={Boolean(platformManaged && platformModule && !platformAllows(platformModule))}/>;
+  const guardAny = (moduleIds: string[], element: ReactNode, platformModules?: string | readonly string[]) => moduleIds.some(localCanView) && platformAllows(platformModules) ? element : <AccessDenied platformControlled={Boolean(platformManaged && platformModules && !platformAllows(platformModules))}/>;
   const crmHome = localCanView('crm.leads') && platformAllows('marketing.crm') ? '/leads' : localCanView('crm.pipeline') && platformAllows('marketing.crm') ? '/pipeline' : firstRoute;
   const crm = (element: ReactNode) => <CrmWorkspace canView={localCanView}>{element}</CrmWorkspace>;
   const isCrmRoute = location.pathname === '/crm' || location.pathname === '/leads' || location.pathname === '/customers' || location.pathname.startsWith('/pipeline');
   const isMarketingRoute = location.pathname === '/marketing' || location.pathname === '/analytics' || ['/advertising','/automation','/lead-forms','/media-plan','/utm-builder','/attribution'].includes(location.pathname);
+  const productSuspended = source === 'canonical' ? Boolean(context && !marketingEnabled) : Boolean(platform?.managed && !platform.productEnabled);
 
-  if (platform?.managed && !platform.productEnabled && location.pathname !== '/billing') {
+  if (productSuspended && location.pathname !== '/billing') {
     return <div className="module-access-denied"><LockKeyhole size={36}/><h2>IMDS Marketing приостановлен</h2><p>Рабочие модули временно недоступны. Данные сохранены.</p>{canManageBilling && <NavLink to="/billing">Открыть «Тариф и оплата»</NavLink>}</div>;
   }
 
@@ -144,7 +132,7 @@ function Shell() {
         <GlobalSearch />
         <div className="marketing-top-actions">
           {platform?.managed && <span className="platform-sync-indicator" title={`Control Plane revision ${platform.revision ?? '—'}`}>SYNC {platform.revision ?? '—'}</span>}
-          {platformError && <span className="platform-sync-indicator platform-sync-indicator--error" title={platformError}>SYNC ERROR</span>}
+          {canonicalError && <span className="platform-sync-indicator platform-sync-indicator--error" title={canonicalError}>PLATFORM FALLBACK</span>}
           <CompanySwitcher />
           <ThemeToggle />
           {user.role === 'administrator' && <button className="topbar-settings-button" type="button" aria-label="Настройки" onClick={() => setWorkspace('settings')}><Settings size={17}/></button>}
@@ -174,7 +162,7 @@ function Shell() {
         <Route path="/utm-builder" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/attribution" element={platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=attribution" replace/> : <AccessDenied platformControlled/>} />
         <Route path="/segments" element={<Navigate to="/leads" replace/>} />
-        <Route path="/analytics" element={localCanView('analytics.reports') && platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=analytics" replace/> : <AccessDenied platformControlled={Boolean(platform?.managed && !platformAllows('marketing.analytics'))}/>} />
+        <Route path="/analytics" element={localCanView('analytics.reports') && platformAllows('marketing.analytics') ? <Navigate to="/marketing?view=analytics" replace/> : <AccessDenied platformControlled={Boolean(platformManaged && !platformAllows('marketing.analytics'))}/>} />
         <Route path="/growth" element={guard('analytics.reports', <GrowthEnginePage/>, 'marketing.analytics')} />
         <Route path="/reports" element={<Navigate to="/" replace/>} />
         <Route path="/assistant" element={guard('analytics.reports', <MarketingAiPage/>, 'marketing.ai')} />

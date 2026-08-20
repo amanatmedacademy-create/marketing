@@ -52,6 +52,8 @@ jobs:
         run: npm run test:fail-closed
       - name: Common frontend boundary regression tests
         run: npm run test:platform-frontend
+      - name: Platform context Phase 2 regression tests
+        run: npm run test:platform-context
       - name: Typecheck
         run: npm run typecheck
       - name: Production build
