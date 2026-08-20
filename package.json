@@ -21,6 +21,7 @@
     "test:integration-routing": "node --test tests/integrationBranchRouting.test.mjs",
     "test:vps-migrations": "node --test tests/vpsTelephonyMigrationCompatibility.test.mjs",
     "test:fail-closed": "node --experimental-strip-types --test tests/failClosedEntitlements.test.mjs",
+    "test:platform-frontend": "node --test tests/platformFrontendBoundary.test.mjs",
     "deploy": "bun run build && wrangler deploy"
   },
   "dependencies": {

@@ -16,6 +16,7 @@ const credentials = await readFile(new URL('../worker/credentials.ts', import.me
 const runtime = await readFile(new URL('../server/vpsRuntime.ts', import.meta.url), 'utf8');
 const quota = await readFile(new URL('../server/branchQuotaGateway.ts', import.meta.url), 'utf8');
 const auth = await readFile(new URL('../src/services/auth.ts', import.meta.url), 'utf8');
+const selection = await readFile(new URL('../src/platform/selection.ts', import.meta.url), 'utf8');
 const switcher = await readFile(new URL('../src/components/BranchSwitcher.tsx', import.meta.url), 'utf8');
 const companySwitcher = await readFile(new URL('../src/components/CompanySwitcher.tsx', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/BranchManagementPanel.tsx', import.meta.url), 'utf8');
@@ -31,7 +32,7 @@ test('branch management remains tenant scoped and admin controlled', () => {
   assert.match(api, /resolveCompanyId/); assert.match(api, /role === 'owner' \|\| role === 'administrator'/); assert.match(api, /company_id=eq\./); assert.match(api, /Нет доступа к выбранному филиалу/); assert.match(secured, /handleBranchManagementRequest/);
 });
 test('active branch context is normalized server-side and attached to API requests', () => {
-  assert.match(auth, /x-imds-branch-id/); assert.match(auth, /localStorage\.removeItem\(BRANCH_KEY\)/); assert.match(secured, /resolveRequestedBranchId/); assert.match(secured, /CURRENT_BRANCH_ID/); assert.match(scope, /branchScope/); assert.match(switcher, /setActiveBranchId/); assert.match(companySwitcher, /<BranchSwitcher/);
+  assert.match(auth, /x-imds-branch-id/); assert.match(auth, /activeBranchId/); assert.match(auth, /switchOrganizationContext/); assert.match(selection, /localStorage\.removeItem\(BRANCH_KEY\)/); assert.match(secured, /resolveRequestedBranchId/); assert.match(secured, /CURRENT_BRANCH_ID/); assert.match(scope, /branchScope/); assert.match(switcher, /setActiveBranchId/); assert.match(companySwitcher, /<BranchSwitcher/);
 });
 test('all branches mode is admin only and exposed in the switcher', () => {
   assert.match(api, /Режим «Все филиалы» доступен только владельцу или администратору/); assert.match(api, /allAvailable/); assert.match(switcher, /Все филиалы/); assert.match(switcher, /choose\('all'\)/);

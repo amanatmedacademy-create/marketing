@@ -50,6 +50,8 @@ jobs:
         run: npm run test:vps-migrations
       - name: Fail-closed entitlement regression tests
         run: npm run test:fail-closed
+      - name: Common frontend boundary regression tests
+        run: npm run test:platform-frontend
       - name: Typecheck
         run: npm run typecheck
       - name: Production build

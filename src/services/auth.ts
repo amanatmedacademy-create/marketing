@@ -1,3 +1,5 @@
+import { activeBranchId, activeOrganizationId, switchOrganizationContext } from '../platform/selection';
+
 export type AccessAction = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'manage';
 export type AccessGrant = Record<AccessAction, boolean>;
 
@@ -14,8 +16,6 @@ type MfaChallengeResponse = { mfa_required: true; mfa_token: string; expires_in?
 export type AuthLoginResult = { mfaRequired: boolean; mfaToken?: string };
 
 const STORAGE_KEY = 'amanat_marketing_auth_session';
-const COMPANY_KEY = 'imds_active_company_id';
-const BRANCH_KEY = 'imds_active_branch_id';
 function readStoredSession(): StoredSession | null { try { const value = localStorage.getItem(STORAGE_KEY); return value ? JSON.parse(value) as StoredSession : null; } catch { return null; } }
 function writeStoredSession(session: StoredSession | null) { if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); else localStorage.removeItem(STORAGE_KEY); }
 function storeAuthSession(payload: AuthSessionResponse): StoredSession {
@@ -29,8 +29,8 @@ async function authJson<T>(path: string, init: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : raw || `Auth HTTP ${response.status}`);
   return payload as T;
 }
-export function activeCompanyId(): string { return localStorage.getItem(COMPANY_KEY)?.trim() || ''; }
-export function setActiveCompanyId(companyId: string | null) { if (companyId) localStorage.setItem(COMPANY_KEY, companyId); else localStorage.removeItem(COMPANY_KEY); localStorage.removeItem(BRANCH_KEY); }
+export function activeCompanyId(): string { return activeOrganizationId(); }
+export function setActiveCompanyId(companyId: string | null) { switchOrganizationContext(companyId); }
 function parseCallbackSession(): StoredSession | null {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, '')); const accessToken = hash.get('access_token'); if (!accessToken) return null;
   const session: StoredSession = { access_token: accessToken, refresh_token: hash.get('refresh_token') || undefined, token_type: hash.get('token_type') || 'bearer', expires_at: Math.floor(Date.now() / 1000) + Number(hash.get('expires_in') || 3600) };
@@ -67,7 +67,7 @@ export async function signOutSession(): Promise<void> {
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const session = await currentSession(); const headers = new Headers(init.headers || {}); if (session?.access_token) headers.set('authorization', `Bearer ${session.access_token}`);
   const companyId = activeCompanyId(); if (companyId) headers.set('x-imds-company-id', companyId);
-  const branchId = localStorage.getItem(BRANCH_KEY)?.trim(); if (branchId) headers.set('x-imds-branch-id', branchId);
+  const branchId = activeBranchId(); if (branchId) headers.set('x-imds-branch-id', branchId);
   return fetch(input, { ...init, headers });
 }
 async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -1,12 +1,11 @@
+import { activeBranchId, setActiveBranchId } from '../platform/selection';
 import { authFetch } from './auth';
 
 export type Branch = { id:string; companyId:string; name:string; code:string|null; status:string; isPrimary:boolean; city:string|null; address:string|null; phone:string|null; timezone:string; memberCount:number };
 export type BranchList = { items: Branch[]; restricted: boolean; canManage: boolean; allAvailable?: boolean };
 export type BranchAnalyticsItem = { branchId:string; name:string; code:string|null; isPrimary:boolean; leads:number; targetLeads:number; arrivals:number; sales:number; revenue:number; calls:number; appointments:number; callMinutes:number; openTasks:number; doneTasks:number };
 export type BranchAnalytics = { items: BranchAnalyticsItem[]; totals: Omit<BranchAnalyticsItem,'branchId'|'name'|'code'|'isPrimary'> };
-const BRANCH_KEY='imds_active_branch_id';
-export function activeBranchId():string{return localStorage.getItem(BRANCH_KEY)?.trim()||'';}
-export function setActiveBranchId(branchId:string|null){if(branchId)localStorage.setItem(BRANCH_KEY,branchId);else localStorage.removeItem(BRANCH_KEY);}
+export { activeBranchId, setActiveBranchId };
 async function request<T>(path:string,init:RequestInit={}):Promise<T>{const response=await authFetch(path,{...init,cache:'no-store',headers:{Accept:'application/json',...(init.body?{'Content-Type':'application/json'}:{}),...(init.headers||{})}});const raw=await response.text();let payload:Record<string,unknown>={};try{payload=raw?JSON.parse(raw)as Record<string,unknown>:{};}catch{payload={};}if(!response.ok)throw new Error(typeof payload.error==='string'?payload.error:raw||`HTTP ${response.status}`);return payload as T;}
 export async function loadBranches():Promise<BranchList>{return request<BranchList>('/api/branches');}
 export async function loadBranchAnalytics():Promise<BranchAnalytics>{return request<BranchAnalytics>('/api/branches/analytics');}
