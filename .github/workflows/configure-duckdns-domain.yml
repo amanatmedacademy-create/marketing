@@ -2,22 +2,12 @@ name: Configure DuckDNS Domain
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/configure-duckdns-domain.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/configure-duckdns-domain.yml'
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   configure:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'agent/run-duckdns-setup'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -68,9 +58,9 @@ jobs:
 
           conf=/etc/nginx/sites-available/imds-marketing
           sudo test -f "$conf"
-          sudo cp "$conf" "${conf}.pre-duckdns.$(date -u +%Y%m%d%H%M%S)"
 
           if sudo grep -qE '^[[:space:]]*server_name[[:space:]]+_;' "$conf"; then
+            sudo cp "$conf" "${conf}.pre-duckdns.$(date -u +%Y%m%d%H%M%S)"
             sudo sed -i "s/^[[:space:]]*server_name[[:space:]]\+_;[[:space:]]*$/    server_name $DOMAIN;/" "$conf"
           elif ! sudo grep -q "server_name $DOMAIN;" "$conf"; then
             echo "ERROR: expected public nginx server block not found" >&2
@@ -89,42 +79,13 @@ jobs:
 
           sudo nginx -t
           sudo systemctl reload nginx
-          echo '===== CERTIFICATE ====='
           sudo certbot certificates | sed -n "/Certificate Name: $DOMAIN/,+8p"
-          echo '===== LOCAL HOST-HEADER HEALTH ====='
-          curl -fsS -H "Host: $DOMAIN" http://127.0.0.1/api/health
           REMOTE
 
       - name: Verify public HTTPS
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..12}; do
-            if curl --fail --silent --show-error --max-time 10 "https://$DOMAIN/api/health"; then
-              echo
-              echo "HTTPS_PUBLIC_GATE=PASS domain=$DOMAIN"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "HTTPS_PUBLIC_GATE=FAIL domain=$DOMAIN"
-          exit 1
-
-      - name: Publish verification result
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          title="DuckDNS verification run $GITHUB_RUN_ID"
-          body=$(cat <<EOF
-          domain: $DOMAIN
-          vps: $VPS_HOST
-          status: $JOB_STATUS
-          run_id: $GITHUB_RUN_ID
-          commit: $GITHUB_SHA
-          EOF
-          )
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          curl --fail --silent --show-error --max-time 15 "https://$DOMAIN/api/health"
+          echo
+          echo "HTTPS_PUBLIC_GATE=PASS domain=$DOMAIN"
